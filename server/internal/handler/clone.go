@@ -57,6 +57,15 @@ const (
 	cloneMaxRedirects   = 5
 )
 
+// cloneValidateURL adalah seam uji untuk validateCloneURL: scrape
+// stylesheet memakai penunjuk ini supaya tes httptest (127.0.0.1)
+// tetap bisa menguji jalur CSS tanpa melemahkan guard produksi
+// (validateCloneURL sendiri diuji terpisah).
+var cloneValidateURL func(string) error = func(raw string) error {
+	_, err := validateCloneURL(raw)
+	return err
+}
+
 // validateCloneURL memeriksa URL clone: skema http/https, tanpa userinfo,
 // port standar saja, dan host harus resolve ke IP publik. Dipakai untuk
 // URL awal dan setiap hop redirect (SSRF guard).
@@ -449,7 +458,7 @@ func scrapePage(client *http.Client, pageURL *url.URL) (*cloneBrief, error) {
 		if err != nil {
 			continue
 		}
-		if _, err := validateCloneURL(cssURL.String()); err != nil {
+		if err := cloneValidateURL(cssURL.String()); err != nil {
 			continue
 		}
 		cctx, ccancel := context.WithTimeout(context.Background(), cloneFetchTimeout)

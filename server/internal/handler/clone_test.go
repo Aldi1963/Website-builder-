@@ -128,6 +128,13 @@ func TestFetchRobotsAllowedHTTPTest(t *testing.T) {
 }
 
 func TestScrapePageHTTPTest(t *testing.T) {
+	// httptest jalan di 127.0.0.1: guard SSRF produksi akan menolak
+	// stylesheet dari host itu — longgarkan seam validasi khusus tes ini
+	// supaya jalur fetch CSS tertaut tetap teruji (guard sendiri diuji
+	// di TestValidateCloneURL*).
+	oldValidate := cloneValidateURL
+	cloneValidateURL = func(string) error { return nil }
+	t.Cleanup(func() { cloneValidateURL = oldValidate })
 	const page = `<!doctype html><html><head><title>Warung Kopi Sederhana</title>
 <meta name="description" content="Warung kopi di desa.">
 <style>.hero{color:#1a2b3c;background:#ffeeaa;font-family:Inter, sans-serif}</style>
