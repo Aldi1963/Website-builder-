@@ -259,8 +259,12 @@ func executeAgentTool(db *gorm.DB, p *models.Project, name string, input map[str
 	}
 }
 
+// createAgentRun membuat baris AgentRun dalam status "queued": run belum
+// dieksekusi — eksekusi dilakukan consumer queue sesudah postChat
+// meng-enqueue job. Pipeline yang mengambil job memanggil
+// updateAgentPhase("analyzing") yang mengubah status menjadi "running".
 func createAgentRun(db *gorm.DB, projectID, userID uint, mode, request string) *models.AgentRun {
-	run := &models.AgentRun{ProjectID: projectID, UserID: userID, Mode: mode, Status: "running", Phase: "analyzing", Request: request, StartedAt: time.Now()}
+	run := &models.AgentRun{ProjectID: projectID, UserID: userID, Mode: mode, Status: "queued", Phase: "queued", Request: request, StartedAt: time.Now()}
 	if err := db.Create(run).Error; err != nil {
 		return nil
 	}
@@ -322,6 +326,25 @@ func finishAgentRun(db *gorm.DB, runID uint, status, summary, failure string) {
 		updates["error_code"] = classifyAgentError(failure)
 	}
 	db.Model(&models.AgentRun{}).Where("id = ?", runID).Updates(updates)
+}
+
+// finishAgentRunIfActive sama seperti finishAgentRun, tetapi hanya
+// menyelesaikan bila run BELUM mencapai status terminal. Dipakai pipeline
+// queue: tanpa guard ini, pipeline yang dibatalkan (atau gagal lewat
+// orphan recovery) bisa menimpa "cancelled"/"failed" menjadi "completed".
+// status terminal: completed, failed, cancelled.
+func finishAgentRunIfActive(db *gorm.DB, runID uint, status, summary, failure string) {
+	if runID == 0 {
+		return
+	}
+	var run models.AgentRun
+	if err := db.First(&run, runID).Error; err != nil {
+		return
+	}
+	if run.Status == "completed" || run.Status == "failed" || run.Status == "cancelled" {
+		return
+	}
+	finishAgentRun(db, runID, status, summary, failure)
 }
 
 func recordAgentTool(db *gorm.DB, runID uint, tool, phase, status, input, output, failure string) {
@@ -470,6 +493,11 @@ func cancelAgentRun(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 		cancelAgent(run.ID)
+		// Job yang masih antre di queue: batalkan juga di Manager. Manager
+		// hanya menandai snapshot batal (tidak menghapus baris DB) — celah
+		// itu ditutup handler job: run yang sudah "cancelled" di DB
+		// dilewati tanpa eksekusi (lihat executeAgentPipeline).
+		agentQueueCancel(run.ID)
 		now := time.Now()
 		db.Model(&run).Updates(map[string]interface{}{"status": "cancelled", "phase": "cancelled", "summary": "Proses dihentikan pengguna", "error": "cancelled by user", "finished_at": now})
 		recordAgentTool(db, run.ID, "agent_cancel", run.Phase, "cancelled", "user request", "Proses dihentikan", "")
