@@ -178,6 +178,13 @@ type AIProviderConfig struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
+// TableName menyamakan nama tabel GORM dengan migrasi goose 00004
+// (ai_provider_configs). Tanpa ini GORM menurunkan "a_iprovider_configs"
+// dari nama struct, sehingga di Postgres (skema dari goose) semua query
+// provider gagal "relation does not exist", sementara SQLite (AutoMigrate)
+// diam-diam memakai nama yang salah itu.
+func (AIProviderConfig) TableName() string { return "ai_provider_configs" }
+
 type PasswordReset struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
 	UserID    uint      `gorm:"index;not null" json:"userId"`

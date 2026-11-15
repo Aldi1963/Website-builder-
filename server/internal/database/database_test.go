@@ -83,7 +83,7 @@ func TestAutoMigrateSQLiteCreatesAllTables(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{
-		"a_iprovider_configs", "agent_contexts", "agent_runs", "agent_tool_calls", "ai_configs",
+		"ai_provider_configs", "agent_contexts", "agent_runs", "agent_tool_calls", "ai_configs",
 		"ai_proposals", "ai_usages", "app_cron_jobs", "app_files", "audit_logs",
 		"blocked_words", "chat_messages", "chat_sessions", "deployments",
 		"domains", "file_comments", "form_submissions", "git_hub_configs",
@@ -135,7 +135,7 @@ func TestMigrateUpPostgres(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{
-		"a_iprovider_configs", "agent_contexts", "agent_runs", "agent_tool_calls", "ai_configs",
+		"ai_provider_configs", "agent_contexts", "agent_runs", "agent_tool_calls", "ai_configs",
 		"ai_proposals", "ai_usages", "app_cron_jobs", "app_files", "audit_logs",
 		"blocked_words", "chat_messages", "chat_sessions", "deployments",
 		"domains", "file_comments", "form_submissions", "git_hub_configs",

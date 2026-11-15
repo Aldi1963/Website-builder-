@@ -245,8 +245,16 @@ func defaultProviderRow(db *gorm.DB) *models.AIProviderConfig {
 //     dengan model override bila diminta.
 //   - Key boleh kosong (Ollama lokal); configured() hanya mensyaratkan
 //     base URL + model.
+//
+// Seed dipanggil di awal untuk KEDUA cabang: tanpa ini, chat pertama ke
+// instalasi baru yang mengirim providerId eksplisit (mis. 1, dari
+// dropdown yang dimuat sebelum seed sempat jalan) gagal 400 "provider #1
+// tidak ditemukan" padahal Default bisa dibuat otomatis dari konfigurasi
+// lama/env. Seed idempoten (no-op bila tabel sudah berisi baris), jadi
+// provider yang dihapus admin tidak pernah dibuat ulang diam-diam.
 func resolveAIProvider(db *gorm.DB, providerID uint, model string) (*AIProvider, string, error) {
 	model = strings.TrimSpace(model)
+	ensureDefaultProviderSeeded(db)
 	if providerID > 0 {
 		var cfg models.AIProviderConfig
 		if err := db.First(&cfg, providerID).Error; err != nil {
@@ -277,7 +285,7 @@ func resolveAIProvider(db *gorm.DB, providerID uint, model string) (*AIProvider,
 		p.Model = model
 		return p, cfg.Name, nil
 	}
-	ensureDefaultProviderSeeded(db)
+	// (Seed sudah dipanggil di awal fungsi — lihat komentar di atas.)
 	if cfg := defaultProviderRow(db); cfg != nil {
 		list := parseProviderModels(cfg.Models)
 		if model == "" {

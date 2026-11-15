@@ -147,6 +147,30 @@ func TestResolveAIProviderExplicit(t *testing.T) {
 	}
 }
 
+// ID eksplisit ke tabel kosong: seed Default harus jalan dulu, supaya
+// chat pertama instalasi baru yang mengirim providerId=1 (dari dropdown
+// yang dimuat sebelum seed) tidak gagal 400. Tanpa konfigurasi apa pun,
+// seed tidak membuat apa-apa dan ID tetap ditolak.
+func TestResolveAIProviderExplicitSeedsEmptyTable(t *testing.T) {
+	db := openProviderTestDB(t)
+	t.Setenv("AI_BASE_URL", "https://ai.clipku.com/v1")
+	t.Setenv("AI_API_KEY", "env-key-9router")
+	t.Setenv("AI_MODEL", "cx/gpt-5.6-luna")
+	p, name, err := resolveAIProvider(db, 1, "cx/gpt-5.6-luna")
+	if err != nil {
+		t.Fatalf("resolve eksplisit ke tabel kosong: %v", err)
+	}
+	if name != "Default" || p.Model != "cx/gpt-5.6-luna" || p.APIKey != "env-key-9router" {
+		t.Fatalf("resolve eksplisit hasil seed salah: name=%q provider=%+v", name, p)
+	}
+
+	db2 := openProviderTestDB(t)
+	noAIEnv(t)
+	if _, _, err := resolveAIProvider(db2, 1, ""); err == nil {
+		t.Fatal("tanpa konfigurasi, provider #1 harus tetap ditolak")
+	}
+}
+
 func TestResolveAIProviderDefaultPicksDefaultRow(t *testing.T) {
 	db := openProviderTestDB(t)
 	noAIEnv(t)
