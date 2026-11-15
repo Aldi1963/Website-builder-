@@ -207,6 +207,52 @@ batas cap interaksi (lihat "Cap interaksi" di bawah).
 (kelompok Navigasi di atas — alat tunggu) dan TIDAK dihitung ke cap
 interaksi.
 
+### Sapu uji alat (trek C, 15 Nov 2026)
+
+Alat yang sebelumnya hanya aktif di katalog tapi belum pernah diuji
+terhadap Chrome asli — `lighthouse_audit`, `performance_*`,
+`emulate`, `resize_page` — disapu satu per satu di
+`server/internal/browser/tools_sweep_integration_test.go`
+(`TestToolsSweepRealChrome`, Chrome for Testing + server MCP 1.13.0,
+fixture httptest lokal):
+
+| Alat | Hasil | Bukti |
+| --- | --- | --- |
+| `lighthouse_audit` (snapshot, desktop) | Lolos | Skor kategori `accessibility`/`seo`/`best-practices` + `scores` ada di output. |
+| `lighthouse_audit` (navigation, mobile) | Lolos | Sama, + URL final = halaman fixture. |
+| `performance_start_trace` (autoStop) | Lolos | Trace berhenti sendiri sesudah ±5 dtk, ringkasan memuat `# Available insight sets`. |
+| `performance_analyze_insight` | Lolos | Dengan id set `NAVIGATION_0` + insight `RenderBlocking` dari ringkasan, detail insight dikembalikan. |
+| `performance_stop_trace` (manual) | Lolos | Start `autoStop:false` → stop mengembalikan ringkasan; stop kedua tanpa trace aktif mengembalikan pesan ramah `no active performance trace` (bukan crash). |
+| `emulate` | Lolos | Satu panggilan (`colorScheme:dark`, viewport `800x600`, userAgent kustom, CPU 4x, `Slow 4G`, geolokasi) → `innerWidth/innerHeight` 800x600, `prefers-color-scheme: dark` true, userAgent berubah (dicek via `evaluate_script`). |
+| `resize_page` | Lolos | `1024x768` lalu `640x480` — `innerWidth/innerHeight` mengikuti tiap kali. |
+
+Catatan dari sapu ini:
+
+- `performance_start_trace` dengan `reload:false` menghasilkan
+  insight set `NO_NAVIGATION` dan daftar insight KOSONG (trace tanpa
+  navigasi tidak punya insight untuk dianalisis) — jadi tes
+  `performance_analyze_insight` memakai `reload:true` supaya trace
+  memuat navigasi. Ini perilaku server MCP, bukan bug klien.
+- Alat input satuan (`press_key`, `click`, `fill`) sudah dibuktikan
+  satu per satu di `TestInputToolsRealChrome` (Fase 4) dan lewat
+  jalur LLM-driven: run 14 proyek uji (`agent_tool_calls` di
+  `data/webbuilder.db`) — model memanggil `browser_navigate_page` →
+  `browser_take_snapshot` → `browser_fill` (Nama=`Budi`) →
+  `browser_click` + `browser_fill` (Cari=`kopi`) →
+  `browser_press_key` (`Enter`) → `browser_click` (Kirim), semua
+  `success`, dan halaman menampilkan `Halo, Budi` + `Hasil untuk:
+  kopi`. Percobaan pertama (run 13) gagal karena model TIDAK diberi
+  tahu URL preview di system prompt — ia hanya mendapat
+  `about:blank`; lihat "Temuan terbuka" di bawah.
+- Temuan terbuka (bukan bagian PR ini): pipeline TIDAK menyuntik URL
+  preview (`http://127.0.0.1:<port>`) ke system prompt model, padahal
+  port-nya sudah dikunci ke klien browser (`SetPreviewPort` di
+  `agentpipeline.go`). Akibatnya model yang diminta menguji preview
+  secara interaktif tidak bisa menavigasi ke mana pun sampai user
+  menyebut URL-nya eksplisit di pesan. Perbaikan yang diusulkan:
+  tambahkan satu baris URL preview ke system prompt saat dev server
+  sudah jalan.
+
 Cari `uid` dengan mencocokkan peran + nama (mis. `textbox "Email"`,
 `button "Masuk"`): snapshot memuat baris label polos (`"Email"`) dan
 elemennya dengan nama yang sama — menarget baris label ditolak server
