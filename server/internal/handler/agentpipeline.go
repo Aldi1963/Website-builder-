@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -27,6 +28,125 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
+
+// MaxBrowserVerifyRounds adalah MAKS putaran perbaikan otomatis loop
+// verifikasi browser per run (rencana §6 Fase 2). Ditegakkan counter di
+// runBrowserVerificationLoop — bukan hanya janji di prompt. Sesudah
+// putaran ini habis, hasil (termasuk isi console error) dilaporkan ke
+// user apa adanya; tidak ada putaran ke-3.
+const MaxBrowserVerifyRounds = 2
+
+// browserVerificationOutcome adalah hasil loop verifikasi scripted Fase 2.
+type browserVerificationOutcome struct {
+	// Attempted true bila loop sempat jalan (browser tersedia + ada
+	// perubahan yang diverifikasi).
+	Attempted bool
+	// Passed true bila satu putaran lolos (0 console error, 0 gagal).
+	Passed         bool
+	Rounds         int
+	ScreenshotPath string
+	Summary        string
+	ConsoleErrors  []string
+	FailedRequests []string
+}
+
+// acceptancePort mengambil port dev server dari hasil
+// runAgentRuntimeAcceptance (map "port" dari runtimeDevStart).
+func acceptancePort(acceptance map[string]interface{}) (int, bool) {
+	if acceptance == nil {
+		return 0, false
+	}
+	port, ok := acceptance["port"].(float64)
+	if !ok || port <= 0 {
+		return 0, false
+	}
+	return int(port), true
+}
+
+// runBrowserVerificationLoop menjalankan loop verifikasi scripted Fase 2
+// (lihat browser.VerifyPreview): buka preview di Chrome → snapshot →
+// console → network → screenshot, lalu perbaiki dari temuan dan ulangi.
+// Ditegakkan MAKS MaxBrowserVerifyRounds putaran per run.
+//
+// repair dipanggil dengan diagnostik temuan tiap putaran yang gagal
+// (nil = perbaikan tidak tersedia, mis. tanpa provider AI — loop
+// berhenti sesudah putaran itu dan melaporkan temuan). reaccept
+// menjalankan ulang acceptance runtime sesudah perbaikan dan
+// mengembalikan (acceptance, port, err); bila acceptance ulang gagal,
+// loop berhenti dan error itu diteruskan ke caller supaya run ditandai
+// gagal seperti jalur acceptance biasa. Temuan tiap putaran dicatat di
+// agent_tool_calls (tool "browser_verify") dan dikirim sebagai event
+// SSE "browser_verify" supaya terlihat di chat.
+func runBrowserVerificationLoop(ctx context.Context, db *gorm.DB, runID uint, runDir string, bc *browser.Client, port int, repair func(string) ([]string, error), reaccept func() (map[string]interface{}, int, error), send func(string, any)) (browserVerificationOutcome, []string, map[string]interface{}, error) {
+	outcome := browserVerificationOutcome{Attempted: true}
+	repairedAll := []string{}
+	var lastAcceptance map[string]interface{}
+	var lastErr error
+	curPort := port
+	for round := 1; round <= MaxBrowserVerifyRounds; round++ {
+		outcome.Rounds = round
+		updateAgentPhase(db, runID, "browser_verify")
+		previewURL := fmt.Sprintf("http://127.0.0.1:%d", curPort)
+		shotName := fmt.Sprintf("screenshot-%d.png", round)
+		res, verr := browser.VerifyPreview(ctx, bc, previewURL, shotName)
+		if verr != nil {
+			recordAgentTool(db, runID, "browser_verify", "browser_verify", "failed", fmt.Sprintf("putaran %d/%d: %s", round, MaxBrowserVerifyRounds, previewURL), "Verifikasi browser gagal dieksekusi: "+verr.Error(), verr.Error())
+			outcome.Summary = "Verifikasi browser tidak bisa dijalankan: " + verr.Error()
+			return outcome, repairedAll, lastAcceptance, lastErr
+		}
+		// Screenshot ditulis VerifyPreview ke workspace MCP
+		// (runDir/browser/); pindahkan ke runtime/<run-id>/
+		// screenshot-<n>.png sesuai rencana §6. Bila pindah gagal,
+		// pakai path workspace dan catat itu.
+		dest := filepath.Join(runDir, shotName)
+		finalShot := res.ScreenshotPath
+		if err := os.Rename(res.ScreenshotPath, dest); err != nil {
+			slog.Warn("agent pipeline: gagal pindah screenshot verifikasi", "runId", runID, "from", res.ScreenshotPath, "to", dest, "error", err)
+		} else {
+			finalShot = dest
+		}
+		outcome.ScreenshotPath = finalShot
+		outcome.ConsoleErrors = res.ConsoleErrors
+		outcome.FailedRequests = res.FailedRequests
+		status := "success"
+		if !res.Passed {
+			status = "failed"
+		}
+		recordAgentTool(db, runID, "browser_verify", "browser_verify", status, fmt.Sprintf("putaran %d/%d: %s", round, MaxBrowserVerifyRounds, previewURL), res.Diagnostic()+"\nScreenshot: "+finalShot, "")
+		send("browser_verify", gin.H{"round": round, "maxRounds": MaxBrowserVerifyRounds, "passed": res.Passed, "consoleErrors": res.ConsoleErrors, "failedRequests": res.FailedRequests, "screenshotPath": finalShot})
+		if res.Passed {
+			outcome.Passed = true
+			outcome.Summary = res.Summary
+			return outcome, repairedAll, lastAcceptance, lastErr
+		}
+		outcome.Summary = res.Summary
+		if round == MaxBrowserVerifyRounds {
+			break
+		}
+		if repair == nil {
+			recordAgentTool(db, runID, "browser_verify", "browser_verify", "failed", fmt.Sprintf("putaran %d/%d", round, MaxBrowserVerifyRounds), "Perbaikan otomatis tidak tersedia (tanpa provider AI); temuan dilaporkan apa adanya.", "")
+			break
+		}
+		updateAgentPhase(db, runID, "auto_fix")
+		recordAgentTool(db, runID, "auto_fix", "auto_fix", "running", fmt.Sprintf("browser putaran %d", round), "Memperbaiki temuan verifikasi browser", "")
+		send("auto_fix", gin.H{"attempt": round, "error": lastLines(res.Diagnostic(), 12), "source": "browser_verify"})
+		repaired, rerr := repair(res.Diagnostic())
+		if rerr != nil || len(repaired) == 0 {
+			recordAgentTool(db, runID, "auto_fix", "auto_fix", "failed", fmt.Sprintf("browser putaran %d", round), "Auto-fix verifikasi tidak menghasilkan file", fmt.Sprint(rerr))
+			break
+		}
+		recordAgentTool(db, runID, "auto_fix", "auto_fix", "success", fmt.Sprintf("browser putaran %d", round), "File diperbaiki: "+strings.Join(repaired, ", "), "")
+		send("changes", gin.H{"applied": true, "changed": repaired, "autoFix": true, "source": "browser_verify"})
+		repairedAll = append(repairedAll, repaired...)
+		acc, newPort, aerr := reaccept()
+		lastAcceptance, lastErr = acc, aerr
+		if aerr != nil {
+			return outcome, repairedAll, lastAcceptance, lastErr
+		}
+		curPort = newPort
+	}
+	return outcome, repairedAll, lastAcceptance, lastErr
+}
 
 // executeAgentPipeline menjalankan pipeline agent untuk satu run yang sudah
 // dibuat + di-enqueue postChat. Mengembalikan nil bila run mencapai
@@ -202,6 +322,13 @@ func executeAgentPipeline(runCtx context.Context, db *gorm.DB, in agentPipelineI
 				browserClient = nil
 				_ = bc.Close()
 			} else {
+				// Fail-closed: alat aktif yang tidak ada di tools/list
+				// server MCP dilaporkan jelas, bukan diam-diam hilang
+				// dari katalog (mis. server MCP versi lama).
+				if missing := browser.MissingActiveTools(tools); len(missing) > 0 {
+					slog.Warn("agent pipeline: alat browser aktif tidak ada di tools/list server MCP", "runId", run.ID, "missing", strings.Join(missing, ", "))
+					recordAgentTool(db, run.ID, "browser_tools_missing", "analyzing", "failed", strings.Join(missing, ","), "Alat browser aktif tidak disediakan server MCP — katalog berjalan tanpa alat itu. Periksa versi chrome-devtools-mcp.", "")
+				}
 				catalog = append(catalog, browserToolCatalog(browser.SpecsFromTools(tools))...)
 			}
 		}
@@ -512,6 +639,7 @@ AUTONOMOUS BLUEPRINT (EMPTY PROJECT):
 	}
 	var acceptance map[string]interface{}
 	var acceptanceErr error
+	var verification browserVerificationOutcome
 	if run != nil {
 		if len(changed) == 0 {
 			recordAgentTool(db, run.ID, "apply_files", "applying", "success", "Tidak ada file berubah", "Project sudah sesuai", "")
@@ -543,6 +671,44 @@ AUTONOMOUS BLUEPRINT (EMPTY PROJECT):
 			send("changes", gin.H{"applied": true, "changed": repaired, "autoFix": true})
 			acceptance, acceptanceErr = runAgentRuntimeAcceptance(db, p, in.UserID)
 		}
+		// LOOP VERIFIKASI BROWSER (Fase 2, scripted deterministik — lihat
+		// runBrowserVerificationLoop): sesudah build + dev server nyala,
+		// pipeline OTOMATIS membuka preview di Chrome dan memeriksa
+		// console/network/snapshot. Hanya bila ada file yang berubah
+		// (mode tanya tanpa perubahan tidak perlu Chrome) dan alat
+		// browser tersedia. Temuan diumpankan ke repairProjectFiles
+		// (maks 2 putaran, ditegakkan counter di fungsi itu); bila
+		// putaran habis, hasil dilaporkan ke user apa adanya.
+		if acceptanceErr == nil && len(changed) > 0 {
+			if browserClient == nil {
+				recordAgentTool(db, run.ID, "browser_verify", "runtime", "skipped", "alat browser tidak tersedia", "Verifikasi browser dilewati: alat browser tidak tersedia (flag WEBBUILDER_ENABLE_BROWSER_TOOLS/WEBBUILDER_ENABLE_TENANT_EXEC mati atau Chrome/MCP gagal start). Build tetap diverifikasi jalur runtime.", "")
+			} else if port, ok := acceptancePort(acceptance); ok {
+				runDir := filepath.Join(projectRuntimeRoot(p.ID), fmt.Sprintf("run-%d", run.ID))
+				vOutcome, repaired, acc2, accErr2 := runBrowserVerificationLoop(runCtx, db, run.ID, runDir, browserClient, port,
+					func(diag string) ([]string, error) {
+						return repairProjectFiles(db, p, provider, sysPrompt, "PERBAIKI TEMUAN VERIFIKASI BROWSER (bukan error build):\n"+diag+"\n\nATURAN:\n- Perbaiki hanya penyebab temuan di atas; jangan mengubah desain/fitur yang sudah bekerja.\n- Kembalikan file yang diubah lengkap dengan format <<<FILE: path>>>...<<<END>>>.\n")
+					},
+					func() (map[string]interface{}, int, error) {
+						acc, aerr := runAgentRuntimeAcceptance(db, p, in.UserID)
+						if aerr != nil {
+							return acc, 0, aerr
+						}
+						newPort, ok := acceptancePort(acc)
+						if !ok {
+							return acc, 0, fmt.Errorf("runtime acceptance ulang tidak mengembalikan port")
+						}
+						return acc, newPort, nil
+					}, send)
+				changed = append(changed, repaired...)
+				if accErr2 != nil {
+					acceptance, acceptanceErr = acc2, accErr2
+				} else {
+					verification = vOutcome
+				}
+			} else {
+				recordAgentTool(db, run.ID, "browser_verify", "runtime", "failed", "port preview tidak diketahui", "Verifikasi browser dilewati: acceptance runtime tidak mengembalikan port dev server.", "")
+			}
+		}
 		if acceptanceErr != nil {
 			recordAgentTool(db, run.ID, "runtime_acceptance", "runtime", "failed", "sync/install/build/database/runtime", fmt.Sprint(acceptance), acceptanceErr.Error())
 			finishAgentRunIfActive(db, run.ID, "failed", "Pipeline build/runtime gagal", acceptanceErr.Error())
@@ -550,14 +716,39 @@ AUTONOMOUS BLUEPRINT (EMPTY PROJECT):
 			recordAgentTool(db, run.ID, "verify_database", "database_verify", "success", "runtime pipeline", "Database siap", "")
 			recordAgentTool(db, run.ID, "runtime_acceptance", "runtime", "success", "sync/install/build/database/runtime", fmt.Sprint(acceptance), "")
 			updateAgentPhase(db, run.ID, "runtime")
-			finishAgentRunIfActive(db, run.ID, "completed", "Project berhasil diperbarui dan runtime siap", "")
+			runSummary := "Project berhasil diperbarui dan runtime siap"
+			if verification.Attempted {
+				if verification.Passed {
+					runSummary += "; verifikasi browser lolos (0 console error, 0 request gagal)"
+				} else {
+					runSummary += "; verifikasi browser menemukan masalah: " + verification.Summary
+				}
+			}
+			finishAgentRunIfActive(db, run.ID, "completed", runSummary, "")
 		}
 	}
 	finalStatus, finalSummary := "completed", "Project berhasil diperbarui dan diverifikasi"
 	if acceptanceErr != nil {
 		finalStatus = "failed"
 		finalSummary = "Build/preview belum berhasil. " + lastLines(acceptanceDiagnostic(acceptance, acceptanceErr), 4)
+	} else if verification.Attempted {
+		if verification.Passed {
+			finalSummary = "Project berhasil diperbarui dan diverifikasi di Chrome: 0 console error, 0 request gagal."
+		} else {
+			// Dilaporkan apa adanya, dengan isi console error yang
+			// benar — bukan klaim "sudah dicek" tanpa bukti.
+			detail := ""
+			if len(verification.ConsoleErrors) > 0 {
+				detail = "\n" + lastLines(strings.Join(verification.ConsoleErrors, "\n"), 4)
+			}
+			if len(verification.FailedRequests) > 0 {
+				detail += "\n" + lastLines(strings.Join(verification.FailedRequests, "\n"), 4)
+			}
+			finalSummary = "Project berhasil build, tetapi verifikasi browser di Chrome menemukan masalah sesudah " + fmt.Sprint(verification.Rounds) + " putaran: " + verification.Summary + "." + detail
+		}
 	}
-	send("result", gin.H{"status": finalStatus, "summary": finalSummary, "changedFiles": changed, "intent": intent})
+	send("result", gin.H{"status": finalStatus, "summary": finalSummary, "changedFiles": changed, "intent": intent,
+		"verification":   gin.H{"attempted": verification.Attempted, "passed": verification.Passed, "rounds": verification.Rounds, "consoleErrors": verification.ConsoleErrors, "failedRequests": verification.FailedRequests, "screenshotPath": verification.ScreenshotPath},
+		"screenshotPath": verification.ScreenshotPath})
 	return nil
 }

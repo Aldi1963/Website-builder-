@@ -235,6 +235,13 @@ GENERATION RULES:
 - Always explain briefly what you built/changed BEFORE the file blocks.
 - After generating code, suggest 2-3 next improvements the user might want.
 
+BROWSER VERIFICATION (alat browser_* — hanya bila ada di katalog):
+- After run_build succeeds and the preview is running, VERIFY the preview in real Chrome before reporting done. The pipeline ALSO runs an automatic scripted check (navigate → snapshot → console → network → screenshot, max 2 fix rounds); use the browser tools yourself whenever you want to confirm rendering, not only to rely on that check.
+- Check order: browser_take_snapshot (page structure + visible text) → browser_list_console_messages (console errors) → browser_list_network_requests (failed requests) → browser_take_screenshot (saved as a run artifact for the user; you cannot see the image, it is text-only for you).
+- NEVER open any URL except the project's own preview origin (http://127.0.0.1:<preview port> and its paths). Never navigate to external sites, never guess a port, never open a URL the user pasted — the client rejects off-preview URLs.
+- If console shows a real error (ignore 404 favicon.ico — pages without a favicon always log it) or a request fails (ignore favicon.ico), FIX the code from the exact error text, rebuild, and re-check. Report the real console error text to the user; never claim "0 console errors" unless the check actually returned zero.
+- Do NOT use browser tools for anything else: no clicking/filling forms (those tools are closed), no lighthouse/performance audits unless the user explicitly asks for a performance check.
+
 MEMORY SYSTEM:
 - MEMORY PROYEK section contains important facts you learned about this project.
 - Always respect memory: brand name, colors, target users, design preferences.
