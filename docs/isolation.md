@@ -92,6 +92,49 @@ Jalur playwright lama (`browserAcceptancePlaywright` + skrip inline di
 berikutnya, diganti MCP**. Skrip node inline-nya dipertahankan hanya
 selama fallback itu hidup; jangan menambah pemakai baru.
 
+### Batas hardening Fase 3 (tidak bisa diubah lewat env)
+
+Batas rencana §4 ditegakkan di `server/internal/browser/client.go`
+(`MaxBrowserCallsPerRun = 10`, `BrowserBudgetWindow = 5m`,
+`CallTimeout = 30 dtk`, `MaxOutputBytes = 64 KiB`) — mengubah angka
+itu butuh keputusan eksplisit, bukan edit env. Detail lengkap +
+troubleshooting ada di `docs/browser-tools.md`; ringkasnya:
+
+- **URL**: hanya `127.0.0.1/localhost:<port-preview>` yang boleh
+  dibuka; port dikunci `SetPreviewPort` dari sumber tepercaya
+  (pipeline / acceptance runtime) dan fail-closed bila belum
+  diketahui — tidak ada fallback "port mana pun".
+- **Budget**: maks 10 panggilan browser / 5 menit per run, dihitung
+  SEMUA pemanggilan `CallTool` + `callAcceptanceTool` (model-driven
+  dan scripted satu jatah bersama; `ListTools` tidak dihitung).
+  Satu `VerifyPreview` = 5 panggilan, jadi loop 2 putaran = 10 —
+  bila model sempat memakai ≥ 1 panggilan browser sebelum loop,
+  putaran ke-2 kehabisan budget dan loop mencatat gagal budget. Itu
+  konsekuensi harfiah spesifikasi §4, bukan bug loop; mengubah angka
+  budget adalah keputusan terpisah.
+- **Timeout + cap output**: 30 dtk per panggilan; hasil tool di-cap
+  64 KiB + marker `...[dipotong: output melebihi 64 KiB]`, termasuk
+  jalur error tool.
+- **Metrik**: tiap percobaan tercatat sekali di `/metrics`
+  (`browser_tool_calls_total{tool,status}` — status hanya
+  success/error — dan histogram
+  `browser_tool_calls_duration_seconds{tool}`, bucket .005–30) lewat
+  observer default yang dipasang `RegisterObservability`, tanpa ubah
+  `agent.go`/`agentpipeline.go`.
+- **Memori Chrome**: `Close()` mengukur RSS total pohon proses
+  berakar di PID server MCP (via `/proc`) sebelum sesi ditutup dan
+  mencatat ke slog (`bytes`, `mib`, `melebihi_512mib`); ambang 512 MiB
+  per run — hanya dicatat, Chrome tidak pernah dibunuh karena memori;
+  bila tidak tersedia hasilnya -1 dan run lanjut. Queue workers
+  default 2 → maks 2 Chrome bersamaan → puncak ~1 GiB hanya untuk
+  Chrome.
+- **Parser network** (`ParseFailedRequests` vs `parseNetworkFailures`)
+  memakai satu inti bersama (`failedNetworkRequests`,
+  `server/internal/browser/network.go`) dengan empat perbedaan
+  perilaku yang disengaja dipertahankan (halaman sendiri 404,
+  semantik favicon, origin tak diketahui, trim status `net::`) —
+  dikunci test `network_test.go`; jangan disamakan tanpa keputusan.
+
 ## Interface Executor
 
 ```go
