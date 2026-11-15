@@ -3,10 +3,7 @@ package browser
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"path/filepath"
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -70,12 +67,16 @@ const verifySettleDelay = time.Second
 
 // VerifyPreview menjalankan satu putaran verifikasi scripted terhadap
 // previewURL (wajib lolos ValidateURL — hanya origin preview proyek).
-// screenshotName adalah nama file di dalam workspace server MCP, mis.
-// "screenshot-1.png". Screenshot TIDAK dibaca model (text-only);
-// path-nya dikembalikan untuk dicatat sebagai artifact run.
+// Port preview dipelajari dari previewURL itu sendiri
+// (setPreviewPortFromURL): previewURL dibangun pipeline dari port dev
+// server yang ia start (kode server tepercaya, bukan input model), jadi
+// inilah sumber port yang sah; bila Client sudah dikunci ke port lain,
+// URL ini ditolak. screenshotName adalah nama file di dalam workspace
+// server MCP, mis. "screenshot-1.png". Screenshot TIDAK dibaca model
+// (text-only); path-nya dikembalikan untuk dicatat sebagai artifact run.
 func VerifyPreview(ctx context.Context, c *Client, previewURL, screenshotName string) (VerificationResult, error) {
 	var res VerificationResult
-	if err := ValidateURL(previewURL); err != nil {
+	if err := c.setPreviewPortFromURL(previewURL); err != nil {
 		return res, err
 	}
 	if strings.TrimSpace(screenshotName) == "" {
@@ -199,57 +200,27 @@ func ParseConsoleErrors(output string) []string {
 	return out
 }
 
-// networkLineRe mem-parse satu baris list_network_requests:
-// "reqid=2 GET http://127.0.0.1:18098/tidak-ada.json [404]" atau
-// "reqid=6 GET http://127.0.0.1:18098/putus [net::ERR_CONNECTION_REFUSED]".
-var networkLineRe = regexp.MustCompile(`^reqid=\d+\s+(\S+)\s+(\S+)\s+\[(.+)\]$`)
-
 // ParseFailedRequests mengambil request gagal origin-yang-sama dari
 // output list_network_requests: status HTTP >= 400 atau error net::*.
-// Dikecualikan (selaras dengan parseNetworkFailures di acceptance.go):
-//   - request lintas-origin (font/CDN/analytics pihak ketiga) — bukan
-//     tanggung jawab preview ini; tanpanya loop verifikasi bisa berkata
-//     GAGAL sementara browserAcceptance berkata LOLOS,
-//   - favicon.ico 404 (bukan error aplikasi — spike Fase 0),
-//   - 401 pada /api/app-api/ (probe auth aplikasi logged-out, normal),
-//   - URL data: (inline, bisa puluhan KB base64).
+// Dikecualikan (aturan bersama — lihat failedNetworkRequests di
+// network.go): request lintas-origin, favicon.ico 404, 401 pada
+// /api/app-api/, dan URL data:.
 //
 // URL halaman itu sendiri TIDAK dikecualikan: bila preview 404, itu
 // berarti preview rusak dan verifikasi harus gagal. (Berbeda dengan
-// acceptance, yang menilai status halaman lewat navigation timing.)
+// parseNetworkFailures di acceptance.go, yang menilai status halaman
+// lewat navigation timing — perbedaan yang disengaja, dipertahankan
+// oleh opsi excludePageURL di inti bersama.)
 func ParseFailedRequests(output, pageURL string) []string {
 	out := []string{}
-	origin := ""
-	if u, err := url.Parse(pageURL); err == nil {
-		origin = u.Scheme + "://" + u.Host
-	}
-	for _, line := range strings.Split(output, "\n") {
-		line = strings.TrimSpace(line)
-		if len(line) > 2048 {
-			line = line[:2048] // baris data: URL bisa puluhan KB (base64)
-		}
-		m := networkLineRe.FindStringSubmatch(line)
-		if m == nil {
-			continue
-		}
-		method, u, statusText := m[1], m[2], strings.TrimSpace(m[3])
-		if strings.HasPrefix(u, "data:") || strings.Contains(u, "favicon.ico") {
-			continue
-		}
-		if origin != "" {
-			if ou, err := url.Parse(u); err != nil || ou.Scheme+"://"+ou.Host != origin {
-				continue
-			}
-		}
-		if status, err := strconv.Atoi(statusText); err == nil {
-			if status >= 400 && !(status == 401 && strings.Contains(u, "/api/app-api/")) {
-				out = append(out, method+" "+u+" ["+statusText+"]")
-			}
-			continue
-		}
-		if strings.HasPrefix(statusText, "net::") {
-			out = append(out, method+" "+u+" ["+statusText+"]")
-		}
+	for _, req := range failedNetworkRequests(output, networkFailureOptions{
+		pageURL:           pageURL,
+		excludePageURL:    false,
+		faviconSubstring:  true,
+		originUnknownPass: true,
+		netErrorTrimmed:   true,
+	}) {
+		out = append(out, req.method+" "+req.url+" ["+req.statusText+"]")
 	}
 	return out
 }

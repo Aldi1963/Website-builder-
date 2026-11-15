@@ -36,7 +36,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -102,8 +101,14 @@ func RunAcceptance(ctx context.Context, pageURL string) (map[string]interface{},
 
 // RunAcceptanceWithClient menjalankan acceptance memakai Client yang sudah
 // Start (dipakai test + pemakai yang mengelola lifecycle sendiri).
+// Port preview dipelajari dari pageURL (setPreviewPortFromURL — pageURL
+// dibangun pemanggil dari port dev server, bukan input model); bila
+// Client sudah dikunci ke port lain, ditolak fail-closed.
 func RunAcceptanceWithClient(ctx context.Context, client *Client, pageURL string) (map[string]interface{}, error) {
 	if err := ValidateURL(pageURL); err != nil {
+		return map[string]interface{}{"output": err.Error()}, err
+	}
+	if err := client.setPreviewPortFromURL(pageURL); err != nil {
 		return map[string]interface{}{"output": err.Error()}, err
 	}
 	if _, err := client.callAcceptanceTool(ctx, "navigate_page", map[string]interface{}{"url": pageURL}); err != nil {
@@ -227,6 +232,9 @@ func CaptureScreenshotWithClient(ctx context.Context, client *Client, pageURL, o
 	if err := ValidateURL(pageURL); err != nil {
 		return err
 	}
+	if err := client.setPreviewPortFromURL(pageURL); err != nil {
+		return err
+	}
 	if _, err := client.callAcceptanceTool(ctx, "navigate_page", map[string]interface{}{"url": pageURL}); err != nil {
 		return fmt.Errorf("browser: screenshot gagal navigasi ke %s: %w", pageURL, err)
 	}
@@ -258,17 +266,21 @@ func CaptureScreenshotWithClient(ctx context.Context, client *Client, pageURL, o
 
 // callAcceptanceTool memanggil satu tool MCP untuk kebutuhan acceptance
 // internal. Sama seperti Client.CallTool (timeout 30 dtk mengikuti ctx,
-// cap 64 KiB, validasi URL) KECUALI gate aktif Fase 1 tidak dipakai:
-// yang diperiksa hanya allowlist §5 (IsAllowlisted). Gate aktif
-// membatasi tool yang boleh dipanggil MODEL; acceptance adalah pemakaian
-// internal server, bukan perintah model.
-func (c *Client) callAcceptanceTool(ctx context.Context, name string, args map[string]interface{}) (string, error) {
+// cap 64 KiB TERMASUK jalur error tool, validasi URL ke port preview yang
+// sudah dikunci + budget per run yang sama — pemanggilan acceptance
+// MENGHABISKAN jatah yang sama dengan pemanggilan model) KECUALI gate
+// aktif Fase 1 tidak dipakai: yang diperiksa hanya allowlist §5
+// (IsAllowlisted). Gate aktif membatasi tool yang boleh dipanggil MODEL;
+// acceptance adalah pemakaian internal server, bukan perintah model.
+func (c *Client) callAcceptanceTool(ctx context.Context, name string, args map[string]interface{}) (out string, err error) {
+	start := time.Now()
+	defer func() { c.observeCall(name, start, err) }()
 	if !IsAllowlisted(name) {
 		return "", fmt.Errorf("browser: tool %q di luar allowlist §5", name)
 	}
 	if rawURL, ok := args["url"]; ok {
 		if s, ok := rawURL.(string); ok && strings.TrimSpace(s) != "" {
-			if err := ValidateURL(s); err != nil {
+			if err := c.validatePreviewURL(s); err != nil {
 				return "", err
 			}
 		}
@@ -276,11 +288,15 @@ func (c *Client) callAcceptanceTool(ctx context.Context, name string, args map[s
 	c.mu.Lock()
 	session := c.session
 	started := c.started
+	callTimeout := c.callTimeout
 	c.mu.Unlock()
 	if !started || session == nil {
 		return "", fmt.Errorf("browser: client belum start")
 	}
-	callCtx, cancel := context.WithTimeout(ctx, CallTimeout)
+	if err := c.reserveCall(); err != nil {
+		return "", err
+	}
+	callCtx, cancel := context.WithTimeout(ctx, callTimeout)
 	defer cancel()
 	res, err := session.CallTool(callCtx, &mcp.CallToolParams{Name: name, Arguments: args})
 	if err != nil {
@@ -421,50 +437,30 @@ func cleanConsoleErrors(lines []string) []string {
 	return out
 }
 
-// networkReqRe: "reqid=1 GET http://... [200]" atau
-// "reqid=1 GET http://... [net::ERR_CONNECTION_REFUSED]" — format teks
-// list_network_requests chrome-devtools-mcp 1.13.0 (terbukti spike).
-var networkReqRe = regexp.MustCompile(`^reqid=\d+\s+\S+\s+(\S+)\s+\[(.+)\]$`)
-
 // parseNetworkFailures mengambil resource gagal origin-yang-sama dari
 // output list_network_requests: status >= 400 atau error net::*.
-// Dilewati (seperti skrip lama + spike §6): URL halaman itu sendiri
-// (statusnya dari navigation timing), favicon.ico 404, probe auth
-// /api/app-api/ yang 401 (expected), dan URL data: (inline, raksasa).
+// Dilewati (aturan bersama — lihat failedNetworkRequests di network.go):
+// URL data: (inline, raksasa), favicon.ico 404, probe auth
+// /api/app-api/ yang 401 (expected), dan request lintas-origin.
+//
+// URL halaman itu sendiri DILEWATI di sini (statusnya dinilai lewat
+// navigation timing di evaluatePageState). Berbeda dengan
+// ParseFailedRequests di verify.go, yang menghitung halaman sendiri
+// 404 sebagai gagal — perbedaan yang disengaja, dipertahankan oleh
+// opsi excludePageURL di inti bersama.
 func parseNetworkFailures(text, pageURL string) []map[string]interface{} {
 	out := []map[string]interface{}{}
-	origin := ""
-	if u, err := url.Parse(pageURL); err == nil {
-		origin = u.Scheme + "://" + u.Host
-	}
-	for _, line := range strings.Split(text, "\n") {
-		line = strings.TrimSpace(line)
-		if len(line) > 2048 {
-			line = line[:2048] // baris data: URL bisa puluhan KB (base64)
-		}
-		m := networkReqRe.FindStringSubmatch(line)
-		if m == nil {
-			continue
-		}
-		u, statusText := m[1], m[2]
-		if u == "" || u == pageURL || strings.HasPrefix(u, "data:") {
-			continue
-		}
-		if isFaviconURL(u) {
-			continue
-		}
-		ou, err := url.Parse(u)
-		if err != nil || ou.Scheme+"://"+ou.Host != origin {
-			continue
-		}
-		if status, err := strconv.Atoi(strings.TrimSpace(statusText)); err == nil {
-			if status >= 400 && !isExpectedAuthProbe(u, status) {
-				out = append(out, map[string]interface{}{"url": u, "status": status})
-			}
-			continue
-		}
-		if strings.HasPrefix(statusText, "net::") {
-			out = append(out, map[string]interface{}{"url": u, "error": statusText})
+	for _, req := range failedNetworkRequests(text, networkFailureOptions{
+		pageURL:           pageURL,
+		excludePageURL:    true,
+		faviconSubstring:  false,
+		originUnknownPass: false,
+		netErrorTrimmed:   false,
+	}) {
+		if req.netError {
+			out = append(out, map[string]interface{}{"url": req.url, "error": req.statusRaw})
+		} else {
+			out = append(out, map[string]interface{}{"url": req.url, "status": req.status})
 		}
 	}
 	return out

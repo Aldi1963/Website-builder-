@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -184,6 +185,77 @@ func TestVerifyPreviewRealChrome(t *testing.T) {
 	}
 	checkPNG(t, bad.ScreenshotPath)
 	t.Logf("baik: %s | rusak: %s", good.Summary, bad.Summary)
+}
+
+// TestPreviewPortRealChrome adalah bukti integrasi Fase 3 dengan Chrome
+// for Testing asli: navigasi ke port preview sendiri DITERIMA, navigasi
+// ke port localhost lain DITOLAK di lapis klien (tidak pernah sampai ke
+// Chrome), dan navigasi sebelum port diketahui DITOLAK fail-closed.
+// Di-skip bila CHROME_FOR_TESTING_PATH kosong.
+func TestPreviewPortRealChrome(t *testing.T) {
+	chromePath := strings.TrimSpace(os.Getenv(EnvChromePath))
+	if chromePath == "" {
+		t.Skip("CHROME_FOR_TESTING_PATH kosong — test integrasi Chrome dilewati")
+	}
+	if _, err := os.Stat(chromePath); err != nil {
+		t.Fatalf("CHROME_FOR_TESTING_PATH tidak ada: %s", chromePath)
+	}
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprint(w, `<!doctype html><html><head><title>uji</title></head><body><h1>Halo Port</h1></body></html>`)
+	}))
+	defer ts.Close()
+	previewPort := 0
+	if u, err := url.Parse(ts.URL); err == nil {
+		fmt.Sscanf(u.Port(), "%d", &previewPort)
+	}
+	if previewPort == 0 {
+		t.Fatalf("tidak bisa membaca port httptest dari %s", ts.URL)
+	}
+	otherPort := previewPort + 1
+	if otherPort > 65535 {
+		otherPort = previewPort - 1
+	}
+
+	ctx := context.Background()
+	dir := t.TempDir()
+	ws := filepath.Join(dir, "workspace")
+	prof := filepath.Join(dir, "chrome-profile")
+	if err := os.MkdirAll(ws, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	c := NewClient(DefaultConfig(ws, prof))
+	t.Cleanup(func() { _ = c.Close() })
+	if err := c.Start(ctx); err != nil {
+		t.Fatalf("Start dengan Chrome asli gagal: %v", err)
+	}
+
+	// Sebelum port diketahui: navigate ditolak fail-closed.
+	if _, err := c.CallTool(ctx, "navigate_page", map[string]any{"url": ts.URL + "/"}); err == nil {
+		t.Fatal("navigate sebelum port diketahui harus ditolak fail-closed")
+	}
+	// Kunci port preview, lalu navigate ke port sendiri DITERIMA (Chrome
+	// asli benar-benar membuka halaman).
+	if err := c.SetPreviewPort(previewPort); err != nil {
+		t.Fatalf("SetPreviewPort gagal: %v", err)
+	}
+	nav, err := c.CallTool(ctx, "navigate_page", map[string]any{"url": ts.URL + "/"})
+	if err != nil {
+		t.Fatalf("navigate port preview sendiri harus lolos di Chrome asli: %v", err)
+	}
+	if !strings.Contains(nav, "Successfully navigated") {
+		t.Fatalf("navigate port sendiri harus sukses, dapat: %q", nav)
+	}
+	// Port localhost lain DITOLAK (server WebBuilder 18082, dsb.).
+	if _, err := c.CallTool(ctx, "navigate_page", map[string]any{"url": fmt.Sprintf("http://127.0.0.1:%d/", otherPort)}); err == nil {
+		t.Fatalf("navigate port lain %d harus ditolak", otherPort)
+	}
+	if _, err := c.CallTool(ctx, "navigate_page", map[string]any{"url": "http://127.0.0.1:18082/"}); err == nil {
+		t.Fatal("navigate port 18082 (server) harus ditolak")
+	}
+	if _, err := c.CallTool(ctx, "navigate_page", map[string]any{"url": "https://example.com/"}); err == nil {
+		t.Fatal("navigate URL luar harus ditolak")
+	}
 }
 
 func checkPNG(t *testing.T, path string) {

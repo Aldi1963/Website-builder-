@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -77,11 +78,22 @@ func runFakeMCPServer() {
 				Arguments map[string]interface{} `json:"arguments"`
 			}
 			_ = json.Unmarshal(req.Params, &params)
-			mode := os.Getenv("BROWSER_FAKE_MCP_MODE") // "healthy" (default) atau "error"
+			mode := os.Getenv("BROWSER_FAKE_MCP_MODE") // "healthy" (default), "error", "huge", "huge-error", atau "slow"
+			if mode == "slow" {
+				// Meniru server lambat: tiap tools/call tidur 2 dtk supaya
+				// test timeout bisa membuktikan CallTool membatalkan di
+				// callTimeout (yang disuntik kecil di test), bukan menunggu.
+				time.Sleep(2 * time.Second)
+			}
 			origin := "http://127.0.0.1:18098"
 			switch params.Name {
 			case "list_console_messages":
-				if mode == "error" {
+				if mode == "huge" {
+					// Output >64 KiB: CallTool harus memotong + menandai.
+					result = map[string]any{"content": []any{
+						map[string]any{"type": "text", "text": "AWAL-HUGE-" + strings.Repeat("H", 70*1024)},
+					}}
+				} else if mode == "error" {
 					result = map[string]any{"content": []any{
 						map[string]any{"type": "text", "text": "## Console messages\nShowing 1-3 of 3 (Page 1 of 1).\nmsgid=1 [error] SENGAJA_ERROR_XYZ (1 args)\nmsgid=2 [error] Uncaught ReferenceError: undefinedFunctionYangTidakAda is not defined (0 args)\nmsgid=3 [error] Failed to load resource: the server responded with a status of 404 (File not found) (0 args)"},
 					}}
@@ -96,6 +108,14 @@ func runFakeMCPServer() {
 					map[string]any{"type": "text", "text": "Successfully navigated to " + u + ".\n## Pages\n1: Fake (" + u + ") [selected]"},
 				}}
 			case "take_snapshot":
+				if mode == "huge-error" {
+					// Tool mengembalikan IsError dengan output >64 KiB:
+					// jalur error CallTool juga harus ikut ter-cap.
+					result = map[string]any{"content": []any{
+						map[string]any{"type": "text", "text": "AWAL-HUGE-ERROR-" + strings.Repeat("E", 70*1024)},
+					}, "isError": true}
+					break
+				}
 				result = map[string]any{"content": []any{
 					map[string]any{"type": "text", "text": "## Latest page snapshot\nuid=1_0 RootWebArea \"Fake\" url=\"" + origin + "/\"\n  uid=1_1 heading \"Halo sehat\" level=\"1\"\n  uid=1_2 \"Ini halaman sehat.\""},
 				}}

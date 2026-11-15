@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"log/slog"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"webbuilder/internal/browser"
 	"webbuilder/internal/observability"
 
 	"github.com/gin-gonic/gin"
@@ -91,5 +93,61 @@ func TestRegisterObservabilityEndpoints(t *testing.T) {
 	}
 	if !strings.Contains(logs, `"route":"/api/projects/:id"`) {
 		t.Fatalf("log harus memuat route template, dapat:\n%s", logs)
+	}
+}
+
+// TestRegisterObservabilityBrowserMetrics membuktikan wiring Fase 3
+// item 2 end-to-end lewat HTTP nyata: RegisterObservability memasang
+// observer default ke instance Metrics /metrics; browser Client yang
+// dibuat SESUDAH itu (seperti yang dibuat pipeline lewat
+// NewClientForRun) otomatis tercatat — satu CallTool nyata lewat server
+// MCP palsu muncul sebagai seri browser di GET /metrics, dan metrik
+// HTTP lama tetap ada.
+func TestRegisterObservabilityBrowserMetrics(t *testing.T) {
+	prev := browser.DefaultCallObserver()
+	defer browser.SetDefaultCallObserver(prev)
+
+	gin.SetMode(gin.TestMode)
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("buka sqlite in-memory: %v", err)
+	}
+	r := gin.New()
+	r.Use(RequestContext())
+	RegisterObservability(r, db)
+	srv := httptest.NewServer(r)
+	defer srv.Close()
+
+	// Klien dibuat SESUDAH RegisterObservability → snapshot observer
+	// default yang baru dipasang.
+	ctx := context.Background()
+	bc := fakeBrowserClient(t)
+	if err := bc.Start(ctx); err != nil {
+		t.Fatalf("Start browser palsu gagal: %v", err)
+	}
+	if _, err := bc.CallTool(ctx, "list_console_messages", map[string]interface{}{}); err != nil {
+		t.Fatalf("CallTool gagal: %v", err)
+	}
+
+	resp, err := http.Get(srv.URL + "/metrics")
+	if err != nil {
+		t.Fatalf("GET /metrics: %v", err)
+	}
+	defer resp.Body.Close()
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	body := string(bodyBytes)
+	if resp.StatusCode != 200 {
+		t.Fatalf("/metrics status = %d, mau 200", resp.StatusCode)
+	}
+	for _, want := range []string{
+		`browser_tool_calls_total{tool="list_console_messages",status="success"} 1`,
+		`browser_tool_calls_duration_seconds_count{tool="list_console_messages"} 1`,
+		"# TYPE browser_tool_calls_total counter",
+		"# TYPE browser_tool_calls_duration_seconds histogram",
+		`webbuilder_http_requests_in_flight 1`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("/metrics tidak memuat %q\n--- body ---\n%s", want, body)
+		}
 	}
 }
