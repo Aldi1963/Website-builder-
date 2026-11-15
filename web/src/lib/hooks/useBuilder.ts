@@ -47,6 +47,76 @@ export function usePublishProject(pid: string) {
   });
 }
 
+// ---- Security scan sebelum publish ----
+export interface SecurityScanFinding {
+  id: string;
+  severity: "critical" | "high" | "medium" | "low";
+  category: string;
+  file: string;
+  line: number;
+  message: string;
+  snippet: string;
+  rule: string;
+}
+
+export interface SecurityScanReport {
+  passed: boolean;
+  blocked: boolean;
+  summary: { critical: number; high: number; medium: number; low: number; total: number };
+  findings: SecurityScanFinding[];
+  scannedFiles: number;
+  scannedAt: string;
+  policyChecked: boolean;
+  policyRows: number;
+  policyNote?: string;
+  limitations: string;
+}
+
+// GET laporan scan terakhir yang tersimpan (404 = belum pernah dipindai).
+export function useSecurityScan(pid: string, enabled = true) {
+  return useQuery({
+    queryKey: projectKeys.securityScan(pid),
+    queryFn: () => apiFetch<{ securityScan: SecurityScanReport }>(`/projects/${pid}/security-scan`),
+    enabled: !!pid && enabled,
+  });
+}
+
+// POST menjalankan scan sekarang (tanpa publish).
+export function useRunSecurityScan(pid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiFetch<{ securityScan: SecurityScanReport }>(`/projects/${pid}/security-scan`, { method: "POST" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: projectKeys.securityScan(pid) });
+    },
+  });
+}
+
+// Teks laporan untuk alert: ringkasan + temuan (maks 10, sisanya dihitung).
+export function formatSecurityScanReport(scan: SecurityScanReport): string {
+  const s = scan.summary;
+  const lines = [
+    `Security scan: ${s.total} temuan (${s.critical} kritis, ${s.high} high, ${s.medium} medium, ${s.low} low) — ${scan.scannedFiles} file dipindai.`,
+    scan.blocked
+      ? "⛔ Publish DIBLOKIR: ada temuan kritis. Perbaiki dulu, lalu publish ulang."
+      : "✅ Tidak ada temuan kritis — publish tidak diblokir oleh scan ini.",
+  ];
+  if (!scan.policyChecked) {
+    lines.push("⚠️ Policy database TIDAK diperiksa: " + (scan.policyNote || "DB app belum siap."));
+  } else if (scan.policyNote) {
+    lines.push("Policy: " + scan.policyNote);
+  }
+  const shown = scan.findings.slice(0, 10);
+  for (const f of shown) {
+    lines.push(`- [${f.severity}] ${f.file}:${f.line} — ${f.message}`);
+  }
+  if (scan.findings.length > shown.length) {
+    lines.push(`…dan ${scan.findings.length - shown.length} temuan lain.`);
+  }
+  lines.push("Batasan: " + scan.limitations);
+  return lines.join("\n");
+}
+
 // ---- Blueprint ----
 export function useBlueprint(pid: string, enabled = true) {
   return useQuery({

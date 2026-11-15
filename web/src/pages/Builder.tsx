@@ -13,6 +13,7 @@ import {
   type AIProviderOption,
 } from "../lib/aiProviders";
 import {
+  apiFetch,
   useAddComment,
   useAgentRunDetail,
   useAgentRuns,
@@ -32,6 +33,8 @@ import {
   useProjectSettings,
   useProjectVersions,
   usePublishProject,
+  useRunSecurityScan,
+  formatSecurityScanReport,
   useRejectProposal,
   useRenameProjectFile,
   useResolveComment,
@@ -73,7 +76,7 @@ import {
   Play, Send, X, Plus, RefreshCw, Monitor,
   Smartphone, Tablet, Terminal as TerminalIcon, MessageSquare, Code2, Database, History, Check, XCircle,
   MousePointerClick, Settings, Link2, Lock, Image as ImageIcon, GitBranch as Github, Sparkles,
-  Rocket, RotateCcw, Mic, MicOff, Download,
+  Rocket, RotateCcw, Mic, MicOff, Download, ShieldCheck,
 } from "lucide-react";
 
 const ORANGE = "#F6821F";
@@ -430,6 +433,7 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
   const addCommentMut = useAddComment(pid);
   const resolveCommentMut = useResolveComment(pid);
   const publishMut = usePublishProject(pid);
+  const runScanMut = useRunSecurityScan(pid);
   useEffect(() => {
     if (commentsQuery.data) setComments(commentsQuery.data.comments || []);
   }, [commentsQuery.data]);
@@ -450,16 +454,36 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
 
   async function doPublish() {
     if (publishing || !canEdit) return;
-    if (!confirm("Publish proyek ini?")) return;
+    if (!confirm("Publish proyek ini? Security scan otomatis dijalankan dulu; temuan kritis memblokir publish.")) return;
     setPublishing(true);
     try {
       const d = await publishMut.mutateAsync();
       setPubUrl(d.url || "");
-      alert("Dipublish! " + (d.url || ""));
+      let msg = "Dipublish! " + (d.url || "");
+      if (d.securityWarning) msg += "\n\n⚠️ " + d.securityWarning;
+      if (d.securityScan) msg += "\n\n" + formatSecurityScanReport(d.securityScan);
+      alert(msg);
     } catch (e: any) {
-      alert("Gagal: " + e.message);
+      // Publish diblokir (mis. scan kritis) — ambil laporan tersimpan
+      // supaya user melihat daftar temuannya, bukan hanya pesan gagal.
+      let msg = "Gagal: " + e.message;
+      try {
+        const s: any = await apiFetch(`/projects/${pid}/security-scan`);
+        if (s?.securityScan) msg += "\n\n" + formatSecurityScanReport(s.securityScan);
+      } catch {}
+      alert(msg);
     } finally {
       setPublishing(false);
+    }
+  }
+
+  async function doSecurityScan() {
+    if (!canEdit) return;
+    try {
+      const d = await runScanMut.mutateAsync();
+      alert(formatSecurityScanReport(d.securityScan));
+    } catch (e: any) {
+      alert("Scan gagal: " + e.message);
     }
   }
   const files = useBuilderStore((s) => s.files);
@@ -2458,10 +2482,16 @@ if (App) {
           )}
         </button>}
         {myRole === "owner" && (
+          <>
+          <button onClick={doSecurityScan} title="Jalankan security scan (tanpa publish)" style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8, padding: 8, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, flexShrink: 0, color: "#374151" }}>
+            <ShieldCheck size={16} />
+            {!isMobile && (runScanMut.isPending ? "Memindai..." : "Scan")}
+          </button>
           <button onClick={doPublish} title="Publish" style={{ background: ORANGE, color: "#fff", border: "none", borderRadius: 8, padding: 8, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, flexShrink: 0 }}>
             <Rocket size={16} />
             {!isMobile && (publishing ? "Publishing..." : "Publish")}
           </button>
+          </>
         )}
         <button onClick={() => setWorkspaceMenuOpen(!workspaceMenuOpen)} title="Tools proyek" style={{ background: workspaceMenuOpen ? "#fff7ed" : "#fff", border: "1px solid #e5e7eb", borderRadius: 8, padding: 8, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "#374151", flexShrink: 0 }}>
           <Settings size={16} /> {!isMobile && "Lainnya"}

@@ -14,6 +14,7 @@ export const projectKeys = {
   tables: (id: string) => [...projectKeys.detail(id), "tables"] as const,
   tableDetail: (id: string, name: string) => [...projectKeys.tables(id), name] as const,
   policies: (id: string) => [...projectKeys.detail(id), "policies"] as const,
+  securityScan: (id: string) => [...projectKeys.detail(id), "security-scan"] as const,
   agentRuns: (id: string) => [...projectKeys.detail(id), "agent-runs"] as const,
   agentRunDetail: (id: string, runId: number) => [...projectKeys.agentRuns(id), runId] as const,
   runtimeStatus: (id: string) => [...projectKeys.detail(id), "runtime-status"] as const,
