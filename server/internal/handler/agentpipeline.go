@@ -301,6 +301,13 @@ func executeAgentPipeline(runCtx context.Context, db *gorm.DB, in agentPipelineI
 	// Inject memory proyek ke system prompt
 	full := ""
 	sysPrompt := builderSystemPrompt
+	// Instruksi alat input mengikuti flag
+	// WEBBUILDER_ENABLE_BROWSER_INPUT_TOOLS: katalog dinamis sudah
+	// menyaring alat input bila flag mati, dan penggantian placeholder
+	// ini menjaga system prompt tetap konsisten dengan katalog (tanpa
+	// ini prompt akan melarang alat yang sebenarnya ada di katalog,
+	// atau sebaliknya).
+	sysPrompt = strings.Replace(sysPrompt, browserInputInstructionPlaceholder, browserInputInstruction(), 1)
 	if agentCtx.ActiveFeature != "" {
 		sysPrompt += "\n\nAKTIF CONTEXT (jaga kesinambungan follow-up):\n- Intent terakhir: " + agentCtx.Intent + "\n- Fitur/permintaan aktif: " + agentCtx.ActiveFeature
 	}

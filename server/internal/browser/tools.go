@@ -24,6 +24,20 @@ var AllowlistTools = []string{
 	"performance_stop_trace", "performance_analyze_insight",
 }
 
+// InputTools adalah alat INPUT browser (Fase 4): mengubah state halaman
+// (klik elemen, isi form, tekan tombol). SENGAJA dipisah dari
+// AllowlistTools §5 di atas supaya gating-nya terpisah: keempat alat ini
+// hanya aktif bila flag WEBBUILDER_ENABLE_BROWSER_INPUT_TOOLS nyala
+// (lihat InputToolsEnabled di client.go). Bila flag mati, mereka tidak
+// lolos FilterAllowlist/FilterActive dan CallTool menolaknya —
+// katalog agent berjalan seperti Fase 2 (19 alat baca saja).
+// wait_for TIDAK masuk sini: ia alat tunggu baca-saja (kategori
+// "navigation", readOnlyHint di server MCP 1.13.0) dan sudah ada di
+// allowlist §5; menunggu teks muncul bukan interaksi.
+var InputTools = []string{
+	"click", "fill", "fill_form", "press_key",
+}
+
 // ActiveTools adalah alat yang DIEKSPOS ke agent di Fase 2: SELURUH
 // allowlist §5. Filter Fase 1 (hanya list_console_messages) dihapus —
 // alat lain sudah diuji satu per satu lewat loop verifikasi (lihat
@@ -48,17 +62,42 @@ var activeSet = func() map[string]bool {
 	return m
 }()
 
+var inputSet = func() map[string]bool {
+	m := make(map[string]bool, len(InputTools))
+	for _, n := range InputTools {
+		m[n] = true
+	}
+	return m
+}()
+
 // IsAllowlisted melaporkan apakah nama tool MCP ada di allowlist §5.
 func IsAllowlisted(name string) bool { return allowlistSet[name] }
 
-// IsActiveTool melaporkan apakah nama tool MCP aktif (Fase 2: seluruh
-// allowlist §5).
-func IsActiveTool(name string) bool { return activeSet[name] }
+// IsInteractionTool melaporkan apakah nama tool MCP adalah alat input
+// (Fase 4: click, fill, fill_form, press_key). Dipakai gating flag
+// input (IsActiveTool, FilterAllowlist) dan cap interaksi
+// (reserveInteractionCall di client.go) — terpisah dari IsActiveTool
+// supaya alat baca (termasuk wait_for) tidak ikut dibatasi.
+func IsInteractionTool(name string) bool { return inputSet[name] }
+
+// IsActiveTool melaporkan apakah nama tool MCP aktif: seluruh allowlist
+// §5 SELALU aktif, sedangkan alat input (Fase 4) aktif HANYA bila flag
+// WEBBUILDER_ENABLE_BROWSER_INPUT_TOOLS nyala (InputToolsEnabled).
+// Membaca env setiap kali supaya perubahan env langsung berlaku (pola
+// yang sama seperti Enabled di client.go).
+func IsActiveTool(name string) bool {
+	if activeSet[name] {
+		return true
+	}
+	return IsInteractionTool(name) && InputToolsEnabled()
+}
 
 // MissingActiveTools mengembalikan nama alat aktif yang TIDAK ada di
 // daftar tools/list server MCP. Dipakai pipeline supaya alat yang hilang
 // (mis. server MCP versi lama tanpa lighthouse_audit) dilaporkan
 // fail-closed dengan pesan jelas, bukan diam-diam hilang dari katalog.
+// Alat input hanya diperiksa bila flag input nyala — bila flag mati,
+// alat itu memang tidak diharapkan ada di katalog.
 func MissingActiveTools(serverTools []*mcp.Tool) []string {
 	seen := make(map[string]bool, len(serverTools))
 	for _, t := range serverTools {
@@ -66,8 +105,12 @@ func MissingActiveTools(serverTools []*mcp.Tool) []string {
 			seen[t.Name] = true
 		}
 	}
+	active := ActiveTools
+	if InputToolsEnabled() {
+		active = append(append([]string{}, ActiveTools...), InputTools...)
+	}
 	missing := []string{}
-	for _, name := range ActiveTools {
+	for _, name := range active {
 		if !seen[name] {
 			missing = append(missing, name)
 		}
@@ -76,18 +119,26 @@ func MissingActiveTools(serverTools []*mcp.Tool) []string {
 }
 
 // FilterAllowlist membuang tool server yang tidak ada di allowlist §5.
+// Alat input (Fase 4) lolos filter ini HANYA bila flag input nyala;
+// bila flag mati, mereka dibuang seperti tool di luar allowlist
+// (katalog Fase 2: 19 alat baca saja).
 func FilterAllowlist(tools []*mcp.Tool) []*mcp.Tool {
 	out := make([]*mcp.Tool, 0, len(tools))
 	for _, t := range tools {
-		if t != nil && IsAllowlisted(t.Name) {
+		if t == nil {
+			continue
+		}
+		if IsAllowlisted(t.Name) || (IsInteractionTool(t.Name) && InputToolsEnabled()) {
 			out = append(out, t)
 		}
 	}
 	return out
 }
 
-// FilterActive membuang tool yang tidak aktif (subset allowlist; di
-// Fase 2 subset ini = seluruh allowlist §5).
+// FilterActive membuang tool yang tidak aktif: seluruh allowlist §5
+// ditambah alat input (Fase 4) HANYA bila flag input nyala (lihat
+// IsActiveTool). Bila flag mati, alat input dibuang di sini walau sudah
+// lolos FilterAllowlist.
 func FilterActive(tools []*mcp.Tool) []*mcp.Tool {
 	out := make([]*mcp.Tool, 0, len(tools))
 	for _, t := range tools {
@@ -112,7 +163,9 @@ type Spec struct {
 // (di-cap: skema yang hilang/rusak diganti objek kosong supaya model
 // tetap mendapat `properties`). Alat aktif yang tidak ada di daftar
 // server TIDAK muncul di sini — panggil MissingActiveTools untuk
-// melaporkannya (fail-closed), jangan mengarang speknya.
+// melaporkannya (fail-closed), jangan mengarang speknya. Alat input
+// (Fase 4) hanya muncul bila flag WEBBUILDER_ENABLE_BROWSER_INPUT_TOOLS
+// nyala; bila flag mati, katalog berisi 19 alat baca Fase 2 saja.
 func SpecsFromTools(tools []*mcp.Tool) []Spec {
 	out := []Spec{}
 	for _, t := range FilterActive(FilterAllowlist(tools)) {

@@ -51,6 +51,11 @@ const (
 	// EnvEnableTenantExec adalah flag eksekusi tenant; browser tools hanya
 	// aktif bila flag ini JUGA nyala (lihat Enabled).
 	EnvEnableTenantExec = "WEBBUILDER_ENABLE_TENANT_EXEC"
+	// EnvEnableBrowserInputTools menyalakan alat INPUT browser (Fase 4:
+	// click, fill, fill_form, press_key). Terpisah dari flag browser
+	// utama supaya interaksi yang mengubah state halaman hanya nyala bila
+	// operator sengaja mengizinkannya; hanya nilai "1" yang menyalakan.
+	EnvEnableBrowserInputTools = "WEBBUILDER_ENABLE_BROWSER_INPUT_TOOLS"
 	// EnvMCPCommand meng-override command server MCP (satu baris perintah,
 	// dipisah spasi sederhana — tanpa quoting shell).
 	EnvMCPCommand = "CHROME_DEVTOOLS_MCP_CMD"
@@ -85,6 +90,20 @@ const BrowserBudgetWindow = 5 * time.Minute
 // Kelebihan dipotong dan ditandai (lihat TruncateOutput).
 const MaxOutputBytes = 64 * 1024
 
+// MaxInteractionCallsPerRun adalah batas panggilan alat interaksi
+// (click, fill, fill_form, press_key) per run. Alasan cap: alat interaksi
+// MENGUBAH state halaman — klik bisa submit form / pindah halaman, isian
+// bisa menimpa data — dan efeknya tidak bisa di-undo oleh model; tanpa
+// cap, model yang salah arah bisa mengklik puluhan kali sebelum loop
+// verifikasi menghentikannya. 5 cukup untuk satu alur uji (mis. isi satu
+// form sekali jalan lewat fill_form + klik submit + 2-3 langkah
+// lanjutan). Setiap panggilan interaksi TETAP menghabiskan jatah budget
+// umum (reserveCall) supaya total panggilan browser per run tetap
+// ≤ MaxBrowserCallsPerRun. wait_for TIDAK dihitung: ia hanya menunggu
+// teks muncul (baca-saja, kategori navigation di server MCP), bukan
+// interaksi. Ditegakkan reserveInteractionCall.
+const MaxInteractionCallsPerRun = 5
+
 // ErrBrowserToolsDisabled: alat browser diminta padahal gating mati.
 var ErrBrowserToolsDisabled = errors.New("browser tools disabled (set WEBBUILDER_ENABLE_BROWSER_TOOLS=1 dan WEBBUILDER_ENABLE_TENANT_EXEC=1)")
 
@@ -96,6 +115,17 @@ var ErrChromeNotFound = errors.New("chrome for testing tidak ditemukan")
 // (mis. di test) langsung berlaku.
 func Enabled() bool {
 	return os.Getenv(EnvEnableBrowserTools) == "1" && os.Getenv(EnvEnableTenantExec) == "1"
+}
+
+// InputToolsEnabled melaporkan apakah alat INPUT browser (Fase 4: click,
+// fill, fill_form, press_key) boleh aktif: env
+// WEBBUILDER_ENABLE_BROWSER_INPUT_TOOLS harus persis "1" (pola yang sama
+// seperti Enabled). Terpisah dari Enabled supaya interaksi yang mengubah
+// state halaman tidak ikut nyala hanya karena alat baca nyala; flag
+// browser utama tidak berubah. Membaca env setiap kali supaya perubahan
+// env (mis. di test) langsung berlaku.
+func InputToolsEnabled() bool {
+	return os.Getenv(EnvEnableBrowserInputTools) == "1"
 }
 
 // Config adalah konfigurasi satu Client (satu agent run).
@@ -147,14 +177,20 @@ type Client struct {
 	// sejak Client dibuat; windowStart adalah waktu panggilan pertama.
 	calls       int
 	windowStart time.Time
+	// interactionCalls menghitung panggilan alat interaksi (Fase 4:
+	// click, fill, fill_form, press_key) sejak Client dibuat; dibatasi
+	// MaxInteractionCallsPerRun (lihat reserveInteractionCall). Alat
+	// baca — termasuk wait_for — tidak dihitung.
+	interactionCalls int
 	// now, callTimeout, budgetWindow, maxCalls adalah nilai default
 	// (time.Now / CallTimeout / BrowserBudgetWindow /
 	// MaxBrowserCallsPerRun) yang bisa disuntik test — perilaku produksi
 	// selalu memakai default.
-	now          func() time.Time
-	callTimeout  time.Duration
-	budgetWindow time.Duration
-	maxCalls     int
+	now                 func() time.Time
+	callTimeout         time.Duration
+	budgetWindow        time.Duration
+	maxCalls            int
+	maxInteractionCalls int
 	// observer dipanggil di akhir setiap CallTool / callAcceptanceTool
 	// (nama tool ternormalisasi, durasi, error). Dipasang handler ke
 	// instance Metrics yang sama dengan /metrics (lihat
@@ -241,6 +277,7 @@ func NewClient(cfg Config) *Client {
 		callTimeout:           CallTimeout,
 		budgetWindow:          BrowserBudgetWindow,
 		maxCalls:              MaxBrowserCallsPerRun,
+		maxInteractionCalls:   MaxInteractionCallsPerRun,
 		observer:              DefaultCallObserver(),
 		lastChromeMemoryBytes: -1,
 	}
@@ -361,6 +398,34 @@ func (c *Client) BrowserCalls() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.calls
+}
+
+// reserveInteractionCall menghitung satu pemanggilan alat interaksi ke
+// cap per run (MaxInteractionCallsPerRun). Dipanggil CallTool SEBELUM
+// reserveCall — penolakan cap TIDAK menghabiskan jatah budget umum,
+// sama seperti penolakan allowlist/URL: yang ditolak adalah percobaan
+// yang tidak lolos validasi, bukan percobaan ke server. Alat
+// non-interaksi (termasuk wait_for yang baca-saja) tidak dihitung dan
+// selalu lolos. Thread-safe (di bawah mu yang sama dengan field budget).
+func (c *Client) reserveInteractionCall(name string) error {
+	if !IsInteractionTool(name) {
+		return nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.interactionCalls >= c.maxInteractionCalls {
+		return fmt.Errorf("browser: batas interaksi browser habis — sudah %d panggilan interaksi (maks %d per run); pakai fill_form untuk mengisi satu form sekaligus", c.interactionCalls, c.maxInteractionCalls)
+	}
+	c.interactionCalls++
+	return nil
+}
+
+// InteractionCalls mengembalikan jumlah panggilan alat interaksi yang
+// sudah dihitung ke cap run ini (untuk test / diagnostik).
+func (c *Client) InteractionCalls() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.interactionCalls
 }
 
 // Start menjalankan server MCP sebagai subproses stdio dan menyelesaikan
@@ -507,16 +572,29 @@ func (c *Client) ListTools(ctx context.Context) ([]*mcp.Tool, error) {
 // CallTool memanggil satu tool MCP (nama TANPA prefix browser_) dengan
 // argumen JSON. Timeout 30 dtk mengikuti deadline ctx pemanggil; hasil
 // di-cap 64 KiB (truncate + marker), TERMASUK jalur error tool
-// (IsError). Hanya tool allowlist §5 yang boleh dipanggil; argumen "url"
-// (bila ada) wajib lolos validatePreviewURL (host localhost + port
-// preview yang sudah dikunci, fail-closed bila belum diketahui).
+// (IsError). Hanya tool allowlist §5 yang boleh dipanggil; alat input
+// (Fase 4: click, fill, fill_form, press_key) DITOLAK bila flag
+// WEBBUILDER_ENABLE_BROWSER_INPUT_TOOLS mati — dengan error yang
+// menyebut flagnya, bukan error allowlist umum. Argumen "url" (bila ada)
+// wajib lolos validatePreviewURL (host localhost + port preview yang
+// sudah dikunci, fail-closed bila belum diketahui). Alat input yang
+// terverifikasi dari server MCP 1.13.0 (click, fill, fill_form,
+// press_key) TIDAK membawa argumen URL/navigasi — hanya uid/value/key —
+// jadi tidak ada jalur navigasi baru yang perlu divalidasi di sini;
+// upload_file server tetap tertutup (di luar allowlist).
 // Setiap percobaan dihitung ke budget per run (reserveCall, maks 15
-// panggilan / 5 menit — ListTools tidak dihitung). Setiap percobaan
-// juga dicatat ke observer (metrik /metrics) — termasuk penolakan
-// allowlist/URL/budget — dengan status success/error.
+// panggilan / 5 menit — ListTools tidak dihitung); panggilan interaksi
+// JUGA dihitung ke cap interaksi (reserveInteractionCall, maks 5 per
+// run). Setiap percobaan juga dicatat ke observer (metrik /metrics) —
+// termasuk penolakan allowlist/flag/cap/URL/budget — dengan status
+// success/error; tidak ada metrik baru karena semua panggilan input
+// mengalir lewat CallTool yang sama.
 func (c *Client) CallTool(ctx context.Context, name string, args map[string]interface{}) (out string, err error) {
 	start := time.Now()
 	defer func() { c.observeCall(name, start, err) }()
+	if IsInteractionTool(name) && !InputToolsEnabled() {
+		return "", fmt.Errorf("browser: tool input %q tidak aktif (nyalakan WEBBUILDER_ENABLE_BROWSER_INPUT_TOOLS=1)", name)
+	}
 	if !IsActiveTool(name) {
 		return "", fmt.Errorf("browser: tool %q tidak aktif (allowlist §5: %s)", name, strings.Join(ActiveTools, ", "))
 	}
@@ -534,6 +612,9 @@ func (c *Client) CallTool(ctx context.Context, name string, args map[string]inte
 	c.mu.Unlock()
 	if !started || session == nil {
 		return "", fmt.Errorf("browser: client belum start")
+	}
+	if err := c.reserveInteractionCall(name); err != nil {
+		return "", err
 	}
 	if err := c.reserveCall(); err != nil {
 		return "", err

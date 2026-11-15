@@ -5,7 +5,7 @@ sendiri di Chrome headless sungguhan, membaca console error, request
 network yang gagal, dan isi halaman, lalu memperbaiki kode dari temuan
 itu — tanpa skrip browser hardcode dan tanpa operator di tengah.
 
-Dokumen ini adalah dokumentasi operasional Fase 1–3 dari rencana
+Dokumen ini adalah dokumentasi operasional Fase 1–4 dari rencana
 (`docs/mcp-browser-integration-plan.md` §6). Detail spike Fase 0
 (versi, latensi, fallback Chromium) ada di `docs/mcp-spike-notes.md`;
 aturan isolasi runtime ada di `docs/isolation.md`.
@@ -30,12 +30,48 @@ dua flag: browser menggerakkan hasil eksekusi tenant di Chrome, jadi
 ia tidak boleh nyala bila eksekusi tenant mati (rencana §4, diputuskan
 Fase 1). Lihat juga `.env.example` bagian `[server] Browser tools`.
 
+### Flag alat input (Fase 4)
+
+Alat input (`click`, `fill`, `fill_form`, `press_key` — lihat
+"Alat input (Fase 4)" di bawah) punya flag sendiri dan **default
+mati**:
+
+```bash
+WEBBUILDER_ENABLE_BROWSER_INPUT_TOOLS=1
+```
+
+Ujung-ke-ujung di produksi, alat input HANYA aktif bila **ketiga** flag bernilai persis `"1"`:
+
+```bash
+WEBBUILDER_ENABLE_BROWSER_TOOLS=1
+WEBBUILDER_ENABLE_TENANT_EXEC=1
+WEBBUILDER_ENABLE_BROWSER_INPUT_TOOLS=1
+```
+
+Dua lapis: di lapis paket browser, flag input sendiri yang
+membuka/menutup keempat alat (`InputToolsEnabled()`); klien browser
+sendiri hanya dibuat bila dua flag utama nyala (`Enabled()` di
+`NewClientForRun`), jadi tanpa keduanya tidak ada sesi browser sama
+sekali — katalog pun tidak pernah sampai ke model.
+
+Alasan flag terpisah: interaksi (klik/isi form) adalah permukaan
+serangan yang lebih besar daripada baca-saja — ia mengubah state
+halaman dan bisa menghabiskan langkah run tanpa hasil — jadi ia
+tidak boleh ikut nyala otomatis saat alat baca dinyalakan. Flag ini
+tidak mengubah flag browser utama: alat baca tetap jalan seperti
+sebelumnya bila flag input mati.
+
 ### Bila flag mati
 
 - Katalog agent tidak berisi alat `browser_*` sama sekali — model
   tidak pernah melihatnya, jadi tidak bisa memanggilnya.
 - Pemanggilan `browser_*` (bila entah bagaimana sampai ke server)
   ditolak dengan error jelas (`ErrBrowserToolsDisabled`).
+- **Bila hanya flag input yang mati** (dua flag browser nyala):
+  katalog agent berisi 19 alat baca §5 saja — keempat alat input
+  tidak ada di katalog, dan pemanggilan `browser_click` /
+  `browser_fill` / `browser_fill_form` / `browser_press_key`
+  ditolak `CallTool` dengan error jelas (alat tidak aktif).
 - Acceptance + screenshot kembali ke jalur playwright lama
   (`browserAcceptancePlaywright`, deprecated — lihat
   `docs/isolation.md` bagian "Migrasi acceptance + screenshot ke MCP").
@@ -87,6 +123,7 @@ di bawah), bukan diam-diam hilang dari katalog.
 | --- | --- | --- |
 | `WEBBUILDER_ENABLE_BROWSER_TOOLS` | (mati) | `"1"` = nyalakan alat browser. |
 | `WEBBUILDER_ENABLE_TENANT_EXEC` | (mati) | `"1"` = nyalakan eksekusi tenant; wajib juga nyala untuk browser. |
+| `WEBBUILDER_ENABLE_BROWSER_INPUT_TOOLS` | (mati) | `"1"` = nyalakan alat input Fase 4 (`click`, `fill`, `fill_form`, `press_key`). Di produksi, klien browser hanya dibuat bila dua flag di atas juga `"1"`, jadi ujung-ke-ujung ketiganya harus nyala; di lapis paket browser, flag ini sendiri yang membuka/menutup alat input. |
 | `CHROME_DEVTOOLS_MCP_CMD` | `npx -y chrome-devtools-mcp@1.13.0` | Command server MCP (satu baris, dipisah spasi sederhana — tanpa quoting shell). Boleh path biner lokal. |
 | `CHROME_FOR_TESTING_PATH` | kosong (auto-detect oleh server MCP) | Path biner Chrome for Testing. Sebaiknya di-pin (lihat atas) — jangan mengandalkan auto-detect. |
 | `CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS` | `1` (di-set klien) | Matikan statistik pemakaian server MCP (wajib — server ini mengumpulkannya secara default). |
@@ -126,13 +163,18 @@ npx -y chrome-devtools-mcp@1.13.0 --headless --no-usage-statistics \
 # (tekan Ctrl-C sesudah handshake initialize sukses)
 ```
 
-## Daftar alat (allowlist §5 — 19 alat)
+## Daftar alat (allowlist §5 — 19 alat baca + 4 alat input Fase 4)
 
 Dari 33 tool yang dikembalikan `tools/list` server MCP 1.13.0, yang
-dibuka hanya 19 ini (rencana §5). Di katalog agent namanya berprefix
-`browser_` (mis. `browser_navigate_page`); di lapis klien MCP namanya
-tanpa prefix. Seluruh allowlist aktif sejak Fase 2 (`ActiveTools` =
-`AllowlistTools` di `server/internal/browser/tools.go`).
+dibuka hanya 19 alat baca ini (rencana §5) — plus, sejak Fase 4, 4
+alat input di bawah, yang HANYA aktif bila flag
+`WEBBUILDER_ENABLE_BROWSER_INPUT_TOOLS=1` (lihat "Cara menyalakan").
+Di katalog agent namanya berprefix `browser_` (mis.
+`browser_navigate_page`); di lapis klien MCP namanya tanpa prefix.
+Seluruh allowlist aktif sejak Fase 2 (`ActiveTools` =
+`AllowlistTools` di `server/internal/browser/tools.go`); alat input
+Fase 4 disimpan terpisah (`InputTools` di file yang sama) dengan
+gating flag sendiri — `IsActiveTool` memeriksa keduanya.
 
 | Kelompok | Alat | Kegunaan |
 | --- | --- | --- |
@@ -141,23 +183,90 @@ tanpa prefix. Seluruh allowlist aktif sejak Fase 2 (`ActiveTools` =
 | Tangkapan | `take_screenshot` | Simpan screenshot PNG sebagai artifact (bukan dibaca model — model text-only). |
 | Emulasi | `emulate`, `resize_page` | Cek viewport mobile / emulasi perangkat. |
 | Kualitas | `lighthouse_audit`, `performance_start_trace`, `performance_stop_trace`, `performance_analyze_insight` | Audit Lighthouse + trace performa. |
+| Input (Fase 4, flag terpisah) | `click`, `fill`, `fill_form`, `press_key` | Klik elemen, isi field form, isi banyak field sekaligus, tekan tombol keyboard. Lihat "Alat input (Fase 4)" di bawah. |
 
-### Batasan: tanpa alat input
+### Alat input (Fase 4)
 
-Sengaja DITUTUP di Fase 1–3: semua alat Memory/heap (14),
-Extensions (5), PWA (4), WebAuthn (1), Network mocks (2),
-WebMCP/Third-party, dan alat input `click` / `fill` / `fill_form` /
-`press_key` / `type_text` / `drag` / `hover` / `upload_file`.
-Agent hanya bisa MEMBACA halaman (buka, lihat, ukur) — tidak bisa
-mengklik tombol atau mengisi form. Interaksi baru dipertimbangkan di
-Fase 4 (rencana §6) setelah loop baca-saja terbukti stabil, dengan
-akun uji khusus + batas langkah interaksi. Jangan membuka alat input
-dengan mengubah allowlist tanpa keputusan itu.
+Sejak Fase 4 agent bisa MENGUJI ALUR, bukan hanya membaca halaman —
+dengan syarat flag input nyala (lihat "Cara menyalakan") dan dalam
+batas cap interaksi (lihat "Cap interaksi" di bawah).
+
+| Alat | Fungsi |
+| --- | --- |
+| `click` | Mengklik satu elemen di halaman. Elemen ditunjuk lewat `uid` dari `take_snapshot` (accessibility tree) — bukan lewat koordinat layar dan bukan lewat teks bebas. |
+| `fill` | Mengisi satu field form (mis. satu input teks) dengan satu nilai. Field ditunjuk lewat `uid` dari `take_snapshot`. |
+| `fill_form` | Mengisi beberapa field form sekaligus dalam satu panggilan (mis. email + password login) — satu panggilan, bukan satu per field, supaya hemat langkah interaksi. |
+| `press_key` | Menekan satu tombol keyboard (mis. `Enter` untuk submit form, `Tab` untuk pindah field, `Escape` untuk menutup dialog). |
+
+`wait_for` BUKAN alat input baru Fase 4: ia sudah ada sejak §5
+(kelompok Navigasi di atas — alat tunggu) dan TIDAK dihitung ke cap
+interaksi.
+
+Cari `uid` dengan mencocokkan peran + nama (mis. `textbox "Email"`,
+`button "Masuk"`): snapshot memuat baris label polos (`"Email"`) dan
+elemennya dengan nama yang sama — menarget baris label ditolak server
+(`did not become interactive`).
+
+#### Contoh alur: uji login pada proyek fixture
+
+Proyek yang diuji adalah proyek **fixture** (proyek uji yang dibuat
+untuk keperluan ini), dan kredensialnya **dummy** (mis.
+`user@example.com` / `dummy-password`) — JANGAN PERNAH memakai
+kredensial nyata atau akun user sungguhan (lihat "Invariant
+keamanan" di bawah).
+
+```
+navigate_page → http://127.0.0.1:<port>/login        (halaman login fixture)
+  → take_snapshot                                     (cari uid field email,
+                                                       field password, tombol submit)
+  → fill_form                                         (email + password dummy)
+  → click                                             (tombol submit)
+  → take_snapshot                                     (BUKTI state berubah:
+                                                       mis. teks "Dashboard" /
+                                                       sapaan user muncul,
+                                                       form login hilang)
+```
+
+Pembuktian state berubah WAJIB lewat `take_snapshot` (atau
+`list_console_messages` / `list_network_requests`) sesudah interaksi
+— klaim model ("sudah login") tanpa snapshot sesudahnya bukan bukti.
+Bila snapshot sesudah `click` masih menampilkan form login, alur
+DINILAI GAGAL dan temuan dilaporkan apa adanya (sama seperti loop
+verifikasi baca-saja).
+
+#### Yang tetap tertutup sesudah Fase 4
+
+`type_text`, `drag`, `hover`, `upload_file` tetap DITUTUP, begitu
+juga semua alat Memory/heap (14), Extensions (5), PWA (4), WebAuthn
+(1), Network mocks (2), dan WebMCP/Third-party. Alasan: `drag` /
+`hover` / `type_text` mudah menghabiskan langkah tanpa hasil yang
+terukur; `upload_file` membuka jalur file masuk ke browser (lihat
+"Invariant keamanan"); sisanya tidak relevan untuk acceptance.
+
+#### Invariant keamanan — tidak berubah di Fase 4
+
+Membuka alat input TIDAK melonggarkan satu pun batas hardening
+Fase 3:
+
+- **Allowlist URL tetap terkunci ke port preview proyek** — interaksi
+  hanya boleh terjadi di halaman preview proyek sendiri
+  (`127.0.0.1`/`localhost:<port-preview>`); navigasi atau interaksi
+  ke URL luar tetap ditolak fail-closed sebelum menyentuh browser.
+- **Timeout tetap 30 dtk per panggilan** (`CallTimeout`) dan
+  **cap output tetap 64 KiB** (`MaxOutputBytes`) — berlaku juga untuk
+  hasil alat input.
+- **Tanpa upload/download file** — tidak ada alat upload file yang
+  dibuka, dan alat input tidak boleh dipakai untuk mengunduh atau
+  mengunggah file apa pun.
+- **Tanpa kredensial nyata** — pengujian alur login memakai proyek
+  fixture + kredensial dummy saja. Jangan pernah mengisi form dengan
+  kredensial akun sungguhan, token, atau secret apa pun; tidak ada
+  kredensial di env browser.
 
 ### Alat yang hilang dari server MCP
 
 Bila `tools/list` server MCP tidak memuat salah satu dari 19 alat
-aktif (mis. server MCP versi lama tanpa `lighthouse_audit`), pipeline
+aktif (23 bila flag input nyala — 19 + 4 alat input) (mis. server MCP versi lama tanpa `lighthouse_audit`), pipeline
 mencatat peringatan jelas di log + satu baris `browser_tools_missing`
 `failed` di `agent_tool_calls`, dan katalog berjalan tanpa alat itu.
 Alat yang hilang tidak pernah dikarang speknya.
@@ -309,6 +418,32 @@ panggilan dari budget 15 — tersisa 5 panggilan untuk model. Akibatnya:
   ≥ 1 panggilan saja sudah membuat putaran ke-2 gagal. Atas keputusan
   user 15 Nov 2026 (pasca-Fase 3), budget dinaikkan jadi 15 supaya
   loop 2 putaran punya ruang untuk pemakaian model yang wajar.
+
+### Cap interaksi (Fase 4): maks 5 panggilan interaksi per run
+
+Selain budget umum 15 di atas, panggilan INTERAKSI dibatasi
+tersendiri: **maks 5 panggilan interaksi per run**.
+
+- Yang dihitung HANYA keempat alat input: `click`, `fill`,
+  `fill_form`, `press_key`. `wait_for` tidak dihitung (alat tunggu,
+  bukan interaksi — sudah ada sejak §5).
+- Panggilan interaksi ke-6 dalam satu run ditolak dengan error jelas,
+  bukan menggantung dan bukan diam-diam — sama seperti penolakan
+  budget umum.
+- Panggilan interaksi TETAP dihitung ke budget umum 15 panggilan /
+  5 menit: tidak ada jatah terpisah. Satu `fill_form` = 1 panggilan
+  interaksi DAN 1 panggilan dari budget 15. Contoh hitungan:
+  5 interaksi + loop verifikasi 2 putaran (10 panggilan) = 15 —
+  sesudah itu tidak ada panggilan browser lagi di run itu, termasuk
+  panggilan baca. Sebaliknya, bila model memakai 5 interaksi SEBELUM
+  loop, putaran ke-2 loop kehabisan budget (konsekuensi yang sama
+  seperti di "Konsekuensi budget" di atas).
+- Alasan cap terpisah: interaksi mengubah state halaman dan paling
+  mudah menghabiskan langkah tanpa hasil — cap 5 memaksa alur uji
+  tetap pendek (satu `fill_form` + satu `click` + snapshot bukti =
+  2 interaksi untuk satu alur login) dan mencegah loop klik-isi
+  tanpa ujung. Jangan menaikkan angka cap diam-diam; itu keputusan
+  terpisah.
 
 ### Timeout per panggilan: 30 detik
 
