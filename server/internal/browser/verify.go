@@ -3,6 +3,7 @@ package browser
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -106,7 +107,7 @@ func VerifyPreview(ctx context.Context, c *Client, previewURL, screenshotName st
 	if err != nil {
 		return res, fmt.Errorf("browser: verifikasi gagal baca network: %w", err)
 	}
-	res.FailedRequests = ParseFailedRequests(netOut)
+	res.FailedRequests = ParseFailedRequests(netOut, previewURL)
 	shotPath := filepath.Join(ws, screenshotName)
 	if _, err := c.CallTool(ctx, "take_screenshot", map[string]interface{}{"filePath": shotPath}); err != nil {
 		return res, fmt.Errorf("browser: verifikasi gagal ambil screenshot: %w", err)
@@ -203,17 +204,25 @@ func ParseConsoleErrors(output string) []string {
 // "reqid=6 GET http://127.0.0.1:18098/putus [net::ERR_CONNECTION_REFUSED]".
 var networkLineRe = regexp.MustCompile(`^reqid=\d+\s+(\S+)\s+(\S+)\s+\[(.+)\]$`)
 
-// ParseFailedRequests mengambil request gagal dari output
-// list_network_requests: status HTTP >= 400 atau error net::*.
-// Dikecualikan (selaras dengan acceptance Trek B):
+// ParseFailedRequests mengambil request gagal origin-yang-sama dari
+// output list_network_requests: status HTTP >= 400 atau error net::*.
+// Dikecualikan (selaras dengan parseNetworkFailures di acceptance.go):
+//   - request lintas-origin (font/CDN/analytics pihak ketiga) — bukan
+//     tanggung jawab preview ini; tanpanya loop verifikasi bisa berkata
+//     GAGAL sementara browserAcceptance berkata LOLOS,
 //   - favicon.ico 404 (bukan error aplikasi — spike Fase 0),
 //   - 401 pada /api/app-api/ (probe auth aplikasi logged-out, normal),
 //   - URL data: (inline, bisa puluhan KB base64).
 //
 // URL halaman itu sendiri TIDAK dikecualikan: bila preview 404, itu
-// berarti preview rusak dan verifikasi harus gagal.
-func ParseFailedRequests(output string) []string {
+// berarti preview rusak dan verifikasi harus gagal. (Berbeda dengan
+// acceptance, yang menilai status halaman lewat navigation timing.)
+func ParseFailedRequests(output, pageURL string) []string {
 	out := []string{}
+	origin := ""
+	if u, err := url.Parse(pageURL); err == nil {
+		origin = u.Scheme + "://" + u.Host
+	}
 	for _, line := range strings.Split(output, "\n") {
 		line = strings.TrimSpace(line)
 		if len(line) > 2048 {
@@ -226,6 +235,11 @@ func ParseFailedRequests(output string) []string {
 		method, u, statusText := m[1], m[2], strings.TrimSpace(m[3])
 		if strings.HasPrefix(u, "data:") || strings.Contains(u, "favicon.ico") {
 			continue
+		}
+		if origin != "" {
+			if ou, err := url.Parse(u); err != nil || ou.Scheme+"://"+ou.Host != origin {
+				continue
+			}
 		}
 		if status, err := strconv.Atoi(statusText); err == nil {
 			if status >= 400 && !(status == 401 && strings.Contains(u, "/api/app-api/")) {

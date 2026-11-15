@@ -59,9 +59,16 @@ func runFakeMCPServer() {
 		case "ping":
 			result = map[string]any{}
 		case "tools/list":
+			// Daftar ini SELARAS dengan tools/call di bawah: 6 tool yang
+			// ditangani fake + take_heapsnapshot sebagai umpan tool di
+			// luar allowlist (harus terbuang oleh FilterAllowlist).
 			result = map[string]any{"tools": []any{
 				map[string]any{"name": "list_console_messages", "description": "List console messages", "inputSchema": map[string]any{"type": "object", "properties": map[string]any{}}},
 				map[string]any{"name": "navigate_page", "description": "Navigate", "inputSchema": map[string]any{"type": "object", "properties": map[string]any{"url": map[string]any{"type": "string"}}}},
+				map[string]any{"name": "take_snapshot", "description": "Snapshot", "inputSchema": map[string]any{"type": "object", "properties": map[string]any{}}},
+				map[string]any{"name": "list_network_requests", "description": "List network requests", "inputSchema": map[string]any{"type": "object", "properties": map[string]any{}}},
+				map[string]any{"name": "evaluate_script", "description": "Evaluate script", "inputSchema": map[string]any{"type": "object", "properties": map[string]any{}}},
+				map[string]any{"name": "take_screenshot", "description": "Screenshot", "inputSchema": map[string]any{"type": "object", "properties": map[string]any{}}},
 				map[string]any{"name": "take_heapsnapshot", "description": "Heap (bukan allowlist)", "inputSchema": map[string]any{"type": "object", "properties": map[string]any{}}},
 			}}
 		case "tools/call":
@@ -184,8 +191,8 @@ func TestBrowserClientStartStop(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListTools gagal: %v", err)
 	}
-	if len(tools) != 3 {
-		t.Fatalf("fake server harus mengembalikan 3 tool, dapat %d", len(tools))
+	if len(tools) != 7 {
+		t.Fatalf("fake server harus mengembalikan 7 tool (6 yang ditangani + take_heapsnapshot di luar allowlist), dapat %d", len(tools))
 	}
 	out, err := c.CallTool(ctx, "list_console_messages", map[string]interface{}{})
 	if err != nil {

@@ -71,10 +71,14 @@ for line in sys.stdin:
             else:
                 result = {"content": [{"type": "text", "text": "## Console messages\nShowing 1-1 of 1 (Page 1 of 1).\nmsgid=1 [log] LOG-PALSU: ok (1 args)"}]}
         elif name == "list_network_requests":
+            # Origin diambil dari URL navigasi terakhir (LAST_URL) supaya
+            # request gagal dinilai same-origin seperti di produksi
+            # (ParseFailedRequests menyaring lintas-origin).
+            origin = LAST_URL.rstrip("/")
             if rusak:
-                result = {"content": [{"type": "text", "text": "## Network requests\nShowing 1-3 of 3 (Page 1 of 1).\nreqid=1 GET " + LAST_URL + " [200]\nreqid=2 GET http://127.0.0.1:9/tidak-ada-palsu.json [404]\nreqid=3 GET http://127.0.0.1:9/favicon.ico [404]"}]}
+                result = {"content": [{"type": "text", "text": "## Network requests\nShowing 1-3 of 3 (Page 1 of 1).\nreqid=1 GET " + LAST_URL + " [200]\nreqid=2 GET " + origin + "/tidak-ada-palsu.json [404]\nreqid=3 GET " + origin + "/favicon.ico [404]"}]}
             else:
-                result = {"content": [{"type": "text", "text": "## Network requests\nShowing 1-2 of 2 (Page 1 of 1).\nreqid=1 GET " + LAST_URL + " [200]\nreqid=2 GET http://127.0.0.1:9/favicon.ico [404]"}]}
+                result = {"content": [{"type": "text", "text": "## Network requests\nShowing 1-2 of 2 (Page 1 of 1).\nreqid=1 GET " + LAST_URL + " [200]\nreqid=2 GET " + origin + "/favicon.ico [404]"}]}
         elif name == "take_screenshot":
             path = args.get("filePath", "")
             with open(path, "wb") as f:

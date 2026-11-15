@@ -41,23 +41,35 @@ msgid=1 [error] Failed to load resource: the server responded with a status of 4
 }
 
 func TestParseFailedRequests(t *testing.T) {
+	pageURL := "http://127.0.0.1:18098/index.html"
 	out := `## Network requests
-Showing 1-7 of 7 (Page 1 of 1).
+Showing 1-9 of 9 (Page 1 of 1).
 reqid=1 GET http://127.0.0.1:18098/index.html [200]
 reqid=2 GET http://127.0.0.1:18098/tidak-ada.json [404]
 reqid=3 GET http://127.0.0.1:18098/api/data-gagal [500]
 reqid=4 GET http://127.0.0.1:18098/favicon.ico [404]
 reqid=5 GET http://127.0.0.1:18098/api/app-api/me [401]
 reqid=6 GET http://127.0.0.1:18098/putus [net::ERR_CONNECTION_REFUSED]
-reqid=7 GET data:image/png;base64,AAAA [404]`
-	got := ParseFailedRequests(out)
+reqid=7 GET data:image/png;base64,AAAA [404]
+reqid=8 GET https://fonts.googleapis.com/css2?family=X [404]
+reqid=9 GET https://cdn.contoh.net/lib.js [net::ERR_ABORTED]`
+	got := ParseFailedRequests(out, pageURL)
 	if len(got) != 3 {
-		t.Fatalf("harus 3 request gagal (404 json + 500 api + net::ERR; favicon, 401 auth-probe, dan data: dikecualikan), dapat %d: %+v", len(got), got)
+		t.Fatalf("harus 3 request gagal (404 json + 500 api + net::ERR; favicon, 401 auth-probe, data:, dan 2 lintas-origin dikecualikan), dapat %d: %+v", len(got), got)
 	}
 	if !strings.Contains(got[0], "tidak-ada.json [404]") || !strings.Contains(got[1], "data-gagal [500]") || !strings.Contains(got[2], "putus [net::ERR_CONNECTION_REFUSED]") {
 		t.Fatalf("request gagal harus menyebut URL + status/error, dapat %+v", got)
 	}
-	if got := ParseFailedRequests("reqid=1 GET http://127.0.0.1:18098/ [200]\n"); len(got) != 0 {
+	// Halaman itu sendiri 404 tetap dihitung gagal (preview rusak).
+	if got := ParseFailedRequests("reqid=1 GET http://127.0.0.1:18098/index.html [404]\n", pageURL); len(got) != 1 {
+		t.Fatalf("halaman sendiri 404 harus 1 gagal, dapat %+v", got)
+	}
+	// Hanya request lintas-origin yang gagal → 0 (bukan bug preview).
+	crossOnly := "reqid=1 GET https://fonts.googleapis.com/css2?family=X [404]\nreqid=2 GET https://cdn.contoh.net/lib.js [net::ERR_ABORTED]\n"
+	if got := ParseFailedRequests(crossOnly, pageURL); len(got) != 0 {
+		t.Fatalf("request lintas-origin saja harus 0 gagal, dapat %+v", got)
+	}
+	if got := ParseFailedRequests("reqid=1 GET http://127.0.0.1:18098/ [200]\n", pageURL); len(got) != 0 {
 		t.Fatalf("semua 200 harus 0 gagal, dapat %+v", got)
 	}
 }
@@ -118,7 +130,7 @@ func TestMissingActiveTools(t *testing.T) {
 }
 
 func TestSpecsFromToolsFullAllowlist(t *testing.T) {
-	// Server MCP 1.13.0 mengembalikan 33 tool; 21 di antaranya allowlist
+	// Server MCP 1.13.0 mengembalikan 33 tool; 19 di antaranya allowlist
 	// §5, sisanya (heap, click, dst.) harus tetap tertutup.
 	tools := []*mcp.Tool{}
 	for _, n := range AllowlistTools {
