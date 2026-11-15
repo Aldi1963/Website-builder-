@@ -142,7 +142,7 @@ func TestCallAcceptanceToolObserver(t *testing.T) {
 	if len(seen) != 1 || seen[0] != "take_snapshot" {
 		t.Fatalf("acceptance harus tercatat 1x sebagai take_snapshot, dapat %v", seen)
 	}
-	// Budget per run Trek A (maks 10): observasi di atas + yang ini
+	// Budget per run Trek A (maks 15): observasi di atas + yang ini
 	// masih di bawah batas.
 	if _, err := c.callAcceptanceTool(ctx, "list_console_messages", map[string]interface{}{}); err != nil {
 		t.Fatalf("callAcceptanceTool kedua gagal: %v", err)

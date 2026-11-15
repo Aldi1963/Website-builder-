@@ -270,9 +270,9 @@ Port dikunci dari sumber tepercaya saja (bukan input model):
   yang dibangun kode server tepercaya; bila klien sudah dikunci ke
   port lain, URL port berbeda ditolak.
 
-### Budget per run: 10 panggilan / 5 menit
+### Budget per run: 15 panggilan / 5 menit
 
-`MaxBrowserCallsPerRun = 10`, `BrowserBudgetWindow = 5m`
+`MaxBrowserCallsPerRun = 15`, `BrowserBudgetWindow = 5m`
 (`server/internal/browser/client.go`).
 
 - Dihitung SEMUA pemanggilan `CallTool` + `callAcceptanceTool` dalam
@@ -286,30 +286,29 @@ Port dikunci dari sumber tepercaya saja (bukan input model):
   tidak menambah hitungan.
 - Jendela 5 menit dihitung sejak panggilan browser PERTAMA run itu.
   Sesudah jendela lewat, panggilan berikutnya ditolak walau hitungan
-  baru 2 dari 10 — jendela TIDAK me-reset hitungan, dan sesudah lewat
+  baru 2 dari 15 — jendela TIDAK me-reset hitungan, dan sesudah lewat
   tidak ada panggilan lagi untuk run itu.
-- Panggilan ke-11 / sesudah jendela ditolak dengan error jelas
-  ("budget browser run habis — sudah N panggilan browser (maks 10
+- Panggilan ke-16 / sesudah jendela ditolak dengan error jelas
+  ("budget browser run habis — sudah N panggilan browser (maks 15
   per run)" / "sudah 5m0s sejak panggilan browser pertama"), bukan
   menggantung dan bukan diam-diam.
 
 #### Konsekuensi budget — dibaca jujur, bukan disembunyikan
 
 Satu `VerifyPreview` = 5 panggilan, jadi loop 2 putaran = 10
-panggilan — tepat menghabiskan seluruh budget satu run. Akibatnya:
+panggilan dari budget 15 — tersisa 5 panggilan untuk model. Akibatnya:
 
-- Bila model sempat memakai **≥ 1 panggilan browser sebelum loop**
+- Bila model memakai **≤ 5 panggilan browser sebelum loop**, kedua
+  putaran loop tetap muat (5 model + 10 loop = 15).
+- Bila model memakai **≥ 6 panggilan browser sebelum loop**
   (mis. `browser_navigate_page` sendiri selama stream), putaran ke-2
   loop akan kehabisan budget: `VerifyPreview` putaran ke-2 gagal
   dengan error budget, loop mencatat `browser_verify` `failed`, dan
   run berhenti tanpa putaran perbaikan ke-2.
-- Itu konsekuensi harfiah spesifikasi rencana §4 (10 panggilan /
-  5 menit), bukan bug loop. Angka budget TIDAK diubah di trek ini —
-  mengubahnya adalah keputusan terpisah. Bila perilaku ini mengganggu
-  (model yang aktif memakai browser membuat loop tidak pernah
-  mencapai putaran ke-2), keputusan yang perlu diambil adalah
-  menaikkan budget / memisahkan jatah loop dari jatah model — di luar
-  lingkup Fase 3.
+- Budget awalnya 10 (rencana §4) — dengan 10, model yang memakai
+  ≥ 1 panggilan saja sudah membuat putaran ke-2 gagal. Atas keputusan
+  user 15 Nov 2026 (pasca-Fase 3), budget dinaikkan jadi 15 supaya
+  loop 2 putaran punya ruang untuk pemakaian model yang wajar.
 
 ### Timeout per panggilan: 30 detik
 
@@ -487,7 +486,7 @@ ulang tiap putaran, jadi putaran berikutnya memakai port baru.
 ### Budget habis di tengah run
 
 ```
-browser: budget browser run habis — sudah 10 panggilan browser (maks 10 per run)
+browser: budget browser run habis — sudah 15 panggilan browser (maks 15 per run)
 browser: budget browser run habis — sudah 5m0s sejak panggilan browser pertama (maks 5m0s per run)
 ```
 

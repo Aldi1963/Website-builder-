@@ -95,7 +95,7 @@ selama fallback itu hidup; jangan menambah pemakai baru.
 ### Batas hardening Fase 3 (tidak bisa diubah lewat env)
 
 Batas rencana §4 ditegakkan di `server/internal/browser/client.go`
-(`MaxBrowserCallsPerRun = 10`, `BrowserBudgetWindow = 5m`,
+(`MaxBrowserCallsPerRun = 15`, `BrowserBudgetWindow = 5m`,
 `CallTimeout = 30 dtk`, `MaxOutputBytes = 64 KiB`) — mengubah angka
 itu butuh keputusan eksplisit, bukan edit env. Detail lengkap +
 troubleshooting ada di `docs/browser-tools.md`; ringkasnya:
@@ -104,14 +104,14 @@ troubleshooting ada di `docs/browser-tools.md`; ringkasnya:
   dibuka; port dikunci `SetPreviewPort` dari sumber tepercaya
   (pipeline / acceptance runtime) dan fail-closed bila belum
   diketahui — tidak ada fallback "port mana pun".
-- **Budget**: maks 10 panggilan browser / 5 menit per run, dihitung
+- **Budget**: maks 15 panggilan browser / 5 menit per run, dihitung
   SEMUA pemanggilan `CallTool` + `callAcceptanceTool` (model-driven
   dan scripted satu jatah bersama; `ListTools` tidak dihitung).
-  Satu `VerifyPreview` = 5 panggilan, jadi loop 2 putaran = 10 —
-  bila model sempat memakai ≥ 1 panggilan browser sebelum loop,
-  putaran ke-2 kehabisan budget dan loop mencatat gagal budget. Itu
-  konsekuensi harfiah spesifikasi §4, bukan bug loop; mengubah angka
-  budget adalah keputusan terpisah.
+  Satu `VerifyPreview` = 5 panggilan, jadi loop 2 putaran = 10 dari
+  budget 15 — tersisa 5 panggilan untuk model. Bila model memakai
+  ≥ 6 panggilan sebelum loop, putaran ke-2 kehabisan budget dan loop
+  mencatat gagal budget. Budget awalnya 10 (rencana §4); dinaikkan
+  jadi 15 atas keputusan user 15 Nov 2026 pasca-Fase 3.
 - **Timeout + cap output**: 30 dtk per panggilan; hasil tool di-cap
   64 KiB + marker `...[dipotong: output melebihi 64 KiB]`, termasuk
   jalur error tool.

@@ -337,7 +337,7 @@ func TestAcceptanceRealChrome(t *testing.T) {
 	t.Logf("BUKTI sehat: %+v", res)
 
 	// Satu klien per acceptance (pola produksi RunAcceptance: budget
-	// per run maks 10 panggilan, satu acceptance memakai 5 — klien yang
+	// per run maks 15 panggilan, satu acceptance memakai 5 — klien yang
 	// dipakai ulang untuk 3 acceptance akan kehabisan budget di tengah
 	// jalan, dan itu perilaku yang benar, bukan bug test).
 	newClient := func() *Client {
