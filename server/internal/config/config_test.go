@@ -146,3 +146,67 @@ func TestLoadWebbuilderKeyValidation(t *testing.T) {
 		t.Fatal("kunci valid harus dipertahankan")
 	}
 }
+
+func TestLoadQueueDefaults(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret")
+	t.Setenv("WEBBUILDER_QUEUE", "")
+	t.Setenv("WEBBUILDER_QUEUE_WORKERS", "")
+	cfg, _, err := Load()
+	if err != nil {
+		t.Fatalf("Load tidak boleh error untuk queue default: %v", err)
+	}
+	if cfg.QueueBackend != "db" {
+		t.Fatalf("WEBBUILDER_QUEUE kosong harus default ke \"db\", dapat %q", cfg.QueueBackend)
+	}
+	if cfg.QueueWorkers != 2 {
+		t.Fatalf("WEBBUILDER_QUEUE_WORKERS kosong harus default 2, dapat %d", cfg.QueueWorkers)
+	}
+	if !cfg.Summary()["queue_db"] {
+		t.Fatal("Summary harus melaporkan queue_db=true untuk default db")
+	}
+}
+
+func TestLoadQueueInvalidBackendErrors(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret")
+	t.Setenv("WEBBUILDER_QUEUE", "redis")
+	if _, _, err := Load(); err == nil {
+		t.Fatal("WEBBUILDER_QUEUE di luar db|inprocess harus error (fail-fast)")
+	} else if !strings.Contains(err.Error(), "WEBBUILDER_QUEUE") {
+		t.Fatalf("error harus menyebut WEBBUILDER_QUEUE, dapat: %v", err)
+	}
+}
+
+func TestLoadQueueInProcessAndWorkers(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret")
+	t.Setenv("WEBBUILDER_QUEUE", "inprocess")
+	t.Setenv("WEBBUILDER_QUEUE_WORKERS", "3")
+	cfg, _, err := Load()
+	if err != nil {
+		t.Fatalf("Load tidak boleh error untuk inprocess: %v", err)
+	}
+	if cfg.QueueBackend != "inprocess" || cfg.QueueWorkers != 3 {
+		t.Fatalf("harapkan inprocess/3, dapat %q/%d", cfg.QueueBackend, cfg.QueueWorkers)
+	}
+	if cfg.Summary()["queue_db"] {
+		t.Fatal("Summary harus melaporkan queue_db=false untuk inprocess")
+	}
+
+	// Workers di luar 1..8: peringatan + kembali ke default 2.
+	t.Setenv("WEBBUILDER_QUEUE_WORKERS", "99")
+	cfg, warnings, err := Load()
+	if err != nil {
+		t.Fatalf("workers tidak valid tidak boleh fatal: %v", err)
+	}
+	if cfg.QueueWorkers != 2 {
+		t.Fatalf("workers 99 harus kembali ke default 2, dapat %d", cfg.QueueWorkers)
+	}
+	found := false
+	for _, w := range warnings {
+		if strings.Contains(w, "WEBBUILDER_QUEUE_WORKERS") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("harus ada peringatan WEBBUILDER_QUEUE_WORKERS, dapat: %v", warnings)
+	}
+}

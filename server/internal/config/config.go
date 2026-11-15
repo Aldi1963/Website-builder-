@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -73,6 +74,17 @@ type Config struct {
 	VPSSSHHost string
 	VPSSSHUser string
 	VPSSSHKey  string
+
+	// Agent queue backend: "db" (default, durable — tabel queue_jobs di DB
+	// yang sama) atau "inprocess" (fallback eksplisit, job hilang saat
+	// restart). Nilai lain ditolak Load dengan error (fail-fast).
+	QueueBackend string
+
+	// Agent queue workers: jumlah consumer paralel yang menjalankan job
+	// agent (default 2, dibatasi 1..8). Setiap consumer mengeksekusi satu
+	// job dalam satu waktu; dua worker menjaga dua project berbeda tetap
+	// bisa berjalan bersamaan tanpa membanjiri mesin dengan build npm.
+	QueueWorkers int
 }
 
 // Load reads the environment (plus the JWT-secret fallback file) and
@@ -133,6 +145,24 @@ func Load() (Config, []string, error) {
 		warnings = append(warnings, "VPS_SSH_* tidak lengkap (VPS_SSH_HOST/VPS_SSH_USER/VPS_SSH_KEY): SSL domain otomatis dinonaktifkan")
 	}
 
+	// Agent queue: backend + jumlah worker. Default "db" (durable).
+	cfg.QueueBackend = strings.ToLower(strings.TrimSpace(os.Getenv("WEBBUILDER_QUEUE")))
+	if cfg.QueueBackend == "" {
+		cfg.QueueBackend = "db"
+	}
+	if cfg.QueueBackend != "db" && cfg.QueueBackend != "inprocess" {
+		return Config{}, nil, fmt.Errorf("WEBBUILDER_QUEUE tidak valid %q (harapkan \"db\" atau \"inprocess\")", cfg.QueueBackend)
+	}
+	cfg.QueueWorkers = 2
+	if raw := strings.TrimSpace(os.Getenv("WEBBUILDER_QUEUE_WORKERS")); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 || n > 8 {
+			warnings = append(warnings, "WEBBUILDER_QUEUE_WORKERS tidak valid (harapkan 1..8) — dipakai default 2")
+		} else {
+			cfg.QueueWorkers = n
+		}
+	}
+
 	return cfg, warnings, nil
 }
 
@@ -162,6 +192,7 @@ func (c Config) Summary() map[string]bool {
 		"oauth":            c.OAuthConfigured(),
 		"webbuilder_key":   c.WebbuilderKey != "",
 		"vps_ssh":          c.SSHConfigured(),
+		"queue_db":         c.QueueBackend == "db",
 	}
 }
 

@@ -4,7 +4,11 @@ import (
 	"context"
 	"log"
 	"log/slog"
+	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"webbuilder/internal/config"
 	"webbuilder/internal/database"
@@ -43,6 +47,23 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// Queue agent (durable): backend "db" (default) memakai tabel queue_jobs
+	// di DB yang sama — dibuat otomatis untuk SQLite, wajib sudah ada
+	// (migrasi goose 00002) untuk Postgres. Init gagal -> fail-start
+	// (TANPA fallback diam-diam ke in-memory). Lihat docs/queue.md.
+	mgr, err := handler.InitAgentQueue(db, cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
+	// Consumer queue: N goroutine menjalankan job agent (pipeline chat/SSE).
+	// Berhenti lebih dulu saat shutdown supaya tidak ada job baru yang
+	// diambil sesudah server berhenti menerima request.
+	queueCtx, queueStop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	for i := 0; i < cfg.QueueWorkers; i++ {
+		go mgr.Run(queueCtx, handler.AgentJobHandler(db))
+	}
+	log.Printf("[queue] backend=%s workers=%d", cfg.QueueBackend, cfg.QueueWorkers)
+
 	r := gin.Default()
 	handler.RegisterRoutes(r, db)
 	go handler.StartCronRunner(db)
@@ -65,5 +86,22 @@ func main() {
 	})
 
 	log.Println("WebBuilder running on :18082")
-	r.Run("127.0.0.1:18082")
+	srv := &http.Server{Addr: "127.0.0.1:18082", Handler: r}
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatal(err)
+		}
+	}()
+	// Tunggu sinyal berhenti, lalu: hentikan consumer queue dulu (job yang
+	// sedang berjalan dibatalkan lewat queueCtx; job pending/running yang
+	// tertinggal diambil alih consumer sesudah restart lewat lease
+	// takeover), baru matikan HTTP server (maks 30 detik).
+	<-queueCtx.Done()
+	queueStop()
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Println("[shutdown] HTTP shutdown:", err)
+	}
+	log.Println("WebBuilder stopped")
 }
