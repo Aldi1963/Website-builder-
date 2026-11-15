@@ -309,6 +309,8 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB) {
 	auth.DELETE("/projects/:id/tables/:name", dropAppTable(db))
 	// Import
 	auth.POST("/projects/import-github", importGithubRepo(db))
+	// Clone dari URL (scrape + regenerasi React/TS lewat pipeline agent)
+	auth.POST("/projects/clone-from-url", cloneFromURL(db))
 	// File tree operations
 	auth.GET("/projects/:id/files", getProjectFiles(db))
 	auth.POST("/projects/:id/files", createFile(db))

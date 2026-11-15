@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { setToken } from "../lib/api";
-import { useProjects, useCreateProject, projectIdFromCreateResponse } from "../lib/hooks/useProjects";
+import { useProjects, useCreateProject, useCloneFromURL, projectIdFromCreateResponse } from "../lib/hooks/useProjects";
 import {
   useMe,
   useNotifications,
@@ -78,6 +78,8 @@ export default function Dashboard({ onOpen }: { onOpen: (id: string) => void }) 
   const [previewDep, setPreviewDep] = useState<any>(null);
   const [previewPid, setPreviewPid] = useState("");
   const [quickStart, setQuickStart] = useState("");
+  const [cloneURL, setCloneURL] = useState("");
+  const [cloneError, setCloneError] = useState("");
   // Pencarian template hanya diterapkan saat Cari/Enter (bukan tiap ketikan),
   // sama seperti perilaku lama `loadTemplates()`.
   const [tplApplied, setTplApplied] = useState({ q: "", cat: "" });
@@ -95,6 +97,7 @@ export default function Dashboard({ onOpen }: { onOpen: (id: string) => void }) 
   const aiConfigQuery = useAiConfig(tab === "settings");
   const loading = projectsQuery.isPending;
   const createProjectMut = useCreateProject();
+  const cloneMut = useCloneFromURL();
   const useTplMut = useUseTemplate();
   const publishTemplateMut = usePublishTemplate();
   const addDomainMut = useAddDomain();
@@ -189,6 +192,24 @@ export default function Dashboard({ onOpen }: { onOpen: (id: string) => void }) 
     const id = projectIdFromCreateResponse(d);
     if (!id) throw new Error("Gagal membuat proyek");
     onOpen(id);
+  }
+
+  // Clone dari URL: validasi + scrape jalan di server; bila robots.txt
+  // melarang atau URL tidak bisa diakses, server mengembalikan error dan
+  // tidak ada proyek yang dibuat. Sukses -> buka Builder, run agent
+  // sudah berjalan dan progresnya terlihat di sana.
+  async function cloneFromURL() {
+    const url = cloneURL.trim();
+    if (!url) return;
+    setCloneError("");
+    try {
+      const d = await cloneMut.mutateAsync({ url });
+      const id = projectIdFromCreateResponse(d);
+      if (!id) throw new Error("Gagal membuat proyek clone");
+      onOpen(id);
+    } catch (e: any) {
+      setCloneError(e.message || "Gagal clone URL");
+    }
   }
 
   async function useTpl(id: number, tname: string) {
@@ -349,6 +370,22 @@ export default function Dashboard({ onOpen }: { onOpen: (id: string) => void }) 
                   <Plus size={16} /> Buat
                 </button>
               </div>
+            </div>
+            <div style={{ ...card, marginBottom: 20 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 4px" }}>Clone dari URL</h3>
+              <p style={{ margin: "0 0 12px", color: "#69736b", fontSize: 13 }}>
+                Tempel URL website publik — AI membangun ulang struktur &amp; tampilannya sebagai proyek React yang bisa diedit lewat chat. Konten ditulis ulang, bukan disalin mentah-mentah; robots.txt dihormati.
+              </p>
+              <div style={{ display: "flex", gap: 8, maxWidth: "100%" }}>
+                <input placeholder="https://contoh.com" value={cloneURL} onChange={(e) => setCloneURL(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && cloneFromURL()}
+                  style={{ flex: "1 1 0", minWidth: 0, border: "1px solid #d1d5db", borderRadius: 8, padding: "10px 14px", fontSize: 14 }} />
+                <button onClick={cloneFromURL} disabled={cloneMut.isPending || !cloneURL.trim()}
+                  style={{ background: ORANGE, color: "#fff", border: "none", borderRadius: 8, padding: "10px 18px", fontWeight: 700, cursor: cloneMut.isPending ? "wait" : "pointer", display: "flex", alignItems: "center", gap: 6, flexShrink: 0, opacity: cloneMut.isPending || !cloneURL.trim() ? 0.6 : 1 }}>
+                  <Globe size={16} /> {cloneMut.isPending ? "Mengambil…" : "Clone"}
+                </button>
+              </div>
+              {cloneError && <p style={{ margin: "10px 0 0", color: "#b91c1c", fontSize: 13 }}>{cloneError}</p>}
             </div>
             {loading ? <p>Memuat...</p> : projects.length === 0 && sharedProjects.length === 0 ? (
               <div style={{ ...card, borderStyle: "dashed", textAlign: "center", padding: "48px 24px" }}>

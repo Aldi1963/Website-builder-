@@ -24,5 +24,6 @@ export const api = {
   me: () => req("/me"),
   projects: () => req("/projects"),
   createProject: (name: string, framework: string) => req("/projects", { method: "POST", body: JSON.stringify({ name, framework }) }),
+  cloneFromURL: (url: string, name?: string) => req("/projects/clone-from-url", { method: "POST", body: JSON.stringify({ url, name: name || undefined }) }),
   getProject: (id: string) => req("/projects/" + id),
 };
