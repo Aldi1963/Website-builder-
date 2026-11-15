@@ -220,6 +220,11 @@ func TestCallAcceptanceToolRejectsNonAllowlist(t *testing.T) {
 	}
 	// navigate_page ada di allowlist tapi BELUM aktif di Fase 1 — acceptance
 	// internal BOLEH memakainya (bypass gate aktif, bukan allowlist).
+	// Fase 3: port preview harus dikunci dulu (di sini langsung, di
+	// produksi dipelajari dari pageURL di RunAcceptanceWithClient).
+	if err := c.SetPreviewPort(18098); err != nil {
+		t.Fatalf("SetPreviewPort gagal: %v", err)
+	}
 	if _, err := c.callAcceptanceTool(ctx, "navigate_page", map[string]interface{}{"url": "http://127.0.0.1:18098/healthy.html"}); err != nil {
 		t.Fatalf("navigate_page (allowlist, internal) harus lolos gate aktif: %v", err)
 	}
@@ -331,19 +336,26 @@ func TestAcceptanceRealChrome(t *testing.T) {
 	}
 	t.Logf("BUKTI sehat: %+v", res)
 
-	// Satu klien dipakai ulang untuk halaman error + sdk + screenshot.
-	tmpDir := t.TempDir()
-	client, err := NewClientForRun(0, tmpDir)
-	if err != nil {
-		t.Fatalf("NewClientForRun gagal: %v", err)
-	}
-	defer client.Close()
-	if err := client.Start(ctx); err != nil {
-		t.Fatalf("Start Chrome gagal: %v", err)
+	// Satu klien per acceptance (pola produksi RunAcceptance: budget
+	// per run maks 10 panggilan, satu acceptance memakai 5 — klien yang
+	// dipakai ulang untuk 3 acceptance akan kehabisan budget di tengah
+	// jalan, dan itu perilaku yang benar, bukan bug test).
+	newClient := func() *Client {
+		t.Helper()
+		tmpDir := t.TempDir()
+		client, err := NewClientForRun(0, tmpDir)
+		if err != nil {
+			t.Fatalf("NewClientForRun gagal: %v", err)
+		}
+		t.Cleanup(func() { _ = client.Close() })
+		if err := client.Start(ctx); err != nil {
+			t.Fatalf("Start Chrome gagal: %v", err)
+		}
+		return client
 	}
 
 	// (b) halaman error terdeteksi dengan isi console error yang benar.
-	resErr, err := RunAcceptanceWithClient(ctx, client, srv.URL+"/error.html")
+	resErr, err := RunAcceptanceWithClient(ctx, newClient(), srv.URL+"/error.html")
 	if err == nil {
 		t.Fatalf("halaman error harus gagal acceptance, dapat %+v", resErr)
 	}
@@ -359,7 +371,7 @@ func TestAcceptanceRealChrome(t *testing.T) {
 	t.Logf("BUKTI error: %s", out)
 
 	// Halaman dengan SDK cloudAuth/cloudDb: installed + loggedOut.
-	resSDK, err := RunAcceptanceWithClient(ctx, client, srv.URL+"/sdk.html")
+	resSDK, err := RunAcceptanceWithClient(ctx, newClient(), srv.URL+"/sdk.html")
 	if err != nil {
 		t.Fatalf("halaman SDK harus lolos, dapat: %v (%+v)", err, resSDK)
 	}
@@ -370,7 +382,7 @@ func TestAcceptanceRealChrome(t *testing.T) {
 
 	// Screenshot satu tembakan: PNG asli tersimpan.
 	shotPath := filepath.Join(t.TempDir(), "acceptance-shot.png")
-	if err := CaptureScreenshotWithClient(ctx, client, healthyURL, shotPath); err != nil {
+	if err := CaptureScreenshotWithClient(ctx, newClient(), healthyURL, shotPath); err != nil {
 		t.Fatalf("screenshot Chrome gagal: %v", err)
 	}
 	data, err := os.ReadFile(shotPath)

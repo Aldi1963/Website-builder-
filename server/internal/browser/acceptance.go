@@ -102,8 +102,14 @@ func RunAcceptance(ctx context.Context, pageURL string) (map[string]interface{},
 
 // RunAcceptanceWithClient menjalankan acceptance memakai Client yang sudah
 // Start (dipakai test + pemakai yang mengelola lifecycle sendiri).
+// Port preview dipelajari dari pageURL (setPreviewPortFromURL — pageURL
+// dibangun pemanggil dari port dev server, bukan input model); bila
+// Client sudah dikunci ke port lain, ditolak fail-closed.
 func RunAcceptanceWithClient(ctx context.Context, client *Client, pageURL string) (map[string]interface{}, error) {
 	if err := ValidateURL(pageURL); err != nil {
+		return map[string]interface{}{"output": err.Error()}, err
+	}
+	if err := client.setPreviewPortFromURL(pageURL); err != nil {
 		return map[string]interface{}{"output": err.Error()}, err
 	}
 	if _, err := client.callAcceptanceTool(ctx, "navigate_page", map[string]interface{}{"url": pageURL}); err != nil {
@@ -227,6 +233,9 @@ func CaptureScreenshotWithClient(ctx context.Context, client *Client, pageURL, o
 	if err := ValidateURL(pageURL); err != nil {
 		return err
 	}
+	if err := client.setPreviewPortFromURL(pageURL); err != nil {
+		return err
+	}
 	if _, err := client.callAcceptanceTool(ctx, "navigate_page", map[string]interface{}{"url": pageURL}); err != nil {
 		return fmt.Errorf("browser: screenshot gagal navigasi ke %s: %w", pageURL, err)
 	}
@@ -258,17 +267,21 @@ func CaptureScreenshotWithClient(ctx context.Context, client *Client, pageURL, o
 
 // callAcceptanceTool memanggil satu tool MCP untuk kebutuhan acceptance
 // internal. Sama seperti Client.CallTool (timeout 30 dtk mengikuti ctx,
-// cap 64 KiB, validasi URL) KECUALI gate aktif Fase 1 tidak dipakai:
-// yang diperiksa hanya allowlist §5 (IsAllowlisted). Gate aktif
-// membatasi tool yang boleh dipanggil MODEL; acceptance adalah pemakaian
-// internal server, bukan perintah model.
-func (c *Client) callAcceptanceTool(ctx context.Context, name string, args map[string]interface{}) (string, error) {
+// cap 64 KiB TERMASUK jalur error tool, validasi URL ke port preview yang
+// sudah dikunci + budget per run yang sama — pemanggilan acceptance
+// MENGHABISKAN jatah yang sama dengan pemanggilan model) KECUALI gate
+// aktif Fase 1 tidak dipakai: yang diperiksa hanya allowlist §5
+// (IsAllowlisted). Gate aktif membatasi tool yang boleh dipanggil MODEL;
+// acceptance adalah pemakaian internal server, bukan perintah model.
+func (c *Client) callAcceptanceTool(ctx context.Context, name string, args map[string]interface{}) (out string, err error) {
+	start := time.Now()
+	defer func() { c.observeCall(name, start, err) }()
 	if !IsAllowlisted(name) {
 		return "", fmt.Errorf("browser: tool %q di luar allowlist §5", name)
 	}
 	if rawURL, ok := args["url"]; ok {
 		if s, ok := rawURL.(string); ok && strings.TrimSpace(s) != "" {
-			if err := ValidateURL(s); err != nil {
+			if err := c.validatePreviewURL(s); err != nil {
 				return "", err
 			}
 		}
@@ -276,11 +289,15 @@ func (c *Client) callAcceptanceTool(ctx context.Context, name string, args map[s
 	c.mu.Lock()
 	session := c.session
 	started := c.started
+	callTimeout := c.callTimeout
 	c.mu.Unlock()
 	if !started || session == nil {
 		return "", fmt.Errorf("browser: client belum start")
 	}
-	callCtx, cancel := context.WithTimeout(ctx, CallTimeout)
+	if err := c.reserveCall(); err != nil {
+		return "", err
+	}
+	callCtx, cancel := context.WithTimeout(ctx, callTimeout)
 	defer cancel()
 	res, err := session.CallTool(callCtx, &mcp.CallToolParams{Name: name, Arguments: args})
 	if err != nil {

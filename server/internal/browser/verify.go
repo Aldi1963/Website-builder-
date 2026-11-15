@@ -70,12 +70,16 @@ const verifySettleDelay = time.Second
 
 // VerifyPreview menjalankan satu putaran verifikasi scripted terhadap
 // previewURL (wajib lolos ValidateURL — hanya origin preview proyek).
-// screenshotName adalah nama file di dalam workspace server MCP, mis.
-// "screenshot-1.png". Screenshot TIDAK dibaca model (text-only);
-// path-nya dikembalikan untuk dicatat sebagai artifact run.
+// Port preview dipelajari dari previewURL itu sendiri
+// (setPreviewPortFromURL): previewURL dibangun pipeline dari port dev
+// server yang ia start (kode server tepercaya, bukan input model), jadi
+// inilah sumber port yang sah; bila Client sudah dikunci ke port lain,
+// URL ini ditolak. screenshotName adalah nama file di dalam workspace
+// server MCP, mis. "screenshot-1.png". Screenshot TIDAK dibaca model
+// (text-only); path-nya dikembalikan untuk dicatat sebagai artifact run.
 func VerifyPreview(ctx context.Context, c *Client, previewURL, screenshotName string) (VerificationResult, error) {
 	var res VerificationResult
-	if err := ValidateURL(previewURL); err != nil {
+	if err := c.setPreviewPortFromURL(previewURL); err != nil {
 		return res, err
 	}
 	if strings.TrimSpace(screenshotName) == "" {

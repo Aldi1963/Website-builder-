@@ -86,6 +86,16 @@ func runBrowserVerificationLoop(ctx context.Context, db *gorm.DB, runID uint, ru
 	for round := 1; round <= MaxBrowserVerifyRounds; round++ {
 		outcome.Rounds = round
 		updateAgentPhase(db, runID, "browser_verify")
+		// Kunci port preview putaran ini SEBELUM VerifyPreview: port
+		// berasal dari acceptance runtime (kode server tepercaya) dan
+		// bisa berubah antar putaran (dev server di-start ulang sesudah
+		// perbaikan). Tanpa ini, navigate_page di VerifyPreview ditolak
+		// fail-closed oleh validatePreviewURL.
+		if err := bc.SetPreviewPort(curPort); err != nil {
+			recordAgentTool(db, runID, "browser_verify", "browser_verify", "failed", fmt.Sprintf("putaran %d/%d", round, MaxBrowserVerifyRounds), "Verifikasi browser gagal dieksekusi: "+err.Error(), err.Error())
+			outcome.Summary = "Verifikasi browser tidak bisa dijalankan: " + err.Error()
+			return outcome, repairedAll, lastAcceptance, lastErr
+		}
 		previewURL := fmt.Sprintf("http://127.0.0.1:%d", curPort)
 		shotName := fmt.Sprintf("screenshot-%d.png", round)
 		res, verr := browser.VerifyPreview(ctx, bc, previewURL, shotName)
@@ -317,6 +327,20 @@ func executeAgentPipeline(runCtx context.Context, db *gorm.DB, in agentPipelineI
 		} else {
 			browserClient = bc
 			defer browserClient.Close()
+			// Dev server proyek ini mungkin SUDAH jalan (dibuka user /
+			// run sebelumnya): kunci port itu sekarang supaya panggilan
+			// browser model-driven (navigate_page) sudah boleh membuka
+			// preview sendiri sebelum acceptance pertama. Port berasal
+			// dari registry dev server server sendiri (runtimeDev.ports),
+			// bukan input model. Bila dev server belum jalan, port tetap
+			// belum diketahui dan navigate_page ditolak fail-closed
+			// sampai loop verifikasi menguncinya (lihat
+			// runBrowserVerificationLoop); tool tanpa URL tetap jalan.
+			runtimeDev.Lock()
+			if devPort := runtimeDev.ports[p.ID]; devPort > 0 {
+				_ = browserClient.SetPreviewPort(devPort)
+			}
+			runtimeDev.Unlock()
 			if tools, lerr := browserClient.ListTools(runCtx); lerr != nil {
 				slog.Error("agent pipeline: tools/list browser gagal, lanjut tanpa alat browser", "runId", run.ID, "error", lerr)
 				browserClient = nil
