@@ -210,3 +210,31 @@ func TestLoadQueueInProcessAndWorkers(t *testing.T) {
 		t.Fatalf("harus ada peringatan WEBBUILDER_QUEUE_WORKERS, dapat: %v", warnings)
 	}
 }
+
+func TestLoadBrowserToolsDefaultOff(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret")
+	t.Setenv("WEBBUILDER_ENABLE_BROWSER_TOOLS", "")
+	cfg, _, err := Load()
+	if err != nil {
+		t.Fatalf("Load tidak boleh error: %v", err)
+	}
+	if cfg.BrowserTools {
+		t.Fatal("WEBBUILDER_ENABLE_BROWSER_TOOLS kosong harus default mati")
+	}
+	t.Setenv("WEBBUILDER_ENABLE_BROWSER_TOOLS", "1")
+	cfg, _, err = Load()
+	if err != nil {
+		t.Fatalf("Load tidak boleh error: %v", err)
+	}
+	if !cfg.BrowserTools || !cfg.Summary()["browser_tools"] {
+		t.Fatal(`WEBBUILDER_ENABLE_BROWSER_TOOLS=1 harus menyalakan BrowserTools`)
+	}
+	t.Setenv("WEBBUILDER_ENABLE_BROWSER_TOOLS", "true")
+	cfg, _, err = Load()
+	if err != nil {
+		t.Fatalf("Load tidak boleh error: %v", err)
+	}
+	if cfg.BrowserTools {
+		t.Fatal(`nilai "true" (bukan "1") harus tetap mati`)
+	}
+}
