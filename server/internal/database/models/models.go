@@ -50,11 +50,20 @@ type ChatSession struct {
 }
 
 type ChatMessage struct {
-	ID        uint      `gorm:"primaryKey" json:"id"`
-	SessionID uint      `gorm:"index;not null" json:"sessionId"`
-	Role      string    `gorm:"size:20;not null" json:"role"`
-	Content   string    `gorm:"type:text" json:"content"`
-	CreatedAt time.Time `json:"createdAt"`
+	ID        uint   `gorm:"primaryKey" json:"id"`
+	SessionID uint   `gorm:"index;not null" json:"sessionId"`
+	Role      string `gorm:"size:20;not null" json:"role"`
+	Content   string `gorm:"type:text" json:"content"`
+	// Verification menyimpan hasil verifikasi browser run ini sebagai JSON
+	// mentah — objek yang sama persis dengan field `verification` di event
+	// SSE `result` (attempted/passed/rounds/consoleErrors/failedRequests/
+	// screenshotPath/screenshotUrl), supaya kartu verifikasi bertahan
+	// setelah reload. Kosong ("") = tidak ada verifikasi (pesan lama,
+	// pesan user, run tanpa verifikasi) — tidak ada kartu.
+	// Disimpan sebagai string JSON seperti kolom JSON lain di codebase
+	// (Project.Files, AgentRun.ChangedFiles), bukan serializer GORM.
+	Verification string    `gorm:"type:text;default:''" json:"-"`
+	CreatedAt    time.Time `json:"createdAt"`
 }
 
 type ProjectVersion struct {

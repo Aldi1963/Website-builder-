@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getToken } from "../lib/api";
 import ProjectSettingsModal from "./ProjectSettingsModal";
-import VerificationCard, { parseResultVerification } from "../components/VerificationCard";
+import VerificationCard, { parseHistoryMessage, parseResultVerification } from "../components/VerificationCard";
 import { useBuilderStore, type ChatVerification } from "../lib/store/builderStore";
 import {
   useAddComment,
@@ -701,12 +701,17 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
     }
   }, [pid, projectQuery.data]);
   // Change 1: Load chat history (sekali per pid, hanya bila chat masih kosong).
+  // Field `verification` tiap pesan (kontrak backend: objek JSON yang sama
+  // dengan event SSE "result") direstore lewat parseHistoryMessage — parser
+  // yang sama dengan jalur live — supaya kartu verifikasi tampil lagi
+  // setelah reload, identik dengan kartu sesi live. Sebelumnya map ini
+  // membuang verification sehingga kartu hilang setelah reload (PR #14).
   useEffect(() => {
     const messages = chatQuery.data?.messages;
     if (!messages?.length || chatLoadedRef.current === pid) return;
     chatLoadedRef.current = pid;
     if (useBuilderStore.getState().msgs.length === 0) {
-      setMsgs(messages.map((m: any) => ({ role: m.role, content: m.content })));
+      setMsgs(messages.map((m: any) => parseHistoryMessage(m)));
     }
   }, [pid, chatQuery.data]);
 

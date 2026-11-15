@@ -512,8 +512,11 @@ AUTONOMOUS BLUEPRINT (EMPTY PROJECT):
 		full = "Preview belum siap karena masih ada file lama yang belum dipakai. Saya akan menggantinya atau menghapusnya, lalu menjalankan build ulang."
 	}
 	// Save AI response to DB
+	var assistantMsgID uint
 	if full != "" {
-		db.Create(&models.ChatMessage{SessionID: session.ID, Role: "assistant", Content: full})
+		assistantMsg := models.ChatMessage{SessionID: session.ID, Role: "assistant", Content: full}
+		db.Create(&assistantMsg)
+		assistantMsgID = assistantMsg.ID
 		// Catat pemakaian agar kuota bulanan terpotong (tanpa ini user free dapat AI unlimited)
 		recordAIUsage(db, in.UserID, provider.Model, sysPrompt+userMsg, full)
 	}
@@ -748,7 +751,24 @@ AUTONOMOUS BLUEPRINT (EMPTY PROJECT):
 		}
 	}
 	send("result", gin.H{"status": finalStatus, "summary": finalSummary, "changedFiles": changed, "intent": intent,
-		"verification":   gin.H{"attempted": verification.Attempted, "passed": verification.Passed, "rounds": verification.Rounds, "consoleErrors": verification.ConsoleErrors, "failedRequests": verification.FailedRequests, "screenshotPath": verification.ScreenshotPath, "screenshotUrl": verificationScreenshotURL(p.ID, run.ID, verification.ScreenshotPath)},
+		"verification":   saveChatVerification(db, assistantMsgID, p.ID, run.ID, verification),
 		"screenshotPath": verification.ScreenshotPath})
 	return nil
+}
+
+// saveChatVerification menyimpan hasil verifikasi browser pada pesan
+// asisten run ini (kolom ChatMessage.Verification) dan mengembalikan
+// objek yang sama persis untuk event SSE `result` — satu sumber, dua
+// pemakaian, supaya riwayat setelah reload menampilkan kartu yang sama
+// dengan chat live. Tidak menyimpan apa pun bila loop verifikasi tidak
+// jalan (Attempted false) atau tidak ada pesan asisten (msgID 0 —
+// jawaban model kosong): pesan seperti itu tetap tanpa kartu.
+func saveChatVerification(db *gorm.DB, msgID, projectID, runID uint, verification browserVerificationOutcome) gin.H {
+	verificationObj := gin.H{"attempted": verification.Attempted, "passed": verification.Passed, "rounds": verification.Rounds, "consoleErrors": verification.ConsoleErrors, "failedRequests": verification.FailedRequests, "screenshotPath": verification.ScreenshotPath, "screenshotUrl": verificationScreenshotURL(projectID, runID, verification.ScreenshotPath)}
+	if verification.Attempted && msgID != 0 {
+		if vj, err := json.Marshal(verificationObj); err == nil {
+			db.Model(&models.ChatMessage{}).Where("id = ?", msgID).Update("verification", string(vj))
+		}
+	}
+	return verificationObj
 }

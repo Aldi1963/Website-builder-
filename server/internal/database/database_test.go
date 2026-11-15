@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"sort"
 	"testing"
+
+	"webbuilder/internal/database/models"
 )
 
 func TestOpenDefaultsToSQLite(t *testing.T) {
@@ -125,8 +127,8 @@ func TestMigrateUpPostgres(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v != 2 {
-		t.Fatalf("versi migrasi = %d, want 2", v)
+	if v != 3 {
+		t.Fatalf("versi migrasi = %d, want 3", v)
 	}
 	var tables []string
 	if err := db.Raw("SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename NOT LIKE 'goose_%' ORDER BY tablename").Scan(&tables).Error; err != nil {
@@ -154,5 +156,33 @@ func TestMigrateUpPostgres(t *testing.T) {
 	}
 	if err := db.Exec("INSERT INTO projects (user_id, name, slug, seoog_image, s_eofavicon, created_at, updated_at) VALUES (1, 'P', 'p', 'og.png', 'fav.ico', NOW(), NOW())").Error; err != nil {
 		t.Fatalf("insert project (kolom GORM): %v", err)
+	}
+	// Kolom verification (migrasi 00003) ada dan bisa dibaca/tulis GORM
+	// dengan isi JSON yang sama seperti event SSE `result`.
+	if err := db.Exec("INSERT INTO chat_sessions (project_id, title, created_at) VALUES (1, 'S', NOW())").Error; err != nil {
+		t.Fatalf("insert chat_session: %v", err)
+	}
+	wantVer := `{"attempted":true,"passed":true,"rounds":1,"consoleErrors":[],"failedRequests":[],"screenshotPath":"runtime/project-1/run-1/screenshot-1.png","screenshotUrl":"/api/projects/1/runtime/screenshots/verification/1/screenshot-1.png"}`
+	msg := models.ChatMessage{SessionID: 1, Role: "assistant", Content: "selesai", Verification: wantVer}
+	if err := db.Create(&msg).Error; err != nil {
+		t.Fatalf("insert chat_message (kolom verification): %v", err)
+	}
+	var back models.ChatMessage
+	if err := db.First(&back, msg.ID).Error; err != nil {
+		t.Fatalf("baca chat_message: %v", err)
+	}
+	if back.Verification != wantVer {
+		t.Fatalf("verification = %q, want %q", back.Verification, wantVer)
+	}
+	// Baris lama tanpa verifikasi: kolom terbaca sebagai string kosong.
+	if err := db.Exec("INSERT INTO chat_messages (session_id, role, content, created_at) VALUES (1, 'user', 'halo', NOW())").Error; err != nil {
+		t.Fatalf("insert chat_message lama: %v", err)
+	}
+	var legacy models.ChatMessage
+	if err := db.Where("role = ?", "user").First(&legacy).Error; err != nil {
+		t.Fatalf("baca chat_message lama: %v", err)
+	}
+	if legacy.Verification != "" {
+		t.Fatalf("verification pesan lama = %q, want kosong", legacy.Verification)
 	}
 }

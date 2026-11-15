@@ -46,6 +46,9 @@ Satu pilihan saja: **goose v3** (`github.com/pressly/goose/v3`).
   `SEOFavicon`), tabel `git_hub_configs` (dari `GitHubConfig`).
 - `server/migrations/00002_queue_jobs.sql` — tabel `queue_jobs` untuk adapter
   queue berbasis DB (lihat `docs/queue.md`).
+- `server/migrations/00003_chat_message_verification.sql` — kolom `verification`
+  di `chat_messages`: hasil verifikasi browser per pesan asisten (JSON mentah,
+  objek yang sama dengan field `verification` di event SSE `result`).
 - `server/migrations/migrations.go` — embed `*.sql` ke binary.
 - `server/cmd/migrate/main.go` — runner manual: `up`, `status`, `down-to N`.
 - `server/main.go` — hanya blok buka DB + AutoMigrate yang diubah:
@@ -76,7 +79,7 @@ Postgres`). Jalur SQLite tidak memakai tool ini.
 
 ### Menambah migrasi baru
 
-1. Buat `server/migrations/00003_<nama>.sql` dengan blok `-- +goose Up` dan
+1. Buat `server/migrations/00004_<nama>.sql` dengan blok `-- +goose Up` dan
    `-- +goose Down`. Nomor harus naik dan unik.
 2. **Jangan pernah mengedit file migrasi yang sudah diterapkan di mana pun**
    (live/staging/dev orang lain) — buat file baru.
@@ -102,7 +105,7 @@ pg_dump "postgres://webbuilder:PASSWORD@HOST:5434/webbuilder?sslmode=disable" \
 # 1. Terapkan skema goose ke Postgres kosong.
 cd server
 export DATABASE_URL="postgres://webbuilder:PASSWORD@HOST:5434/webbuilder?sslmode=disable"
-go run ./cmd/migrate up        # harus berakhir di versi 2
+go run ./cmd/migrate up        # harus berakhir di versi 3
 go run ./cmd/migrate status
 
 # 2. Ekspor data dari SQLite ke SQL INSERT (tanpa DDL).
@@ -190,7 +193,7 @@ Ini rollback yang normal bila Postgres bermasalah di produksi:
 - `go test ./internal/database/` — SQLite: open default, tolak URL tak
   dikenal, 33 model tanpa duplikat, AutoMigrate membuat ke-33 tabel.
 - Postgres-live (instance scratch port 55433, database `wbtest_mig`,
-  dihapus setelah uji): `TestMigrateUpPostgres` — goose Up ke versi 2,
+  dihapus setelah uji): `TestMigrateUpPostgres` — goose Up ke versi 3,
   34 tabel (33 + `queue_jobs`), lalu insert GORM ke `users`/`projects`
   (termasuk kolom `seoog_image`/`s_eofavicon`) berhasil.
 - Kesetaraan skema: `pg_dump --schema-only` dari database hasil AutoMigrate
@@ -198,7 +201,7 @@ Ini rollback yang normal bila Postgres bermasalah di produksi:
   default, PK, index). Satu-satunya selisih adalah tabel `queue_jobs`
   tambahan dari migrasi 00002, sesuai rencana.
 - `go run ./cmd/migrate` end-to-end pada database scratch `wbtest_cli`:
-  `status` → 0, `up` → 2, `down-to 1` → 1, `up` → 2, tanpa `DATABASE_URL`
+  `status` → 0, `up` → 3, `down-to 1` → 1, `up` → 3, tanpa `DATABASE_URL`
   → menolak (exit 1).
 
 ## Batasan yang diketahui
