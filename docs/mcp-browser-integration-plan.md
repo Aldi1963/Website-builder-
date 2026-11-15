@@ -140,6 +140,10 @@ Tujuan: membuktikan asumsi paling berisiko sebelum menulis kode produksi.
      env `CHROME_DEVTOOLS_MCP_CMD`, default `npx -y chrome-devtools-mcp@latest`),
      flag wajib `--headless --isolated --no-usage-statistics --no-performance-crux`,
      `--executablePath` dari `CHROME_FOR_TESTING_PATH`.
+     (Implementasi Fase 1: `--isolated` diganti `--user-data-dir` eksplisit per
+     run — efeknya sama (profil sementara), tapi `Close()` bisa menghapusnya
+     secara deterministik; `--isolated` membuat temp dir yang dibersihkan
+     server MCP sendiri.)
    - `tools.go`: `tools/list` → filter allowlist → konversi ke `AgentToolSpec`
      (prefix `browser_`), cap skema.
    - `lifecycle.go`: satu klien per run, user-data-dir per run, kill + hapus
