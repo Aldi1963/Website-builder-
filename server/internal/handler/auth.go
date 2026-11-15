@@ -162,6 +162,8 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB) {
 	auth.POST("/projects/:id/github/pull", githubPull(db))
 	// Publish
 	auth.POST("/projects/:id/publish", publishProject(db))
+	auth.GET("/projects/:id/security-scan", getSecurityScan(db))
+	auth.POST("/projects/:id/security-scan", runSecurityScan(db))
 	auth.POST("/deployments/:id/rollback", rollbackDeployment(db))
 	// Platform
 	auth.GET("/templates", listTemplates(db))

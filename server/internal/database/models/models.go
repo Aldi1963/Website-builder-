@@ -16,30 +16,31 @@ type User struct {
 }
 
 type Project struct {
-	ID           uint      `gorm:"primaryKey" json:"id"`
-	UserID       uint      `gorm:"index;not null" json:"userId"`
-	Name         string    `gorm:"size:255;not null" json:"name"`
-	Slug         string    `gorm:"size:100;uniqueIndex;not null" json:"slug"`
-	Framework    string    `gorm:"size:20;default:'react'" json:"framework"`
-	Files        string    `gorm:"type:text;default:'{}'" json:"files"`
-	Published    bool      `gorm:"default:false" json:"published"`
-	PublishState string    `gorm:"size:20;default:'draft'" json:"publishState"`
-	BuildStatus  string    `gorm:"size:20;default:'unknown'" json:"buildStatus"`
-	BuildError   string    `gorm:"type:text;default:''" json:"buildError,omitempty"`
+	ID           uint       `gorm:"primaryKey" json:"id"`
+	UserID       uint       `gorm:"index;not null" json:"userId"`
+	Name         string     `gorm:"size:255;not null" json:"name"`
+	Slug         string     `gorm:"size:100;uniqueIndex;not null" json:"slug"`
+	Framework    string     `gorm:"size:20;default:'react'" json:"framework"`
+	Files        string     `gorm:"type:text;default:'{}'" json:"files"`
+	Published    bool       `gorm:"default:false" json:"published"`
+	PublishState string     `gorm:"size:20;default:'draft'" json:"publishState"`
+	BuildStatus  string     `gorm:"size:20;default:'unknown'" json:"buildStatus"`
+	BuildError   string     `gorm:"type:text;default:''" json:"buildError,omitempty"`
 	BuiltAt      *time.Time `json:"builtAt,omitempty"`
 	PublishedAt  *time.Time `json:"publishedAt,omitempty"`
-	Memory       string    `gorm:"type:text;default:''" json:"memory"`
-	Blueprint    string    `gorm:"type:text;default:''" json:"blueprint"`
-	ShareToken   string    `gorm:"size:64;default:''" json:"-"`
-	SitePassword string    `gorm:"size:255;default:''" json:"-"`
-	SEOTitle     string    `gorm:"size:255;default:''" json:"seoTitle"`
-	SEODesc      string    `gorm:"size:500;default:''" json:"seoDesc"`
-	SEOOGImage   string    `gorm:"size:500;default:''" json:"seoOgImage"`
-	SEOFavicon   string    `gorm:"size:500;default:''" json:"seoFavicon"`
-	FormToken    string    `gorm:"size:64;index;default:''" json:"-"`
-	FormEnabled  bool      `gorm:"default:true" json:"formEnabled"`
-	CreatedAt    time.Time `json:"createdAt"`
-	UpdatedAt    time.Time `json:"updatedAt"`
+	SecurityScan string     `gorm:"type:text;default:''" json:"-"`
+	Memory       string     `gorm:"type:text;default:''" json:"memory"`
+	Blueprint    string     `gorm:"type:text;default:''" json:"blueprint"`
+	ShareToken   string     `gorm:"size:64;default:''" json:"-"`
+	SitePassword string     `gorm:"size:255;default:''" json:"-"`
+	SEOTitle     string     `gorm:"size:255;default:''" json:"seoTitle"`
+	SEODesc      string     `gorm:"size:500;default:''" json:"seoDesc"`
+	SEOOGImage   string     `gorm:"size:500;default:''" json:"seoOgImage"`
+	SEOFavicon   string     `gorm:"size:500;default:''" json:"seoFavicon"`
+	FormToken    string     `gorm:"size:64;index;default:''" json:"-"`
+	FormEnabled  bool       `gorm:"default:true" json:"formEnabled"`
+	CreatedAt    time.Time  `json:"createdAt"`
+	UpdatedAt    time.Time  `json:"updatedAt"`
 }
 
 type ChatSession struct {

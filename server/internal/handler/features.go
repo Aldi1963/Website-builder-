@@ -1084,6 +1084,15 @@ func publishProject(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(409, gin.H{"status": "blocked", "message": "Artifact production belum ada. Jalankan build project dulu sebelum publish."})
 			return
 		}
+		// Security scan sebelum publish: temuan KRITIS memblokir publish
+		// (fail-closed), sisanya jadi peringatan di respons. Laporan
+		// disimpan di proyek supaya bisa dibaca ulang (GET security-scan).
+		scanRep := scanProject(*p)
+		saveScanReport(db, *p, scanRep)
+		if scanRep.Blocked {
+			c.JSON(409, gin.H{"status": "blocked", "message": fmt.Sprintf("Publish diblokir security scan: %d temuan kritis. Perbaiki dulu, lalu publish ulang.", scanRep.Summary.Critical), "buildStatus": p.BuildStatus, "publishState": p.PublishState, "securityScan": scanRep})
+			return
+		}
 		// Pastikan SDK cloud ikut terkirim bersama artifact, walau dist dibuat
 		// sebelum SDK ditambahkan.
 		if err := writeProjectSDK(dir, p.ID); err == nil {
@@ -1100,7 +1109,11 @@ func publishProject(db *gorm.DB) gin.HandlerFunc {
 		notify(db, p.UserID, "Deployment selesai", p.Name+" berhasil dipublish")
 		pubURL := siteBaseURL(db) + "/pub/" + p.Slug
 		fireWebhook(db, p.ID, "deploy", map[string]interface{}{"url": pubURL, "deploymentId": d.ID})
-		c.JSON(200, gin.H{"message": "Dipublish", "url": pubURL, "slug": p.Slug})
+		resp := gin.H{"message": "Dipublish", "url": pubURL, "slug": p.Slug, "securityScan": scanRep}
+		if scanRep.Summary.Total > 0 {
+			resp["securityWarning"] = fmt.Sprintf("Security scan: %d temuan non-kritis (%d high, %d medium, %d low). Bukan pemblokir, tapi periksa sebelum mengumumkan URL ini.", scanRep.Summary.Total, scanRep.Summary.High, scanRep.Summary.Medium, scanRep.Summary.Low)
+		}
+		c.JSON(200, resp)
 	}
 }
 

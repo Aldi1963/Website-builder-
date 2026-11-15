@@ -127,8 +127,8 @@ func TestMigrateUpPostgres(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v != 4 {
-		t.Fatalf("versi migrasi = %d, want 4", v)
+	if v != 5 {
+		t.Fatalf("versi migrasi = %d, want 5", v)
 	}
 	var tables []string
 	if err := db.Raw("SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename NOT LIKE 'goose_%' ORDER BY tablename").Scan(&tables).Error; err != nil {
@@ -200,5 +200,16 @@ func TestMigrateUpPostgres(t *testing.T) {
 	}
 	if legacy.Provider != "" || legacy.Model != "" {
 		t.Fatalf("provider/model pesan lama = %q/%q, want kosong", legacy.Provider, legacy.Model)
+	}
+	// Kolom security_scan (migrasi 00005) ada dan bisa dibaca/tulis GORM.
+	if err := db.Exec("UPDATE projects SET security_scan = ? WHERE id = 1", `{"passed":true}`).Error; err != nil {
+		t.Fatalf("update project security_scan: %v", err)
+	}
+	var proj models.Project
+	if err := db.First(&proj, 1).Error; err != nil {
+		t.Fatalf("baca project: %v", err)
+	}
+	if proj.SecurityScan != `{"passed":true}` {
+		t.Fatalf("security_scan = %q, want %q", proj.SecurityScan, `{"passed":true}`)
 	}
 }

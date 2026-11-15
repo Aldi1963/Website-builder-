@@ -79,7 +79,7 @@ Postgres`). Jalur SQLite tidak memakai tool ini.
 
 ### Menambah migrasi baru
 
-1. Buat `server/migrations/00004_<nama>.sql` dengan blok `-- +goose Up` dan
+1. Buat `server/migrations/00005_<nama>.sql` dengan blok `-- +goose Up` dan
    `-- +goose Down`. Nomor harus naik dan unik.
 2. **Jangan pernah mengedit file migrasi yang sudah diterapkan di mana pun**
    (live/staging/dev orang lain) — buat file baru.
@@ -105,7 +105,7 @@ pg_dump "postgres://webbuilder:PASSWORD@HOST:5434/webbuilder?sslmode=disable" \
 # 1. Terapkan skema goose ke Postgres kosong.
 cd server
 export DATABASE_URL="postgres://webbuilder:PASSWORD@HOST:5434/webbuilder?sslmode=disable"
-go run ./cmd/migrate up        # harus berakhir di versi 3
+go run ./cmd/migrate up        # harus berakhir di versi 5
 go run ./cmd/migrate status
 
 # 2. Ekspor data dari SQLite ke SQL INSERT (tanpa DDL).
@@ -193,8 +193,8 @@ Ini rollback yang normal bila Postgres bermasalah di produksi:
 - `go test ./internal/database/` — SQLite: open default, tolak URL tak
   dikenal, 33 model tanpa duplikat, AutoMigrate membuat ke-33 tabel.
 - Postgres-live (instance scratch port 55433, database `wbtest_mig`,
-  dihapus setelah uji): `TestMigrateUpPostgres` — goose Up ke versi 3,
-  34 tabel (33 + `queue_jobs`), lalu insert GORM ke `users`/`projects`
+  dihapus setelah uji): `TestMigrateUpPostgres` — goose Up ke versi 5,
+  35 tabel (34 + `queue_jobs`), lalu insert GORM ke `users`/`projects`
   (termasuk kolom `seoog_image`/`s_eofavicon`) berhasil.
 - Kesetaraan skema: `pg_dump --schema-only` dari database hasil AutoMigrate
   vs database hasil goose — **identik untuk ke-33 tabel** (tabel, sequence,
