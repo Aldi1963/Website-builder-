@@ -10,14 +10,16 @@
 *password*
 *secret*
 
-# Runtime and local state
-data/
-backups/
-pgdata/
-pgrun/
-runtime/
-logs/
-projects/
+# Runtime and local state (anchored to repo root: unanchored patterns would
+# also ignore source packages with the same name, e.g.
+# server/internal/runtime/)
+/data/
+/backups/
+/pgdata/
+/pgrun/
+/runtime/
+/logs/
+/projects/
 .webbuilder-supervisor.lock
 *.db
 *.sqlite
