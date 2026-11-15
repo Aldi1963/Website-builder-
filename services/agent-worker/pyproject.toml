@@ -1,0 +1,9 @@
+[project]
+name = "webbuilder-agent-worker"
+version = "0.1.0"
+description = "AI planning and evaluation worker boundary for WebBuilder"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.ruff]
+line-length = 100

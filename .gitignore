@@ -1,0 +1,44 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+.jwt-secret
+.pg-password
+*.pem
+*.key
+*token*
+*password*
+*secret*
+
+# Runtime and local state
+data/
+backups/
+pgdata/
+pgrun/
+runtime/
+logs/
+projects/
+.webbuilder-supervisor.lock
+*.db
+*.sqlite
+*.sqlite3
+
+# Dependencies and generated output
+node_modules/
+web/dist/
+server/web/dist/
+web/tsconfig.tsbuildinfo
+server/server
+server/webbuilder
+server/webbuilder.new
+
+# Local browser artifacts
+browser-*.cjs
+*.png
+*.jpg
+*.jpeg
+
+# OS/editor
+.DS_Store
+.vscode/
+.idea/
