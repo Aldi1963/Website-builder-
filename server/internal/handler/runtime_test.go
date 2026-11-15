@@ -39,6 +39,22 @@ func manifestDeps(t *testing.T, manifest map[string]interface{}, key string) map
 	return deps
 }
 
+func TestStripPreviewTokenQuery(t *testing.T) {
+	cases := map[string]string{
+		"":                       "",
+		"foo=bar":                "foo=bar",
+		"token=pv_abc":           "",
+		"token=pv_a.b.c&foo=bar": "foo=bar",
+		"foo=bar&token=pv_x":     "foo=bar",
+		"token=pv_x&token=pv_y":  "",
+	}
+	for in, want := range cases {
+		if got := stripPreviewTokenQuery(in); got != want {
+			t.Fatalf("stripPreviewTokenQuery(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestPrepareRuntimeWorkspaceAddsViteReactDeps(t *testing.T) {
 	db := openAgentTestDB(t)
 	user := makeAdminUser(t, db, "uji-vite-deps@example.com")

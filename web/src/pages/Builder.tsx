@@ -1,6 +1,18 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getToken } from "../lib/api";
+import {
+  findLiteralOccurrences,
+  applyLiteralEdit,
+  findStyleTarget,
+  applyStyleEdit,
+  occurrenceLabel,
+  rankOccurrences,
+  excludeHeadOccurrences,
+  hasTagOccurrence,
+  type TextOccurrence,
+  type StyleTarget,
+} from "../lib/visualEditor";
 import ProjectSettingsModal from "./ProjectSettingsModal";
 import VerificationCard, { parseHistoryMessage, parseResultVerification } from "../components/VerificationCard";
 import { useBuilderStore, type ChatVerification } from "../lib/store/builderStore";
@@ -93,6 +105,26 @@ function useIsMobile() {
 }
 
 interface FileNode { path: string; children?: FileNode[] }
+
+// Visual editor: getComputedStyle mengembalikan warna rgb()/rgba().
+// Ubah ke hex untuk <input type="color">; transparan -> "" (tidak diedit).
+function rgbToHex(value: string | undefined): string {
+  if (!value) return "";
+  const v = value.trim();
+  if (v.startsWith("#")) return v.slice(0, 7);
+  const m = v.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([\d.]+))?\s*\)/);
+  if (!m) return "";
+  if (m[4] !== undefined && Number(m[4]) === 0) return "";
+  const hex = (n: number) => Math.max(0, Math.min(255, n)).toString(16).padStart(2, "0");
+  return `#${hex(Number(m[1]))}${hex(Number(m[2]))}${hex(Number(m[3]))}`;
+}
+
+// "16px" -> "16"; nilai lain -> "".
+function parsePx(value: string | undefined): string {
+  if (!value) return "";
+  const m = value.trim().match(/^([\d.]+)px$/);
+  return m ? m[1] : "";
+}
 
 function sanitizeSandpackSource(source: string): string {
   // Sandpack compiles generated files in its browser transformer. import.meta is
@@ -624,6 +656,131 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
   const setSelectMode = useBuilderStore((s) => s.setSelectMode);
   const selectedEl = useBuilderStore((s) => s.selectedEl);
   const setSelectedEl = useBuilderStore((s) => s.setSelectedEl);
+
+  // ---- Visual editor klik-elemen (form panel edit langsung) ----
+  // State form di-reset setiap kali elemen baru dipilih (lihat useEffect
+  // di bawah). Perubahan disimpan lewat saveFiles() yang sudah ada
+  // (PUT /api/projects/:id) — tidak ada jalur tulis file kedua.
+  const [veText, setVeText] = useState("");
+  const [veSrc, setVeSrc] = useState("");
+  const [veColor, setVeColor] = useState("");
+  const [veFontSize, setVeFontSize] = useState("");
+  const [veBg, setVeBg] = useState("");
+  const [veOccIdx, setVeOccIdx] = useState(0);
+  const [veSaving, setVeSaving] = useState(false);
+  const [veUploading, setVeUploading] = useState(false);
+  const [veMsg, setVeMsg] = useState("");
+  const veOrigColor = useMemo(() => rgbToHex(selectedEl?.color), [selectedEl]);
+  const veOrigFontSize = useMemo(() => parsePx(selectedEl?.fontSize), [selectedEl]);
+  const veOrigBg = useMemo(() => rgbToHex(selectedEl?.backgroundColor), [selectedEl]);
+  useEffect(() => {
+    if (!selectedEl) return;
+    setVeText(selectedEl.text || "");
+    setVeSrc(selectedEl.src || "");
+    setVeColor(rgbToHex(selectedEl.color));
+    setVeFontSize(parsePx(selectedEl.fontSize));
+    setVeBg(rgbToHex(selectedEl.backgroundColor));
+    setVeOccIdx(0);
+    setVeMsg("");
+  }, [selectedEl]);
+  const veIsImg = (selectedEl?.tag || "").toUpperCase() === "IMG";
+  // Kemunculan literal teks/src di file sumber (pencocokan literal —
+  // lihat web/src/lib/visualEditor.ts untuk desain + batasannya).
+  const veOccurrences: TextOccurrence[] = useMemo(() => {
+    if (!selectedEl) return [];
+    const found = veIsImg && selectedEl.src
+      ? findLiteralOccurrences(files, selectedEl.src, true)
+      : selectedEl.text
+        ? findLiteralOccurrences(files, selectedEl.text)
+        : [];
+    // Dahulukan kemunculan yang barisnya memuat tag elemen yang diklik
+    // (mis. <h1>) — pilihan default jadi elemen yang benar, bukan
+    // <title> atau <span> lain yang kebetulan memuat teks sama.
+    // Kemunculan <title>/<meta> dibuang: tidak dirender, tidak mungkin
+    // diklik (pernah terjadi: klik <h1> malah mengubah <title>).
+    return excludeHeadOccurrences(rankOccurrences(found, selectedEl.tag || ""), selectedEl.tag || "");
+  }, [selectedEl, files, veIsImg]);
+  const veOcc = veOccurrences[veOccIdx] || null;
+  // Bila tak satu pun kemunculan berada di dalam tag yang diklik, teks
+  // itu kemungkinan terpecah di sumber (mis. <br/>/<em> dalam heading)
+  // — panel menampilkan peringatan, bukan pilihan default yang salah.
+  const veHasTagOcc = useMemo(() => {
+    if (!selectedEl) return false;
+    return hasTagOccurrence(veOccurrences, selectedEl.tag || "");
+  }, [selectedEl, veOccurrences]);
+  const veStyleTarget: StyleTarget | null = useMemo(() => {
+    if (!selectedEl || !veOcc || veIsImg) return null;
+    return findStyleTarget(files, veOcc, selectedEl.tag || "");
+  }, [selectedEl, veOcc, files, veIsImg]);
+
+  async function uploadVisualImage(f: File) {
+    setVeUploading(true);
+    setVeMsg("");
+    try {
+      const fd = new FormData();
+      fd.append("file", f);
+      const r = await fetch(`/api/projects/${pid}/app/files`, {
+        method: "POST",
+        headers: { Authorization: "Bearer " + getToken() },
+        body: fd,
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.message || "Upload gagal");
+      setVeSrc(d.url);
+      setVeMsg("Gambar diunggah: " + d.url);
+    } catch (e: any) {
+      setVeMsg("Upload gagal: " + (e?.message || e));
+    } finally {
+      setVeUploading(false);
+    }
+  }
+
+  async function saveVisualEdit() {
+    if (!selectedEl || veSaving) return;
+    setVeMsg("");
+    let next = files;
+    let changedFile = "";
+    if (veIsImg) {
+      const newSrc = veSrc.trim();
+      if (newSrc && newSrc !== (selectedEl.src || "")) {
+        if (!veOcc) { setVeMsg("URL gambar lama tidak ditemukan di file sumber — simpan dibatalkan."); return; }
+        const r = applyLiteralEdit(next, veOcc, selectedEl.src || "", newSrc);
+        if (!r.ok) { setVeMsg(r.error); return; }
+        next = r.files; changedFile = r.file;
+      }
+    } else if (veText !== (selectedEl.text || "")) {
+      if (!veOcc) { setVeMsg("Teks tidak ditemukan apa adanya di file sumber — simpan dibatalkan. Coba aksi AI di bawah atau edit kode."); return; }
+      const r = applyLiteralEdit(next, veOcc, selectedEl.text || "", veText);
+      if (!r.ok) { setVeMsg(r.error); return; }
+      next = r.files; changedFile = r.file;
+    }
+    // Gaya: hanya bila tag pembungkus JSX ditemukan dan ada yang berubah.
+    // Offset tag berada SEBELUM teks, jadi edit teks di atas tidak
+    // menggesernya — aman diterapkan setelah edit teks.
+    if (veStyleTarget) {
+      const patch: { color?: string; fontSize?: number; backgroundColor?: string } = {};
+      if (veColor && veColor.toLowerCase() !== veOrigColor.toLowerCase()) patch.color = veColor;
+      if (veBg && veBg.toLowerCase() !== veOrigBg.toLowerCase()) patch.backgroundColor = veBg;
+      const fs = Number(veFontSize);
+      if (veFontSize && !Number.isNaN(fs) && fs > 0 && veFontSize !== veOrigFontSize) patch.fontSize = fs;
+      if (Object.keys(patch).length > 0) {
+        const r = applyStyleEdit(next, veStyleTarget, patch);
+        if (!r.ok) { setVeMsg(r.error); return; }
+        next = r.files; changedFile = r.file;
+      }
+    }
+    if (next === files) { setVeMsg("Tidak ada perubahan untuk disimpan."); return; }
+    setVeSaving(true);
+    try {
+      await saveFiles(next);
+      setVeMsg(`Tersimpan ke ${changedFile}. Preview dimuat ulang otomatis.`);
+      setTimeout(() => setSelectedEl(null), 700);
+    } catch (e: any) {
+      setVeMsg("Gagal menyimpan: " + (e?.message || e));
+    } finally {
+      setVeSaving(false);
+    }
+  }
   const previewErrors = useBuilderStore((s) => s.previewErrors);
   const setPreviewErrors = useBuilderStore((s) => s.setPreviewErrors);
   const settingsOpen = useBuilderStore((s) => s.settingsOpen);
@@ -851,19 +1008,38 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
       if (d.type === "wb-error") {
         setPreviewErrors((prev) => prev.includes(d.msg) ? prev : [...prev.slice(-4), d.msg]);
       } else if (d.type === "wb-select") {
-        // Click-to-edit: info elemen masuk ke input chat sebagai konteks + fokus textarea
-        const tag = String(d.tag || "?").toUpperCase();
-        const txt = String(d.text || "").slice(0, 60);
-        const cls = String(d.cls || "").split(" ").filter(Boolean)[0] || "";
-        setInput(`[Edit elemen: ${tag}${cls ? "." + cls : ""}${txt ? ` "${txt}"` : ""}] `);
+        // Click-to-edit (visual editor): buka panel edit langsung.
+        // Dulu pesan ini hanya mengisi input chat; panel AI tetap ada
+        // di dalam modal sebagai fallback (aksi cepat + instruksi).
+        if (!canEdit) return;
+        setSelectedEl({
+          tag: String(d.tag || "?"),
+          id: String(d.id || ""),
+          cls: String(d.cls || ""),
+          text: String(d.text || ""),
+          src: String(d.src || ""),
+          alt: String(d.alt || ""),
+          color: String(d.color || ""),
+          fontSize: String(d.fontSize || ""),
+          backgroundColor: String(d.backgroundColor || ""),
+        });
         setSelectMode(false);
-        if (isMobile) setMobileTab("chat");
-        setTimeout(() => document.getElementById("wb-prompt")?.focus(), 80);
       }
     }
     window.addEventListener("message", onMsg);
     return () => window.removeEventListener("message", onMsg);
-  }, [isMobile]);
+  }, [isMobile, canEdit]);
+
+  // Visual editor: teruskan status mode pilih ke preview Live Runtime.
+  // Bridge runtime disuntik proxy dalam keadaan mati (proxy tidak tahu
+  // mode pilih); parent yang menghidupkannya lewat postMessage — saat
+  // mode berubah dan setiap kali iframe selesai dimuat ulang.
+  const selectModeRef = useRef(selectMode);
+  useEffect(() => { selectModeRef.current = selectMode; }, [selectMode]);
+  useEffect(() => {
+    const w = runtimeFrameRef.current?.contentWindow;
+    if (w) w.postMessage({ type: "wb-set-select", enabled: selectMode }, "*");
+  }, [selectMode, runtimePreview, previewKey]);
 
   // Self-test + auto-fix loop: setelah streaming selesai, tunggu 3 dtk agar
   // console error sempat masuk, lalu auto-fix bila ada error (maks 2x per pesan user)
@@ -1890,7 +2066,7 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
           <div style={{ flex: 1, background: "#f3f4f6", display: "flex", justifyContent: "center", padding: 16, overflow: "hidden" }}>
             <div style={{ width: deviceWidth, maxWidth: "100%", height: "100%", border: "1px solid #e5e7eb", borderRadius: 8, overflow: "hidden", background: "#fff", display: "flex", flexDirection: "column" }}>
               {runtimePreview ? (
-                <iframe ref={runtimeFrameRef} title="Live Runtime Preview" src={`/api/projects/${pid}/runtime/preview/?token=${encodeURIComponent(previewToken)}&v=${previewKey}`} style={{ width: "100%", height: "100%", border: 0, background: "#fff" }} />
+                <iframe ref={runtimeFrameRef} title="Live Runtime Preview" src={`/api/projects/${pid}/runtime/preview/?token=${encodeURIComponent(previewToken)}&v=${previewKey}`} onLoad={() => { const w = runtimeFrameRef.current?.contentWindow; if (w) w.postMessage({ type: "wb-set-select", enabled: selectModeRef.current }, "*"); }} style={{ width: "100%", height: "100%", border: 0, background: "#fff" }} />
               ) : <Suspense fallback={<div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#9ca3af", fontSize: 13 }}>Memuat preview…</div>}><SandpackProvider
                 key={previewKey}
                 template="react-ts"
@@ -1966,25 +2142,42 @@ if (App) {
 <body>
   <div id="root"></div>
   <script>
-  // WebBuilder bridge: kirim console error & klik elemen (mode pilih) ke parent
+  // WebBuilder bridge: kirim console error & klik elemen (mode pilih) ke parent.
+  // Logika ini WAJIB selaras dengan server/internal/handler/visualeditor.go
+  // (bridge yang disuntikkan proxy ke preview Live Runtime).
   (function(){
     function wbErr(m){ try{ window.parent.postMessage({type:"wb-error",msg:String(m).slice(0,300)},"*"); }catch(e){} }
     window.addEventListener("error",function(e){ if(e.message) wbErr(e.message); });
     window.addEventListener("unhandledrejection",function(e){ var r=e.reason; wbErr("Unhandled rejection: "+(r&&r.message||r)); });
     var _ce=console.error;
     console.error=function(){ try{ wbErr(Array.prototype.map.call(arguments,function(a){ return String(a); }).join(" ")); }catch(e){} return _ce.apply(console,arguments); };
-    if(window.WB_SELECT_MODE){
-      document.addEventListener("click",function(e){
-        e.preventDefault(); e.stopPropagation();
-        var t=e.target||{};
-        var cls=t.className;
-        if(cls&&typeof cls!=="string"){ cls=""; }
-        try{ window.parent.postMessage({type:"wb-select",tag:t.tagName||"?",id:t.id||"",cls:String(cls||""),text:(t.innerText||"").trim().slice(0,120)},"*"); }catch(e2){}
-      },true);
-      var st=document.createElement("style");
-      st.textContent="*:hover{outline:2px solid #F6821F !important;outline-offset:2px;cursor:crosshair !important;}";
-      document.head.appendChild(st);
+    var selectOn=false;
+    function setSelect(on){
+      selectOn=!!on;
+      var st=document.getElementById("wb-select-style");
+      if(selectOn && !st){
+        st=document.createElement("style");
+        st.id="wb-select-style";
+        st.textContent="*:hover{outline:2px solid #F6821F !important;outline-offset:2px;cursor:crosshair !important;}";
+        document.head.appendChild(st);
+      } else if(!selectOn && st){ st.remove(); }
     }
+    window.addEventListener("message",function(e){
+      var d=e.data||{};
+      if(d && d.type==="wb-set-select"){ setSelect(d.enabled); }
+    });
+    document.addEventListener("click",function(e){
+      if(!selectOn) return;
+      e.preventDefault(); e.stopPropagation();
+      var t=e.target||{};
+      var cls=t.className;
+      if(cls&&typeof cls!=="string"){ cls=""; }
+      var cs=null; try{ cs=window.getComputedStyle(t); }catch(e2){}
+      var src="";
+      try{ src=(t.getAttribute && t.getAttribute("src")) || t.src || ""; }catch(e3){}
+      try{ window.parent.postMessage({type:"wb-select",tag:t.tagName||"?",id:t.id||"",cls:String(cls||""),text:(t.innerText||"").trim().slice(0,120),src:src,alt:t.alt||"",color:cs?cs.color:"",fontSize:cs?cs.fontSize:"",backgroundColor:cs?cs.backgroundColor:""},"*"); }catch(e4){}
+    },true);
+    if(window.WB_SELECT_MODE){ setSelect(true); }
   })();
   </script>
 </body>
@@ -2738,11 +2931,88 @@ if (App) {
                 {selectedEl.id && `#${selectedEl.id}`} {selectedEl.cls && `.${selectedEl.cls.split(" ")[0]}`}
               </div>
               <div style={{ fontSize: 13, background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8, padding: 10, marginBottom: 12, maxHeight: 70, overflow: "hidden" }}>
-                {selectedEl.text ? `"${selectedEl.text}"` : "(elemen tanpa teks)"}
+                {selectedEl.text ? `"${selectedEl.text}"` : veIsImg ? (selectedEl.src ? `🖼 ${selectedEl.src}` : "(gambar tanpa src)") : "(elemen tanpa teks)"}
               </div>
 
+              {/* Edit langsung — tersimpan ke file sumber (visual editor) */}
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#9ca3af", marginBottom: 6 }}>EDIT LANGSUNG (TERSIMPAN KE FILE):</div>
+              {veOccurrences.length === 0 ? (
+                <div style={{ fontSize: 12, color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: 10, marginBottom: 12 }}>
+                  {veIsImg ? "URL gambar" : "Teks"} ini tidak ditemukan apa adanya di file sumber — kemungkinan berasal dari data/array atau expression. Edit langsung tidak bisa dipakai; gunakan aksi AI di bawah atau edit kode.
+                </div>
+              ) : (
+                <>
+                  <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 6 }}>
+                    Ditemukan di <code style={{ fontFamily: "monospace" }}>{veOcc?.file}:{veOcc?.line}</code>
+                    {veOccurrences.length > 1 && " — teks yang sama muncul di beberapa tempat, pilih salah satu:"}
+                  </div>
+                  {!veHasTagOcc && (
+                    <div style={{ fontSize: 12, color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: 10, marginBottom: 10 }}>
+                      Perhatian: tidak ada kemunculan teks ini di dalam elemen &lt;{selectedEl.tag.toLowerCase()}&gt; — teks yang diklik kemungkinan terpecah menjadi beberapa bagian di sumber (mis. <code>&lt;br/&gt;</code> atau <code>&lt;em&gt;</code> di dalam heading). Menyimpan di sini akan mengubah kemunculan lain; bila ragu, gunakan aksi AI di bawah.
+                    </div>
+                  )}
+                  {veOccurrences.length > 1 && (
+                    <select value={veOccIdx} onChange={(e) => setVeOccIdx(Number(e.target.value))} style={{ width: "100%", padding: 8, border: "1px solid #e5e7eb", borderRadius: 8, fontSize: 12, marginBottom: 10, boxSizing: "border-box" }}>
+                      {veOccurrences.map((o, i) => (
+                        <option key={i} value={i}>{occurrenceLabel(o)}</option>
+                      ))}
+                    </select>
+                  )}
+                  {veIsImg ? (
+                    <>
+                      <label style={{ fontSize: 12, fontWeight: 700, color: "#374151", marginBottom: 4, display: "block" }}>URL gambar</label>
+                      <input value={veSrc} onChange={(e) => setVeSrc(e.target.value)} placeholder="https://…"
+                        style={{ width: "100%", padding: 10, border: "1px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box", marginBottom: 8 }} />
+                      <div style={{ display: "flex", gap: 8, marginBottom: 4 }}>
+                        <label style={{ border: "1px solid #e5e7eb", background: "#fff", borderRadius: 8, padding: "8px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                          {veUploading ? "Mengunggah…" : "Upload gambar"}
+                          <input type="file" hidden accept="image/*" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadVisualImage(f); e.target.value = ""; }} />
+                        </label>
+                      </div>
+                      <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 12 }}>Gambar hasil upload tersimpan sebagai file aplikasi (/app-files/…) dan tampil di preview Live Runtime + hasil publish; di preview Sandpack (fallback) belum tampil.</div>
+                    </>
+                  ) : (
+                    <>
+                      <label style={{ fontSize: 12, fontWeight: 700, color: "#374151", marginBottom: 4, display: "block" }}>Teks</label>
+                      <textarea value={veText} onChange={(e) => setVeText(e.target.value)} rows={2}
+                        style={{ width: "100%", padding: 10, border: "1px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box", marginBottom: 12, resize: "vertical" }} />
+                    </>
+                  )}
+                  {veStyleTarget ? (
+                    <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <label style={{ fontSize: 12, fontWeight: 700, color: "#374151", marginBottom: 4, display: "block" }}>Warna teks</label>
+                        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                          <input type="color" value={veColor || "#000000"} onChange={(e) => setVeColor(e.target.value)} style={{ width: 34, height: 30, padding: 0, border: "1px solid #e5e7eb", borderRadius: 6, background: "#fff", flexShrink: 0 }} />
+                          <input value={veColor} onChange={(e) => setVeColor(e.target.value)} placeholder="#000000" style={{ flex: 1, minWidth: 0, padding: 7, border: "1px solid #e5e7eb", borderRadius: 8, fontSize: 12 }} />
+                        </div>
+                      </div>
+                      <div style={{ width: 72, flexShrink: 0 }}>
+                        <label style={{ fontSize: 12, fontWeight: 700, color: "#374151", marginBottom: 4, display: "block" }}>Ukuran (px)</label>
+                        <input type="number" min={8} max={200} value={veFontSize} onChange={(e) => setVeFontSize(e.target.value)} placeholder="16" style={{ width: "100%", padding: 7, border: "1px solid #e5e7eb", borderRadius: 8, fontSize: 12, boxSizing: "border-box" }} />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <label style={{ fontSize: 12, fontWeight: 700, color: "#374151", marginBottom: 4, display: "block" }}>Warna latar</label>
+                        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                          <input type="color" value={veBg || "#ffffff"} onChange={(e) => setVeBg(e.target.value)} style={{ width: 34, height: 30, padding: 0, border: "1px solid #e5e7eb", borderRadius: 6, background: "#fff", flexShrink: 0 }} />
+                          <input value={veBg} onChange={(e) => setVeBg(e.target.value)} placeholder="kosong = tetap" style={{ flex: 1, minWidth: 0, padding: 7, border: "1px solid #e5e7eb", borderRadius: 8, fontSize: 12 }} />
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    !veIsImg && veOcc && veOcc.kind !== "jsx-text" && (
+                      <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 12 }}>Gaya (warna/ukuran) tidak bisa diubah di sini: teks ini dari string/data, bukan teks JSX langsung.</div>
+                    )
+                  )}
+                  <button onClick={saveVisualEdit} disabled={veSaving} style={{ width: "100%", background: ORANGE, color: "#fff", border: "none", borderRadius: 8, padding: 10, fontWeight: 700, cursor: "pointer", fontSize: 13, marginBottom: 6 }}>
+                    {veSaving ? "Menyimpan…" : "Simpan Perubahan"}
+                  </button>
+                  {veMsg && <div style={{ fontSize: 12, color: veMsg.startsWith("Tersimpan") || veMsg.startsWith("Gambar diunggah") ? "#15803d" : "#b91c1c", marginBottom: 12 }}>{veMsg}</div>}
+                </>
+              )}
+
               {/* Quick Action Chips */}
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#9ca3af", marginBottom: 6 }}>AKSI CEPAT:</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#9ca3af", marginBottom: 6 }}>ATAU MINTA AI (AKSI CEPAT):</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
                 {[
                   { label: "✏️ Ubah Teks", prompt: "Ubah teks elemen ini menjadi yang lebih menarik" },
