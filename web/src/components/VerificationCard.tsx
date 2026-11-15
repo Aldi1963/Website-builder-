@@ -54,9 +54,13 @@ export function parseResultVerification(chunk: any): ChatVerification | null {
  *  biasa tanpa kartu. */
 export function parseHistoryMessage(m: any): ChatMessage {
   const verification = parseResultVerification(m);
-  return verification
-    ? { role: m.role, content: m.content, verification }
-    : { role: m.role, content: m.content };
+  // Provider+model per prompt (kontrak backend: kolom provider/model
+  // ChatMessage) dibawa apa adanya supaya keterangan "via ..." tampil
+  // lagi setelah reload, sama seperti kartu verifikasi di atas.
+  const base: ChatMessage = { role: m.role, content: m.content };
+  if (typeof m.provider === "string" && m.provider) base.provider = m.provider;
+  if (typeof m.model === "string" && m.model) base.model = m.model;
+  return verification ? { ...base, verification } : base;
 }
 
 export default function VerificationCard({ verification }: { verification: ChatVerification }) {

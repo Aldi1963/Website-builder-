@@ -379,6 +379,112 @@ function TemplatesView({ d, reload }: any) {
   );
 }
 
+// Provider AI per prompt (trek 1/4): daftar provider yang bisa dipilih
+// user di composer chat. Key disimpan terenkripsi di server (tidak pernah
+// dikembalikan ke klien); daftar model bisa dimuat dari provider
+// (GET {base}/models) supaya 100 model 9router langsung bisa dipilih.
+function AIProvidersSection() {
+  const [providers, setProviders] = useState<any[]>([]);
+  const [status, setStatus] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [form, setForm] = useState<any>({ id: 0, name: "", baseUrl: "", apiKey: "", modelsText: "", isDefault: false });
+  async function load() {
+    try {
+      const d = await areq("/admin/ai-providers");
+      setProviders(d.providers || []);
+    } catch (e: any) { setStatus("Gagal memuat provider: " + e.message); }
+  }
+  useEffect(() => { load(); }, []);
+  function modelsFromText(t: string) {
+    return t.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean);
+  }
+  async function save() {
+    if (!form.name.trim() || !form.baseUrl.trim()) { setStatus("Nama dan base URL wajib diisi."); return; }
+    setBusy(true); setStatus("");
+    try {
+      const body: any = { name: form.name.trim(), baseUrl: form.baseUrl.trim(), models: modelsFromText(form.modelsText), isDefault: !!form.isDefault };
+      if (form.apiKey) body.apiKey = form.apiKey;
+      if (form.id) await areq(`/admin/ai-providers/${form.id}`, { method: "PUT", body: JSON.stringify(body) });
+      else await areq("/admin/ai-providers", { method: "POST", body: JSON.stringify(body) });
+      setForm({ id: 0, name: "", baseUrl: "", apiKey: "", modelsText: "", isDefault: false });
+      await load();
+      setStatus("Provider tersimpan (API key terenkripsi).");
+    } catch (e: any) { setStatus("Gagal menyimpan: " + e.message); }
+    finally { setBusy(false); }
+  }
+  async function del(id: number) {
+    if (!confirm("Hapus provider ini?")) return;
+    setBusy(true);
+    try { await areq(`/admin/ai-providers/${id}`, { method: "DELETE" }); await load(); setStatus("Provider dihapus."); }
+    catch (e: any) { setStatus("Gagal menghapus: " + e.message); }
+    finally { setBusy(false); }
+  }
+  async function fetchModels(id: number) {
+    setBusy(true); setStatus("");
+    try {
+      const d = await areq(`/admin/ai-providers/${id}/fetch-models`, { method: "POST" });
+      await load();
+      setStatus(`Daftar model dimuat: ${d.count} model.`);
+    } catch (e: any) { setStatus("Gagal memuat model: " + e.message); }
+    finally { setBusy(false); }
+  }
+  async function test(id: number, model: string) {
+    setBusy(true); setStatus("");
+    try {
+      const d = await areq(`/admin/ai-providers/${id}/test`, { method: "POST", body: JSON.stringify({ model }) });
+      setStatus(`Tes ${d.model}: ${d.reply}`);
+    } catch (e: any) { setStatus("Tes gagal: " + e.message); }
+    finally { setBusy(false); }
+  }
+  function edit(p: any) {
+    setForm({ id: p.id, name: p.name, baseUrl: p.baseUrl, apiKey: "", modelsText: (p.models || []).join("\n"), isDefault: !!p.isDefault });
+    setStatus("");
+  }
+  return (
+    <section style={card}>
+      <h3 style={{ margin: "0 0 6px" }}>Provider AI (pemilih per prompt)</h3>
+      <p style={{ margin: "0 0 14px", color: "#6b7280", fontSize: 12 }}>
+        Provider di sini muncul di dropdown composer chat; user bisa ganti provider + model di tiap prompt.
+        Provider pertama dibuat otomatis dari konfigurasi AI Global di atas. API key disimpan terenkripsi dan tidak pernah ditampilkan.
+      </p>
+      {providers.map((p: any) => (
+        <div key={p.id} style={{ display: "flex", gap: 8, alignItems: "center", border: "1px solid #e5e7eb", borderRadius: 8, padding: "8px 10px", marginBottom: 8, flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: 160 }}>
+            <strong style={{ fontSize: 13 }}>{p.name}</strong>
+            {p.isDefault && <span style={{ fontSize: 10, fontWeight: 700, color: "#15803d", background: "#dcfce7", borderRadius: 12, padding: "2px 7px", marginLeft: 6 }}>DEFAULT</span>}
+            {!p.enabled && <span style={{ fontSize: 10, fontWeight: 700, color: "#b91c1c", background: "#fee2e2", borderRadius: 12, padding: "2px 7px", marginLeft: 6 }}>NONAKTIF</span>}
+            <div style={{ fontSize: 11, color: "#6b7280", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.baseUrl} · {(p.models || []).length} model{p.hasKey ? " · key tersimpan" : " · tanpa key"}</div>
+          </div>
+          <button type="button" onClick={() => fetchModels(p.id)} disabled={busy} style={{ ...btnGhost, padding: "6px 10px" }}>Muat model</button>
+          <button type="button" onClick={() => test(p.id, (p.models || [])[0] || "")} disabled={busy || !(p.models || []).length} style={{ ...btnGhost, padding: "6px 10px" }}>Tes</button>
+          <button type="button" onClick={() => edit(p)} disabled={busy} style={{ ...btnGhost, padding: "6px 10px" }}>Edit</button>
+          <button type="button" onClick={() => del(p.id)} disabled={busy} style={{ ...btnGhost, padding: "6px 10px", color: "#dc2626" }}><Trash2 size={14} /></button>
+        </div>
+      ))}
+      {providers.length === 0 && <p style={{ fontSize: 12, color: "#6b7280" }}>Belum ada provider. Tambahkan di bawah — atau isi konfigurasi AI Global di atas lalu muat ulang halaman (provider Default dibuat otomatis).</p>}
+      <div style={{ borderTop: "1px solid #f1f5f9", paddingTop: 12, marginTop: 4 }}>
+        <h4 style={{ margin: "0 0 10px", fontSize: 13 }}>{form.id ? "Edit Provider" : "Tambah Provider"}</h4>
+        <label style={{ fontSize: 12, fontWeight: 700, display: "block", marginBottom: 4 }}>Nama</label>
+        <input aria-label="Nama provider" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="mis. 9router" style={{ ...input, marginBottom: 10 }} />
+        <label style={{ fontSize: 12, fontWeight: 700, display: "block", marginBottom: 4 }}>Base URL (OpenAI-compatible)</label>
+        <input aria-label="Base URL provider" value={form.baseUrl} onChange={(e) => setForm({ ...form, baseUrl: e.target.value })} placeholder="https://ai.clipku.com/v1 atau http://localhost:11434/v1 (Ollama)" style={{ ...input, marginBottom: 10 }} />
+        <label style={{ fontSize: 12, fontWeight: 700, display: "block", marginBottom: 4 }}>API Key {form.id ? "(kosongkan untuk mempertahankan)" : "(boleh kosong untuk Ollama lokal)"}</label>
+        <input aria-label="API key provider" type="password" autoComplete="new-password" value={form.apiKey} onChange={(e) => setForm({ ...form, apiKey: e.target.value })} placeholder={form.id ? "Key tersimpan — isi hanya untuk mengganti" : "Tempel API key provider"} style={{ ...input, marginBottom: 10 }} />
+        <label style={{ fontSize: 12, fontWeight: 700, display: "block", marginBottom: 4 }}>Daftar model (satu per baris — atau kosongkan lalu klik “Muat model”)</label>
+        <textarea aria-label="Daftar model provider" value={form.modelsText} onChange={(e) => setForm({ ...form, modelsText: e.target.value })} rows={4} placeholder={"cx/gpt-5.6-luna\noc/deepseek/deepseek-v4.1-flash"} style={{ ...input, fontFamily: "monospace", fontSize: 12, marginBottom: 10 }} />
+        <label style={{ fontSize: 12, display: "flex", gap: 6, alignItems: "center", marginBottom: 12 }}>
+          <input type="checkbox" checked={!!form.isDefault} onChange={(e) => setForm({ ...form, isDefault: e.target.checked })} /> Jadikan provider default
+        </label>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button disabled={busy} onClick={save} style={btn}>{busy ? "Memproses…" : form.id ? "Simpan Perubahan" : "Tambah Provider"}</button>
+          {form.id ? <button disabled={busy} onClick={() => setForm({ id: 0, name: "", baseUrl: "", apiKey: "", modelsText: "", isDefault: false })} style={btnGhost}>Batal</button> : null}
+        </div>
+        {status && <p role="status" style={{ margin: "10px 0 0", color: status.includes("Gagal") || status.includes("gagal") ? "#dc2626" : "#15803d", fontSize: 12 }}>{status}</p>}
+      </div>
+    </section>
+  );
+}
+
 function PlatformView({ d }: any) {
   const [form, setForm] = useState<any>(d.settings || {});
   const [ai, setAi] = useState<any>({ baseUrl: "https://api.deepseek.com", model: "deepseek-flash", apiKey: "", hasKey: false });
@@ -486,6 +592,7 @@ function PlatformView({ d }: any) {
         </div>
         {aiStatus && <p role="status" style={{ margin: "10px 0 0", color: aiStatus.includes("gagal") || aiStatus.includes("Gagal") ? "#dc2626" : "#15803d", fontSize: 12 }}>{aiStatus}</p>}
       </section>
+      <AIProvidersSection />
       <section style={card}>
         <h3 style={{ margin: "0 0 14px" }}>Pengaturan Platform</h3>
       {fields.map(([k, l]) => (

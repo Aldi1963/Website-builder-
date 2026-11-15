@@ -5,6 +5,14 @@ import ProjectSettingsModal from "./ProjectSettingsModal";
 import VerificationCard, { parseHistoryMessage, parseResultVerification } from "../components/VerificationCard";
 import { useBuilderStore, type ChatVerification } from "../lib/store/builderStore";
 import {
+  aiSelectionStorageKey,
+  fetchAIProviders,
+  providerById,
+  resolveComposerSelection,
+  validModelFor,
+  type AIProviderOption,
+} from "../lib/aiProviders";
+import {
   useAddComment,
   useAgentRunDetail,
   useAgentRuns,
@@ -485,6 +493,12 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
   }, [streaming]);
   const mode = useBuilderStore((s) => s.mode);
   const setMode = useBuilderStore((s) => s.setMode);
+  const aiProviders = useBuilderStore((s) => s.aiProviders);
+  const setAiProviders = useBuilderStore((s) => s.setAiProviders);
+  const selectedProviderId = useBuilderStore((s) => s.selectedProviderId);
+  const setSelectedProviderId = useBuilderStore((s) => s.setSelectedProviderId);
+  const selectedModel = useBuilderStore((s) => s.selectedModel);
+  const setSelectedModel = useBuilderStore((s) => s.setSelectedModel);
   const termOpen = useBuilderStore((s) => s.termOpen);
   const setTermOpen = useBuilderStore((s) => s.setTermOpen);
   const termLines = useBuilderStore((s) => s.termLines);
@@ -714,6 +728,38 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
       setMsgs(messages.map((m: any) => parseHistoryMessage(m)));
     }
   }, [pid, chatQuery.data]);
+  // Pemilih provider/model per prompt (trek 1/4): muat provider aktif
+  // sekali per pid, lalu pulihkan pilihan terakhir proyek ini dari
+  // localStorage (atau default admin + model pertama). Tanpa provider,
+  // composer menyembunyikan pemilih dan chat memakai default server.
+  useEffect(() => {
+    let cancelled = false;
+    fetchAIProviders()
+      .then((list) => {
+        if (cancelled) return;
+        setAiProviders(list);
+        let stored = null;
+        try {
+          stored = JSON.parse(localStorage.getItem(aiSelectionStorageKey(pid)) || "null");
+        } catch { stored = null; }
+        const sel = resolveComposerSelection(list, stored);
+        setSelectedProviderId(sel.providerId);
+        setSelectedModel(sel.model);
+      })
+      .catch(() => { if (!cancelled) setAiProviders([]); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pid]);
+  // Terapkan pilihan provider/model baru + simpan per proyek.
+  function applyAISelection(providerId: number, model: string) {
+    const p = providerById(aiProviders, providerId);
+    const valid = validModelFor(p, model);
+    setSelectedProviderId(providerId);
+    setSelectedModel(valid);
+    try {
+      localStorage.setItem(aiSelectionStorageKey(pid), JSON.stringify({ providerId, model: valid }));
+    } catch { /* storage penuh/nonaktif: pilihan tetap berlaku sesi ini */ }
+  }
 
   useEffect(() => {
     const el = msgsRef.current;
@@ -1004,7 +1050,10 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
     }
     livePreviewSwitched.current = false;
     setInput("");
-    setMsgs((m) => [...m, { role: "user", content: text }]);
+    // Provider+model per prompt yang dipilih di composer (nama provider
+    // untuk keterangan pesan; ID+model dikirim ke server).
+    const selProvider = providerById(aiProviders, selectedProviderId);
+    setMsgs((m) => [...m, { role: "user", content: text, provider: selProvider?.name, model: selectedModel || undefined }]);
     setStreaming(true);
     setStreamText("");
     try {
@@ -1021,6 +1070,9 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
           // saat user menyetujui rencana/jawaban, atau saat gate sedang
           // pending (pesan apa pun saat itu dihitung sebagai jawaban).
           confirm: confirmed || pendingGate,
+          // Provider+model per prompt (0/kosong = default admin).
+          providerId: selectedProviderId || undefined,
+          model: selectedModel || undefined,
         }),
       });
       if (!r.ok) {
@@ -1364,7 +1416,8 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
     }
     setPreviewErrors([]);
     setTermLines((l) => [...l, `🔧 Auto-fix AI percobaan ${attempt}/3: menganalisa error...`]);
-    setMsgs((m) => [...m, { role: "user", content: "Perbaiki error ini di preview: " + err }]);
+    const fixProvider = providerById(aiProviders, selectedProviderId);
+    setMsgs((m) => [...m, { role: "user", content: "Perbaiki error ini di preview: " + err, provider: fixProvider?.name, model: selectedModel || undefined }]);
     // langsung kirim sebagai chat debug
     const text = "Perbaiki error ini di preview: " + err;
     setStreaming(true);
@@ -1378,6 +1431,8 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
           mode: "debug",
           previewErrors: [err, ...previewErrors].slice(0, 8),
           terminalLines: termLines.slice(-80),
+          providerId: selectedProviderId || undefined,
+          model: selectedModel || undefined,
         }),
       });
       const reader = r.body!.getReader();
@@ -2119,7 +2174,14 @@ if (App) {
           return (
             <div key={i} style={{ alignSelf: m.role === "user" ? "flex-end" : "flex-start", background: m.role === "user" ? ORANGE : "#ffffff", color: m.role === "user" ? "#fff" : "#1e293b", border: m.role === "assistant" ? "1px solid #e2e8f0" : "none", borderRadius: 14, padding: 14, maxWidth: "94%", fontSize: 13, wordBreak: "break-word", lineHeight: "1.5", boxShadow: m.role === "assistant" ? "0 2px 12px rgba(0,0,0,0.03)" : "none" }}>
               {m.role === "user" ? (
-                <div style={{ whiteSpace: "pre-wrap" }}>{m.content}</div>
+                <>
+                  <div style={{ whiteSpace: "pre-wrap" }}>{m.content}</div>
+                  {(m.provider || m.model) && (
+                    <div style={{ marginTop: 6, fontSize: 10, color: "rgba(255,255,255,0.8)" }}>
+                      via {[m.provider, m.model].filter(Boolean).join(" · ")}
+                    </div>
+                  )}
+                </>
               ) : (
                 <>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, paddingBottom: 8, borderBottom: "1px solid #f1f5f9" }}>
@@ -2275,6 +2337,29 @@ if (App) {
           </div>
         )}
         <div style={{ border: "1px solid #dbe3ee", borderRadius: 14, padding: isMobile ? 6 : 8, background: "#fff", boxShadow: "0 4px 18px rgba(15,23,42,0.06)" }}>
+          {aiProviders.length > 0 && (
+            <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+              <select aria-label="Provider AI" value={selectedProviderId} onChange={(e) => applyAISelection(Number(e.target.value), "")} title="Provider AI untuk prompt ini"
+                style={{ fontSize: 12, border: "1px solid #e5e7eb", borderRadius: 6, padding: "4px 6px", maxWidth: "42%", background: "#fff", color: "#0f172a" }}>
+                {aiProviders.map((p) => <option key={p.id} value={p.id}>{p.name}{p.isDefault ? " (default)" : ""}</option>)}
+              </select>
+              {(() => {
+                const p = providerById(aiProviders, selectedProviderId);
+                if (p && p.models.length > 0) {
+                  return (
+                    <select aria-label="Model AI" value={p.models.includes(selectedModel) ? selectedModel : p.models[0]} onChange={(e) => applyAISelection(selectedProviderId, e.target.value)} title="Model AI untuk prompt ini"
+                      style={{ flex: 1, minWidth: 0, fontSize: 12, border: "1px solid #e5e7eb", borderRadius: 6, padding: "4px 6px", background: "#fff", color: "#0f172a" }}>
+                      {p.models.map((m) => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  );
+                }
+                return (
+                  <input aria-label="Model AI" value={selectedModel} onChange={(e) => applyAISelection(selectedProviderId, e.target.value)} placeholder="Nama model (mis. cx/gpt-5.6-luna)"
+                    style={{ flex: 1, minWidth: 0, fontSize: 12, border: "1px solid #e5e7eb", borderRadius: 6, padding: "4px 8px", outline: "none" }} />
+                );
+              })()}
+            </div>
+          )}
           <textarea
             id="wb-prompt"
             value={input}

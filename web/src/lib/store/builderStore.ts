@@ -34,6 +34,11 @@ export interface ChatMessage {
   role: string;
   content: string;
   verification?: ChatVerification;
+  // Provider+model per prompt yang dipakai untuk pesan ini (kontrak
+  // backend: kolom provider/model ChatMessage). Ditampilkan sebagai
+  // keterangan kecil di bawah pesan user supaya riwayat konsisten.
+  provider?: string;
+  model?: string;
 }
 
 interface BuilderFields {
@@ -120,6 +125,14 @@ interface BuilderFields {
   ghToken: string;
   ghHasToken: boolean;
   ghLoading: boolean;
+  // Pemilih provider/model per prompt (trek 1/4): daftar provider aktif
+  // dari GET /api/ai-providers + pilihan composer saat ini. Pilihan
+  // terakhir per proyek juga disimpan di localStorage (lihat
+  // lib/aiProviders.ts) supaya proyek yang dibuka ulang memakai
+  // provider/model yang sama.
+  aiProviders: import("../aiProviders").AIProviderOption[];
+  selectedProviderId: number;
+  selectedModel: string;
 }
 
 const initialState: BuilderFields = {
@@ -202,6 +215,9 @@ const initialState: BuilderFields = {
   ghToken: "",
   ghHasToken: false,
   ghLoading: false,
+  aiProviders: [],
+  selectedProviderId: 0,
+  selectedModel: "",
 };
 
 type Fields = BuilderFields;
@@ -288,6 +304,9 @@ interface BuilderStore extends Fields {
   setGhToken: Setter<"ghToken">;
   setGhHasToken: Setter<"ghHasToken">;
   setGhLoading: Setter<"ghLoading">;
+  setAiProviders: Setter<"aiProviders">;
+  setSelectedProviderId: Setter<"selectedProviderId">;
+  setSelectedModel: Setter<"selectedModel">;
 }
 
 export const useBuilderStore = create<BuilderStore>()((set) => {
@@ -375,5 +394,8 @@ export const useBuilderStore = create<BuilderStore>()((set) => {
     setGhToken: s("ghToken"),
     setGhHasToken: s("ghHasToken"),
     setGhLoading: s("ghLoading"),
+    setAiProviders: s("aiProviders"),
+    setSelectedProviderId: s("selectedProviderId"),
+    setSelectedModel: s("selectedModel"),
   };
 });
