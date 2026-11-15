@@ -126,6 +126,7 @@ export const API_ROUTES: ApiRoute[] = [
   { method: "POST", path: "/api/notifications/read", auth: "jwt-or-apikey" },
   { method: "GET", path: "/api/projects", auth: "jwt-or-apikey" },
   { method: "POST", path: "/api/projects", auth: "jwt-or-apikey" },
+  { method: "POST", path: "/api/projects/clone-from-url", auth: "jwt-or-apikey" },
   { method: "POST", path: "/api/projects/import-github", auth: "jwt-or-apikey" },
   { method: "GET", path: "/api/projects/{id}", auth: "jwt-or-apikey" },
   { method: "PUT", path: "/api/projects/{id}", auth: "jwt-or-apikey" },
