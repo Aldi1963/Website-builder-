@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -106,6 +107,99 @@ func TestMetricsHandlerContentType(t *testing.T) {
 	}
 	if ct := w.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/plain") {
 		t.Fatalf("metrics content-type = %q, mau text/plain", ct)
+	}
+}
+
+// Metrik browser Fase 3 item 2: counter per tool/status + histogram
+// durasi, format exposition valid, label terbatas (pesan error tidak
+// pernah jadi label).
+func TestBrowserToolMetricsRecordAndExposition(t *testing.T) {
+	m := NewMetrics()
+	m.RecordBrowserTool("list_console_messages", 120*time.Millisecond, nil)
+	m.RecordBrowserTool("list_console_messages", 40*time.Millisecond, nil)
+	m.RecordBrowserTool("navigate_page", 1500*time.Millisecond, errors.New("browser: panggilan tool \"navigate_page\" gagal: timeout — detail rahasia?"))
+	m.RecordBrowserTool("", 10*time.Millisecond, nil) // tool kosong → "unknown"
+
+	if got := m.BrowserToolCallsTotal("list_console_messages", "success"); got != 2 {
+		t.Fatalf("BrowserToolCallsTotal console success = %d, mau 2", got)
+	}
+	if got := m.BrowserToolCallsTotal("navigate_page", "error"); got != 1 {
+		t.Fatalf("BrowserToolCallsTotal navigate error = %d, mau 1", got)
+	}
+	if got := m.BrowserToolCallsTotal("unknown", "success"); got != 1 {
+		t.Fatalf("BrowserToolCallsTotal unknown success = %d, mau 1", got)
+	}
+	if got := m.BrowserToolCallsTotal("navigate_page", "success"); got != 0 {
+		t.Fatalf("BrowserToolCallsTotal navigate success = %d, mau 0", got)
+	}
+	if got := m.BrowserToolDurationCount("list_console_messages"); got != 2 {
+		t.Fatalf("BrowserToolDurationCount console = %d, mau 2", got)
+	}
+	if got := m.BrowserToolDurationSum("list_console_messages"); got < 0.159 || got > 0.161 {
+		t.Fatalf("BrowserToolDurationSum console = %v, mau ~0.16", got)
+	}
+
+	var buf bytes.Buffer
+	m.WritePrometheus(&buf)
+	out := buf.String()
+	for _, want := range []string{
+		"# HELP browser_tool_calls_total Total browser tool calls by tool and status.",
+		"# TYPE browser_tool_calls_total counter",
+		`browser_tool_calls_total{tool="list_console_messages",status="success"} 2`,
+		`browser_tool_calls_total{tool="navigate_page",status="error"} 1`,
+		`browser_tool_calls_total{tool="unknown",status="success"} 1`,
+		"# HELP browser_tool_calls_duration_seconds Duration of browser tool calls in seconds.",
+		"# TYPE browser_tool_calls_duration_seconds histogram",
+		// 120ms masuk bucket 0.25 (dan semua bucket di atasnya); 40ms
+		// masuk bucket 0.05 — keduanya kumulatif.
+		`browser_tool_calls_duration_seconds_bucket{tool="list_console_messages",le="0.05"} 1`,
+		`browser_tool_calls_duration_seconds_bucket{tool="list_console_messages",le="0.25"} 2`,
+		`browser_tool_calls_duration_seconds_bucket{tool="list_console_messages",le="+Inf"} 2`,
+		`browser_tool_calls_duration_seconds_count{tool="list_console_messages"} 2`,
+		// 1.5 dtk masuk bucket 2.5.
+		`browser_tool_calls_duration_seconds_bucket{tool="navigate_page",le="2.5"} 1`,
+		`browser_tool_calls_duration_seconds_bucket{tool="navigate_page",le="1"} 0`,
+		// Bucket terakhir = CallTimeout (30 dtk).
+		`browser_tool_calls_duration_seconds_bucket{tool="navigate_page",le="30"} 1`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("exposition tidak memuat %q\n--- output ---\n%s", want, out)
+		}
+	}
+	// Pesan error TIDAK BOLEH bocor ke label mana pun.
+	if strings.Contains(out, "rahasia") || strings.Contains(out, "timeout — detail") {
+		t.Fatalf("pesan error tidak boleh muncul di exposition:\n%s", out)
+	}
+	// Urutan stabil: seri counter ter-sort (list_console_messages
+	// sebelum navigate_page sebelum unknown).
+	if i1, i2, i3 := strings.Index(out, `tool="list_console_messages"`), strings.Index(out, `tool="navigate_page"`), strings.Index(out, `tool="unknown"`); !(i1 < i2 && i2 < i3) {
+		t.Fatalf("seri browser harus ter-sort, indeks %d %d %d\n%s", i1, i2, i3, out)
+	}
+	// Sum histogram memakai format angka Prometheus yang valid.
+	if !strings.Contains(out, `browser_tool_calls_duration_seconds_sum{tool="list_console_messages"} 0.16`) {
+		t.Fatalf("sum histogram console harus 0.16:\n%s", out)
+	}
+}
+
+// Tanpa panggilan browser sama sekali, HELP/TYPE tetap muncul (tanpa
+// seri) dan metrik HTTP lama tetap ada.
+func TestBrowserToolMetricsEmptyExposition(t *testing.T) {
+	m := NewMetrics()
+	m.Record("GET", "/api/projects", 200)
+	var buf bytes.Buffer
+	m.WritePrometheus(&buf)
+	out := buf.String()
+	for _, want := range []string{
+		"# TYPE browser_tool_calls_total counter",
+		"# TYPE browser_tool_calls_duration_seconds histogram",
+		`webbuilder_http_requests_total{method="GET",route="/api/projects",status="200"} 1`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("exposition kosong harus memuat %q\n--- output ---\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "browser_tool_calls_total{") {
+		t.Fatalf("tanpa panggilan browser tidak boleh ada seri counter:\n%s", out)
 	}
 }
 
