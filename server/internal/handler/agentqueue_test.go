@@ -42,11 +42,12 @@ import (
 func openAgentTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db := openTestDB(t)
+	ensureTestKeyEnc(t)
 	if err := db.AutoMigrate(
 		&models.Project{}, &models.ChatSession{}, &models.ChatMessage{},
 		&models.ProjectVersion{}, &models.ProjectMigration{},
 		&models.AgentRun{}, &models.AgentToolCall{}, &models.AgentContext{},
-		&models.AIConfig{}, &models.BlockedWord{},
+		&models.AIConfig{}, &models.AIProviderConfig{}, &models.BlockedWord{},
 	); err != nil {
 		t.Fatalf("migrate agent: %v", err)
 	}
@@ -221,7 +222,7 @@ func TestAgentQueueEndToEnd(t *testing.T) {
 		t.Fatal("bus harus terpasang sesudah InitAgentQueue")
 	}
 
-	run := createAgentRun(db, proj.ID, user.ID, "edit", "Perbaiki tampilan dashboard")
+	run := createAgentRun(db, proj.ID, user.ID, "edit", "Perbaiki tampilan dashboard", "", "")
 	if run == nil {
 		t.Fatal("createAgentRun gagal")
 	}
@@ -306,7 +307,7 @@ func TestAgentQueueRestartRecovery(t *testing.T) {
 	}
 
 	// Fase 1: tanpa consumer.
-	run1 := createAgentRun(db, proj.ID, user.ID, "edit", "Perbaiki tampilan dashboard")
+	run1 := createAgentRun(db, proj.ID, user.ID, "edit", "Perbaiki tampilan dashboard", "", "")
 	enqueueTestJob(t, mgr, run1, proj.ID, user.ID, "Perbaiki tampilan dashboard")
 	time.Sleep(500 * time.Millisecond)
 	if rec := jobRecord(t, db, run1.ID); rec.Status != "pending" {
@@ -330,7 +331,7 @@ func TestAgentQueueRestartRecovery(t *testing.T) {
 	time.Sleep(200 * time.Millisecond) // beri waktu consumer berhenti
 
 	// Fase 2: worker mati sesudah claim (lease takeover).
-	run2 := createAgentRun(db, proj.ID, user.ID, "edit", "Perbaiki tampilan dashboard lagi")
+	run2 := createAgentRun(db, proj.ID, user.ID, "edit", "Perbaiki tampilan dashboard lagi", "", "")
 	enqueueTestJob(t, mgr, run2, proj.ID, user.ID, "Perbaiki tampilan dashboard lagi")
 	if err := db.Model(&queue.JobRecord{}).Where("id = ?", agentJobID(run2.ID)).Updates(map[string]any{
 		"status": "running", "leased_until": time.Now().Add(-time.Minute), "attempts": 1,
@@ -370,7 +371,7 @@ func TestAgentQueueIdempotentEnqueue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InitAgentQueue: %v", err)
 	}
-	run := createAgentRun(db, proj.ID, user.ID, "edit", "Perbaiki tampilan dashboard")
+	run := createAgentRun(db, proj.ID, user.ID, "edit", "Perbaiki tampilan dashboard", "", "")
 	payload, _ := json.Marshal(agentPipelineInput{
 		RunID: run.ID, ProjectID: proj.ID, UserID: user.ID,
 		Message: "Perbaiki tampilan dashboard", Mode: "edit", Intent: "edit",

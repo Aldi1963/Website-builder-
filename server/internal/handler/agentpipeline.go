@@ -198,7 +198,23 @@ func executeAgentPipeline(runCtx context.Context, db *gorm.DB, in agentPipelineI
 		}
 		return err
 	}
-	provider := getEffectiveAIProvider(db)
+	provider, providerName, err := resolveAIProvider(db, in.ProviderID, in.Model)
+	if err != nil {
+		// Pilihan provider/model tidak bisa dipakai (dihapus/dinonaktifkan
+		// sesudah enqueue, atau model tidak terdaftar): gagalkan run
+		// dengan jelas — JANGAN diam-diam memakai provider lain.
+		finishAgentRunIfActive(db, runID, "failed", "Provider AI tidak bisa dipakai: "+err.Error(), err.Error())
+		emit(agentBusEvent{Raw: jsonEscape("[ERROR] Provider AI tidak bisa dipakai: " + err.Error())})
+		return nil
+	}
+	if !provider.configured() {
+		finishAgentRunIfActive(db, runID, "failed", "AI belum dikonfigurasi admin. Buka Settings > AI Global.", "provider AI belum dikonfigurasi")
+		emit(agentBusEvent{Raw: jsonEscape("[ERROR] AI belum dikonfigurasi admin.")})
+		return nil
+	}
+	// Catat pilihan AKTUAL yang dipakai run ini (model bisa terisi dari
+	// default daftar provider bila postChat mengirim kosong).
+	db.Model(&models.AgentRun{}).Where("id = ?", runID).Updates(map[string]interface{}{"provider": providerName, "model": provider.Model})
 
 	// Konteks intent terakhir (disimpan postChat sebelum enqueue) — dibaca
 	// fresh supaya follow-up tetap nyambung. Bila belum ada barisnya,
@@ -446,7 +462,7 @@ AUTONOMOUS BLUEPRINT (EMPTY PROJECT):
 	}
 
 	// Save user message to DB
-	currentMessage := models.ChatMessage{SessionID: session.ID, Role: "user", Content: in.Message}
+	currentMessage := models.ChatMessage{SessionID: session.ID, Role: "user", Content: in.Message, Provider: providerName, Model: provider.Model}
 	db.Create(&currentMessage)
 
 	// Load last 20 messages for history (oldest first), excluding the one we just saved
@@ -477,7 +493,7 @@ AUTONOMOUS BLUEPRINT (EMPTY PROJECT):
 	streamCtx, cancelStream := context.WithCancel(runCtx)
 	registerAgentCancel(run.ID, cancelStream)
 	defer unregisterAgentCancel(run.ID)
-	err := provider.streamChatWithTools(streamCtx, sysPrompt, history, userMsg, catalog, func(name string, input map[string]interface{}) (interface{}, error) {
+	err = provider.streamChatWithTools(streamCtx, sysPrompt, history, userMsg, catalog, func(name string, input map[string]interface{}) (interface{}, error) {
 		// Simpan argumen nyata (bukan label generik) supaya kegagalan tool
 		// bisa didiagnosis tanpa menebak apa yang dikirim model.
 		rj, _ := json.Marshal(input)
@@ -545,7 +561,7 @@ AUTONOMOUS BLUEPRINT (EMPTY PROJECT):
 	// Save AI response to DB
 	var assistantMsgID uint
 	if full != "" {
-		assistantMsg := models.ChatMessage{SessionID: session.ID, Role: "assistant", Content: full}
+		assistantMsg := models.ChatMessage{SessionID: session.ID, Role: "assistant", Content: full, Provider: providerName, Model: provider.Model}
 		db.Create(&assistantMsg)
 		assistantMsgID = assistantMsg.ID
 		// Catat pemakaian agar kuota bulanan terpotong (tanpa ini user free dapat AI unlimited)

@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -10,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -277,43 +275,10 @@ func listAIModels(db *gorm.DB) gin.HandlerFunc {
 		}
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 20*time.Second)
 		defer cancel()
-		req, err := http.NewRequestWithContext(ctx, "GET", strings.TrimRight(base, "/")+"/models", nil)
+		ids, err := fetchModelsFromProvider(ctx, base, key)
 		if err != nil {
-			c.JSON(400, gin.H{"message": "Base URL tidak valid"})
+			c.JSON(502, gin.H{"message": err.Error()})
 			return
-		}
-		if key != "" {
-			req.Header.Set("Authorization", "Bearer "+key)
-		}
-		resp, err := (&http.Client{Timeout: 20 * time.Second}).Do(req)
-		if err != nil {
-			c.JSON(502, gin.H{"message": "Gagal mengambil daftar model: " + err.Error()})
-			return
-		}
-		defer resp.Body.Close()
-		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		if resp.StatusCode != 200 {
-			c.JSON(502, gin.H{"message": fmt.Sprintf("Provider menolak daftar model (HTTP %d)", resp.StatusCode)})
-			return
-		}
-		var parsed struct {
-			Data []struct {
-				ID string `json:"id"`
-			} `json:"data"`
-		}
-		if err := json.Unmarshal(raw, &parsed); err != nil {
-			c.JSON(502, gin.H{"message": "Format daftar model tidak dikenali"})
-			return
-		}
-		ids := make([]string, 0, len(parsed.Data))
-		for _, m := range parsed.Data {
-			if m.ID != "" {
-				ids = append(ids, m.ID)
-			}
-		}
-		sort.Strings(ids)
-		if len(ids) > 400 {
-			ids = ids[:400]
 		}
 		c.JSON(200, gin.H{"models": ids, "count": len(ids)})
 	}
@@ -350,47 +315,14 @@ func testAIConfig(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 		p := &AIProvider{BaseURL: strings.TrimRight(req.BaseURL, "/"), APIKey: req.APIKey, Model: req.Model}
-		body, _ := json.Marshal(map[string]interface{}{
-			"model":      p.Model,
-			"messages":   []map[string]string{{"role": "user", "content": "Reply with exactly: connected"}},
-			"max_tokens": 24,
-			"stream":     false,
-		})
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 40*time.Second)
 		defer cancel()
-		hreq, _ := http.NewRequestWithContext(ctx, "POST", p.BaseURL+"/chat/completions", bytes.NewReader(body))
-		hreq.Header.Set("Content-Type", "application/json")
-		hreq.Header.Set("Authorization", "Bearer "+p.APIKey)
-		resp, err := (&http.Client{Timeout: 45 * time.Second}).Do(hreq)
+		// Alasan ASLI provider ditampilkan — tanpa ini admin hanya melihat
+		// "layanan sibuk" dan tidak tahu modelnya tidak tersedia/kuota habis.
+		reply, err := probeChatCompletion(ctx, p.BaseURL, p.APIKey, p.Model)
 		if err != nil {
-			c.JSON(502, gin.H{"message": "Gagal menghubungi provider: " + err.Error()})
+			c.JSON(502, gin.H{"message": err.Error()})
 			return
-		}
-		defer resp.Body.Close()
-		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		if resp.StatusCode != 200 {
-			// Tampilkan alasan ASLI provider — tanpa ini admin hanya melihat
-			// "layanan sibuk" dan tidak tahu modelnya tidak tersedia/kuota habis.
-			c.JSON(502, gin.H{"message": fmt.Sprintf("HTTP %d — %s", resp.StatusCode, shortStr(strings.TrimSpace(string(raw)), 300))})
-			return
-		}
-		var out struct {
-			Choices []struct {
-				Message struct {
-					Content string `json:"content"`
-				} `json:"message"`
-			} `json:"choices"`
-		}
-		if err := json.Unmarshal(raw, &out); err != nil {
-			c.JSON(502, gin.H{"message": "Respons provider bukan JSON: " + shortStr(string(raw), 160)})
-			return
-		}
-		reply := ""
-		if len(out.Choices) > 0 {
-			reply = strings.TrimSpace(out.Choices[0].Message.Content)
-		}
-		if reply == "" {
-			reply = "(200 OK, tanpa teks)"
 		}
 		c.JSON(200, gin.H{"message": "Koneksi berhasil", "reply": reply, "model": p.Model})
 	}

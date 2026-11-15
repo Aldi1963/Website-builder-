@@ -63,6 +63,28 @@ func makeUser(t *testing.T, db *gorm.DB, email, password string) models.User {
 	return u
 }
 
+// ensureTestKeyEnc memasang encryptor AES-256-GCM sekali pakai untuk test
+// yang memanggil handler langsung tanpa RegisterRoutes (di production
+// keyEnc selalu diisi RegisterRoutes — gagal init = log.Fatal — jadi
+// fallback ini tidak pernah berjalan di luar test). Tanpa ini, jalur
+// yang menyimpan/membaca key provider (seed default, resolve) panic
+// karena keyEnc nil.
+func ensureTestKeyEnc(t *testing.T) {
+	t.Helper()
+	if keyEnc != nil {
+		return
+	}
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		t.Fatalf("rand key: %v", err)
+	}
+	enc, err := newEncryptor(raw)
+	if err != nil {
+		t.Fatalf("newEncryptor: %v", err)
+	}
+	keyEnc = enc
+}
+
 // resetLoginAttempts mengosongkan map rate limiter login global antar test.
 func resetLoginAttempts() {
 	attemptMu.Lock()

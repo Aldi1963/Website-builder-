@@ -62,8 +62,8 @@ func TestModelsHasNoDuplicates(t *testing.T) {
 		}
 		seen[name] = true
 	}
-	if len(Models()) != 33 {
-		t.Fatalf("jumlah model = %d, want 33 (tambah model baru = tambah ke Models + migrasi)", len(Models()))
+	if len(Models()) != 34 {
+		t.Fatalf("jumlah model = %d, want 34 (tambah model baru = tambah ke Models + migrasi)", len(Models()))
 	}
 }
 
@@ -83,7 +83,7 @@ func TestAutoMigrateSQLiteCreatesAllTables(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{
-		"agent_contexts", "agent_runs", "agent_tool_calls", "ai_configs",
+		"a_iprovider_configs", "agent_contexts", "agent_runs", "agent_tool_calls", "ai_configs",
 		"ai_proposals", "ai_usages", "app_cron_jobs", "app_files", "audit_logs",
 		"blocked_words", "chat_messages", "chat_sessions", "deployments",
 		"domains", "file_comments", "form_submissions", "git_hub_configs",
@@ -127,15 +127,15 @@ func TestMigrateUpPostgres(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v != 3 {
-		t.Fatalf("versi migrasi = %d, want 3", v)
+	if v != 4 {
+		t.Fatalf("versi migrasi = %d, want 4", v)
 	}
 	var tables []string
 	if err := db.Raw("SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename NOT LIKE 'goose_%' ORDER BY tablename").Scan(&tables).Error; err != nil {
 		t.Fatal(err)
 	}
 	want := []string{
-		"agent_contexts", "agent_runs", "agent_tool_calls", "ai_configs",
+		"a_iprovider_configs", "agent_contexts", "agent_runs", "agent_tool_calls", "ai_configs",
 		"ai_proposals", "ai_usages", "app_cron_jobs", "app_files", "audit_logs",
 		"blocked_words", "chat_messages", "chat_sessions", "deployments",
 		"domains", "file_comments", "form_submissions", "git_hub_configs",
@@ -184,5 +184,21 @@ func TestMigrateUpPostgres(t *testing.T) {
 	}
 	if legacy.Verification != "" {
 		t.Fatalf("verification pesan lama = %q, want kosong", legacy.Verification)
+	}
+	// Kolom provider/model (migrasi 00004) bisa dibaca/tulis GORM, dan
+	// baris lama terbaca sebagai string kosong.
+	prov := models.ChatMessage{SessionID: 1, Role: "user", Content: "pakai model lain", Provider: "9router", Model: "cx/gpt-5.6-luna"}
+	if err := db.Create(&prov).Error; err != nil {
+		t.Fatalf("insert chat_message provider: %v", err)
+	}
+	var provBack models.ChatMessage
+	if err := db.First(&provBack, prov.ID).Error; err != nil {
+		t.Fatalf("baca chat_message provider: %v", err)
+	}
+	if provBack.Provider != "9router" || provBack.Model != "cx/gpt-5.6-luna" {
+		t.Fatalf("provider/model = %q/%q, want 9router/cx/gpt-5.6-luna", provBack.Provider, provBack.Model)
+	}
+	if legacy.Provider != "" || legacy.Model != "" {
+		t.Fatalf("provider/model pesan lama = %q/%q, want kosong", legacy.Provider, legacy.Model)
 	}
 }

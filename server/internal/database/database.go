@@ -91,6 +91,7 @@ func Models() []any {
 		&models.ProjectEnv{}, &models.AIUsage{}, &models.AgentRun{}, &models.AgentToolCall{},
 		&models.AgentContext{},
 		&models.Template{}, &models.Deployment{}, &models.Domain{}, &models.AIConfig{},
+		&models.AIProviderConfig{},
 		&models.PasswordReset{}, &models.GitHubConfig{}, &models.AuditLog{},
 		&models.PlatformSetting{}, &models.Notification{}, &models.ProjectMember{},
 		&models.UserAPIKey{}, &models.ProjectWebhook{}, &models.VisitStat{},

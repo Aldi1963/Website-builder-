@@ -126,6 +126,8 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB) {
 	// Chat
 	auth.GET("/projects/:id/chat", getChat(db))
 	auth.POST("/projects/:id/chat", postChat(db))
+	// Provider AI untuk pemilih per prompt di composer (tanpa key)
+	auth.GET("/ai-providers", listAIProviders(db))
 	// Durable AI agent runs and plan state
 	auth.GET("/projects/:id/agent/runs", listAgentRuns(db))
 	auth.GET("/projects/:id/agent/runs/:runId", getAgentRun(db))
@@ -181,6 +183,13 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB) {
 	auth.PUT("/admin/ai-config", setAIConfig(db))
 	auth.POST("/admin/ai-config/test", testAIConfig(db))
 	auth.GET("/admin/ai-models", listAIModels(db))
+	// Provider AI per prompt (admin kelola; lihat aiproviders.go)
+	auth.GET("/admin/ai-providers", listAdminAIProviders(db))
+	auth.POST("/admin/ai-providers", createAIProvider(db))
+	auth.PUT("/admin/ai-providers/:id", updateAIProvider(db))
+	auth.DELETE("/admin/ai-providers/:id", deleteAIProvider(db))
+	auth.POST("/admin/ai-providers/:id/fetch-models", fetchAIProviderModels(db))
+	auth.POST("/admin/ai-providers/:id/test", testAIProvider(db))
 	// Admin panel
 	admin := auth.Group("/admin")
 	admin.Use(adminOnly(db))
