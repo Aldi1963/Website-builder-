@@ -278,6 +278,7 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB) {
 	auth.GET("/projects/:id/runtime/dev/log-stream", runtimeDevLogStream(db))
 	auth.POST("/projects/:id/runtime/screenshot", runtimeCaptureScreenshot(db))
 	auth.GET("/projects/:id/runtime/screenshots/:name", runtimeScreenshotFile(db))
+	auth.GET("/projects/:id/runtime/screenshots/verification/:runId/:name", runtimeVerificationScreenshotFile(db))
 	auth.Any("/projects/:id/runtime/preview/*filepath", runtimeDevPreview(db))
 	// AI-generated database migrations with explicit up/down SQL and rollback.
 	auth.GET("/projects/:id/migrations", listMigrations(db))
