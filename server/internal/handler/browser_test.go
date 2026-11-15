@@ -15,8 +15,16 @@ import (
 // Server MCP palsu (Python, stdio JSON-RPC minimal) untuk menguji wiring
 // pipeline tanpa Chrome asli. Dipakai sebagai command browser.Client:
 // "python3 <file>" — file ditulis ke TempDir tiap test.
+//
+// Mendukung alat verifikasi Fase 2 dengan data kalengan yang bergantung
+// pada URL navigasi terakhir: URL berisi "?kasus=rusak" ATAU port 18092
+// mensimulasikan halaman rusak (console.error + fetch 404), URL lain
+// halaman baik. (Loop verifikasi membangun URL preview sebagai
+// http://127.0.0.1:<port> tanpa path — port adalah satu-satunya tuas
+// pemilihan kasus di test loop.)
 const fakeMCPServerPython = `
 import sys, json
+LAST_URL = ""
 for line in sys.stdin:
     line = line.strip()
     if not line:
@@ -37,12 +45,41 @@ for line in sys.stdin:
         result = {"tools": [
             {"name": "list_console_messages", "description": "List console messages", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "navigate_page", "description": "Navigate", "inputSchema": {"type": "object", "properties": {"url": {"type": "string"}}}},
+            {"name": "take_snapshot", "description": "Snapshot", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "list_network_requests", "description": "Network", "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "take_screenshot", "description": "Screenshot", "inputSchema": {"type": "object", "properties": {"filePath": {"type": "string"}}}},
             {"name": "take_heapsnapshot", "description": "Heap (bukan allowlist)", "inputSchema": {"type": "object", "properties": {}}},
         ]}
     elif method == "tools/call":
-        name = (req.get("params") or {}).get("name", "")
-        if name == "list_console_messages":
-            result = {"content": [{"type": "text", "text": "[log] hello from fake page\n[error] example error"}]}
+        params = req.get("params") or {}
+        name = params.get("name", "")
+        args = params.get("arguments") or {}
+        rusak = "kasus=rusak" in LAST_URL or ":18092" in LAST_URL
+        if name == "navigate_page":
+            LAST_URL = args.get("url", "")
+            result = {"content": [{"type": "text", "text": "Successfully navigated to " + LAST_URL + "."}]}
+        elif name == "take_snapshot":
+            if rusak:
+                result = {"content": [{"type": "text", "text": "## Latest page snapshot\nuid=1_0 RootWebArea \"Rusak Uji\" url=\"" + LAST_URL + "\"\n  uid=1_1 heading \"Rusak Uji\" level=\"1\""}]}
+            else:
+                result = {"content": [{"type": "text", "text": "## Latest page snapshot\nuid=1_0 RootWebArea \"Halo Uji\" url=\"" + LAST_URL + "\"\n  uid=1_1 heading \"Halo Uji\" level=\"1\""}]}
+        elif name == "list_console_messages":
+            if LAST_URL == "":
+                result = {"content": [{"type": "text", "text": "[log] hello from fake page\n[error] example error"}]}
+            elif rusak:
+                result = {"content": [{"type": "text", "text": "## Console messages\nShowing 1-3 of 3 (Page 1 of 1).\nmsgid=1 [log] LOG-PALSU: ok (1 args)\nmsgid=2 [error] ERR-PALSU: undefined is not a function di render (1 args)\nmsgid=3 [error] Failed to load resource: the server responded with a status of 404 (File not found) (0 args) [2 times]"}]}
+            else:
+                result = {"content": [{"type": "text", "text": "## Console messages\nShowing 1-1 of 1 (Page 1 of 1).\nmsgid=1 [log] LOG-PALSU: ok (1 args)"}]}
+        elif name == "list_network_requests":
+            if rusak:
+                result = {"content": [{"type": "text", "text": "## Network requests\nShowing 1-3 of 3 (Page 1 of 1).\nreqid=1 GET " + LAST_URL + " [200]\nreqid=2 GET http://127.0.0.1:9/tidak-ada-palsu.json [404]\nreqid=3 GET http://127.0.0.1:9/favicon.ico [404]"}]}
+            else:
+                result = {"content": [{"type": "text", "text": "## Network requests\nShowing 1-2 of 2 (Page 1 of 1).\nreqid=1 GET " + LAST_URL + " [200]\nreqid=2 GET http://127.0.0.1:9/favicon.ico [404]"}]}
+        elif name == "take_screenshot":
+            path = args.get("filePath", "")
+            with open(path, "wb") as f:
+                f.write(b"\x89PNG\r\n\x1a\n" + b"\x00" * 100)
+            result = {"content": [{"type": "text", "text": "Took a screenshot of the current page's viewport.\nSaved screenshot to " + path + "."}]}
         else:
             result = {"content": [{"type": "text", "text": "unknown tool"}], "isError": True}
     else:
@@ -96,7 +133,8 @@ func TestBrowserToolRecordedInAgentToolCalls(t *testing.T) {
 	if err := bc.Start(ctx); err != nil {
 		t.Fatalf("Start browser palsu gagal: %v", err)
 	}
-	// Katalog dinamis Fase 1: hanya satu alat.
+	// Katalog dinamis Fase 2: seluruh allowlist §5 yang ada di server
+	// palsu (console + navigate + snapshot + network + screenshot).
 	tools, err := bc.ListTools(ctx)
 	if err != nil {
 		t.Fatalf("ListTools gagal: %v", err)
@@ -108,12 +146,23 @@ func TestBrowserToolRecordedInAgentToolCalls(t *testing.T) {
 		if s.Name == "browser_list_console_messages" {
 			found = true
 		}
-		if s.Name == "browser_navigate_page" || s.Name == "browser_take_heapsnapshot" {
-			t.Fatalf("katalog Fase 1 tidak boleh memuat %q", s.Name)
+		if s.Name == "browser_take_heapsnapshot" {
+			t.Fatalf("katalog tidak boleh memuat %q (di luar allowlist)", s.Name)
 		}
 	}
 	if !found {
 		t.Fatal("katalog harus memuat browser_list_console_messages")
+	}
+	for _, want := range []string{"browser_navigate_page", "browser_take_snapshot", "browser_list_network_requests", "browser_take_screenshot"} {
+		hit := false
+		for _, s := range catalog {
+			if s.Name == want {
+				hit = true
+			}
+		}
+		if !hit {
+			t.Fatalf("katalog Fase 2 harus memuat %q", want)
+		}
 	}
 
 	// Persis seperti closure `execute` di executeAgentPipeline: catat

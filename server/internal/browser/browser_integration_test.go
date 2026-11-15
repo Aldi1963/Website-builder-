@@ -95,3 +95,105 @@ func TestBrowserClientRealChrome(t *testing.T) {
 		t.Fatal("proses server MCP harus sudah exit sesudah Close() (tidak boleh yatim)")
 	}
 }
+
+// TestVerifyPreviewRealChrome adalah bukti Fase 2 dengan Chrome for
+// Testing asli: satu putaran verifikasi scripted terhadap halaman baik
+// (0 console error, screenshot PNG tersimpan) dan halaman rusak
+// (console.error + fetch 404 terdeteksi DENGAN isi yang benar).
+// Di-skip bila CHROME_FOR_TESTING_PATH kosong.
+func TestVerifyPreviewRealChrome(t *testing.T) {
+	chromePath := strings.TrimSpace(os.Getenv(EnvChromePath))
+	if chromePath == "" {
+		t.Skip("CHROME_FOR_TESTING_PATH kosong — test integrasi Chrome dilewati")
+	}
+	if _, err := os.Stat(chromePath); err != nil {
+		t.Fatalf("CHROME_FOR_TESTING_PATH tidak ada: %s", chromePath)
+	}
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		switch {
+		case strings.Contains(r.URL.Path, "rusak"):
+			fmt.Fprint(w, `<!doctype html><html><head><title>rusak</title></head><body><h1>Rusak</h1><script>console.error("ERR-UJI-VERIF: undefined is not a function di render"); fetch("/tidak-ada-uji.json").catch(()=>{});</script></body></html>`)
+		case strings.Contains(r.URL.Path, "baik"):
+			fmt.Fprint(w, `<!doctype html><html><head><title>baik</title></head><body><h1>Halo Baik</h1><p>Paragraf baik.</p><script>console.log("LOG-BAIK: ok");</script></body></html>`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer ts.Close()
+
+	// Hook manual: WB_VERIFY_PREVIEW_URL menunjuk halaman baik ke dev
+	// server Vite sungguhan (bukan httptest), mis. saat memverifikasi
+	// loop terhadap preview proyek nyata. Halaman rusak tetap httptest.
+	goodURL := ts.URL + "/baik"
+	if envURL := strings.TrimSpace(os.Getenv("WB_VERIFY_PREVIEW_URL")); envURL != "" {
+		goodURL = envURL
+	}
+
+	ctx := context.Background()
+	dir := t.TempDir()
+	ws := filepath.Join(dir, "workspace")
+	prof := filepath.Join(dir, "chrome-profile")
+	if err := os.MkdirAll(ws, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	c := NewClient(DefaultConfig(ws, prof))
+	t.Cleanup(func() { _ = c.Close() })
+	if err := c.Start(ctx); err != nil {
+		t.Fatalf("Start dengan Chrome asli gagal: %v", err)
+	}
+
+	// Halaman baik: lolos, snapshot memuat judul, screenshot PNG ada.
+	good, err := VerifyPreview(ctx, c, goodURL, "screenshot-1.png")
+	if err != nil {
+		t.Fatalf("VerifyPreview halaman baik gagal: %v", err)
+	}
+	if !good.Passed {
+		t.Fatalf("halaman baik harus lolos, dapat console=%+v network=%+v", good.ConsoleErrors, good.FailedRequests)
+	}
+	if os.Getenv("WB_VERIFY_PREVIEW_URL") == "" && !strings.Contains(good.SnapshotSummary, "Halo Baik") {
+		t.Fatalf("snapshot halaman baik harus memuat judul, dapat %q", good.SnapshotSummary)
+	}
+	checkPNG(t, good.ScreenshotPath)
+
+	// Halaman rusak: gagal DENGAN isi console error yang benar + 404.
+	bad, err := VerifyPreview(ctx, c, ts.URL+"/rusak", "screenshot-2.png")
+	if err != nil {
+		t.Fatalf("VerifyPreview halaman rusak gagal: %v", err)
+	}
+	if bad.Passed {
+		t.Fatal("halaman rusak harus TIDAK lolos")
+	}
+	found := false
+	for _, e := range bad.ConsoleErrors {
+		if strings.Contains(e, "ERR-UJI-VERIF: undefined is not a function di render") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("console error harus memuat teks asli, dapat %+v", bad.ConsoleErrors)
+	}
+	foundNet := false
+	for _, f := range bad.FailedRequests {
+		if strings.Contains(f, "tidak-ada-uji.json [404]") {
+			foundNet = true
+		}
+	}
+	if !foundNet {
+		t.Fatalf("request gagal harus memuat 404 aset, dapat %+v", bad.FailedRequests)
+	}
+	checkPNG(t, bad.ScreenshotPath)
+	t.Logf("baik: %s | rusak: %s", good.Summary, bad.Summary)
+}
+
+func checkPNG(t *testing.T, path string) {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("screenshot harus tersimpan di %s: %v", path, err)
+	}
+	if len(data) < 8 || string(data[:8]) != "\x89PNG\r\n\x1a\n" {
+		t.Fatalf("screenshot %s harus file PNG, dapat %d byte dengan header %q", path, len(data), data[:8])
+	}
+	t.Logf("screenshot tersimpan: %s (%d byte)", path, len(data))
+}
