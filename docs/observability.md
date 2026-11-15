@@ -59,7 +59,7 @@ yang diubah.
 | -------- | ---------- |
 | `GET /healthz` | Liveness: `{"status":"ok"}` selama proses hidup. Tidak menyentuh DB — liveness yang bergantung DB akan me-restart proses yang sebenarnya sehat. |
 | `GET /readyz` | Readiness: `{"status":"ready"}` bila ping DB berhasil, `503 {"status":"not_ready","check":"database"}` bila gagal. Detail error dicatat di log (WARN), **tidak** dikembalikan ke klien. Timeout ping 2 dtk. |
-| `GET /metrics` | Metrik format Prometheus (`text/plain; version=0.0.4`). Tanpa auth — aman karena server hanya listen di `127.0.0.1:18082`; bila server suatu saat di-expose ke publik, beri gate (auth/IP allowlist) sebelum membuka port. |
+| `GET /metrics` | Metrik format Prometheus (`text/plain; version=0.0.4`). Tanpa auth — aman karena server hanya listen di `127.0.0.1` (port default 18082); bila server suatu saat di-expose ke publik, beri gate (auth/IP allowlist) sebelum membuka port. |
 
 ## Metrik
 

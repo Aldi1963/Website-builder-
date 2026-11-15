@@ -101,7 +101,7 @@ func validateProjectContract(files map[string]string) []string {
 func ensureProjectScaffolding(files map[string]string) []string {
 	added := []string{}
 	defaults := map[string]string{
-		".env.example": "VITE_API_BASE_URL=http://localhost:18082\nVITE_APP_NAME=WebBuilder App\n# Secret hanya di .env.local; jangan commit credential.\n",
+		".env.example": "VITE_API_BASE_URL=__API_BASE_URL__\nVITE_APP_NAME=WebBuilder App\n# Secret hanya di .env.local; jangan commit credential.\n",
 		"README.md": `# WebBuilder App
 
 > A production-ready React + TypeScript application generated and verified by WebBuilder.
@@ -157,7 +157,7 @@ Copy env.example to env.local for local-only configuration. Never commit env fil
 | Variable | Purpose | Example |
 | --- | --- | --- |
 | VITE_APP_NAME | Browser application name | WebBuilder App |
-| VITE_API_BASE_URL | API base URL | http://localhost:18082 |
+| VITE_API_BASE_URL | API base URL | __API_BASE_URL__ |
 
 ## Project structure
 
@@ -219,6 +219,13 @@ The generated application is considered ready only after the checks in docs/acce
 		"docs/architecture.md": "# Architecture\n\n## Overview\nReact + TypeScript + Vite dengan service layer untuk auth dan data.\n\n## Boundaries\nUI memanggil service ter-typed; secret hanya di environment server.\n",
 		"docs/data-model.md": "# Data model\n\nCatat tabel, kolom, relationship, index, dan aturan akses yang dipakai aplikasi.\n",
 		"docs/acceptance.md": "# Acceptance criteria\n\n- Install dependency\n- TypeScript check\n- Production build\n- Auth dan alur utama\n- Mobile responsive\n",
+	}
+	for name, content := range defaults {
+		// __API_BASE_URL__ diisi dari port listen server yang sebenarnya
+		// (env PORT, default 18082) — bukan hardcode — supaya .env.example
+		// dan README proyek hasil generate benar di server uji (18086)
+		// maupun produksi.
+		defaults[name] = strings.ReplaceAll(content, "__API_BASE_URL__", apiBaseURL())
 	}
 	for name, content := range defaults {
 		// README dan dokumentasi yang terlalu pendek biasanya berasal dari

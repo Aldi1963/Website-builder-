@@ -8,19 +8,24 @@ masih placeholder. Status: **deploy otomatis BELUM AKTIF** (TREK A item 11,
 ## Cara server berjalan (yang harus dipertahankan)
 
 - Binary Go + frontend statis digabung: `server/main.go` serve `index.html`
-  dari `../server/web/dist` dan API di port **18082**.
+  dari `../server/web/dist` dan API di port listen (default **18082**,
+  override via `PORT`).
 - Database default: **SQLite** `../data/webbuilder.db` (relatif ke working
   directory `server/`). `DATABASE_URL` kosong = SQLite default; bila diset
   `postgres://...` server memakai Postgres + migrasi berversi goose
   (lihat `docs/database.md`) — opt-in, bukan default.
 - `JWT_SECRET` wajib: server menolak start tanpanya (baca dari env, atau
   file `../.jwt-secret`).
-- `PORT` di `.env.example` saat ini **diabaikan** — port hardcode `18082`.
+- `PORT` dibaca `server/main.go` sebagai port listen (default `18082`).
+  Scaffold proyek mengikuti nilai ini: target proxy `/api` di vite.config
+  dan `VITE_API_BASE_URL` di `.env.example` proyek hasil generate
+  diturunkan dari `PORT` saat server jalan (lihat
+  `server/internal/handler/runtime.go`: `serverPort`/`apiBaseURL`).
 - Eksekusi tenant default **mati**; jangan hidupkan lewat deploy.
 
 ## Batasan yang memengaruhi deploy container
 
-`server/main.go` mengikat `127.0.0.1:18082`. Di dalam container, listener itu
+`server/main.go` mengikat `127.0.0.1:<PORT>` (default 18082). Di dalam container, listener itu
 hanya terjangkau dari dalam container sendiri — pemetaan port Docker biasa
 (`-p 18082:18082`) **tidak tembus**. Sampai `main.go` diubah agar bind
 `0.0.0.0` (perlu keputusan koordinator; di luar partisi TREK A), container
@@ -68,7 +73,7 @@ Service `postgres` di compose disediakan untuk opt-in Postgres mendatang —
 | `JWT_SECRET` | Ya | Secret JWT; tanpa ini server menolak start. Isi lewat secret manager / `.env` yang tidak di-commit. |
 | `AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL` | Tidak | Konfigurasi provider AI; kosong = fitur AI nonaktif. |
 | `DATABASE_URL` | Tidak | Kosong = SQLite default; `postgres://...` = Postgres + migrasi goose (lihat `docs/database.md`). |
-| `PORT` | Tidak | Saat ini diabaikan (hardcode 18082). |
+| `PORT` | Tidak | Port listen server (default 18082); scaffold proyek (proxy `/api` vite.config dan `VITE_API_BASE_URL` di `.env.example`) mengikuti nilai ini. |
 
 Tidak ada host, password, atau token yang di-hardcode di workflow maupun
 compose — semua lewat environment/secret.

@@ -103,6 +103,15 @@ func serverPort() string {
 	return "18082"
 }
 
+// apiBaseURL adalah base URL API WebBuilder yang dipakai proyek hasil
+// generate (VITE_API_BASE_URL di .env.example). Diturunkan dari port
+// listen server yang sebenarnya (env PORT, default 18082 — sama seperti
+// server/main.go), bukan hardcode, supaya benar saat server jalan di
+// port lain (mis. 18086 di server uji) maupun di produksi.
+func apiBaseURL() string {
+	return "http://localhost:" + serverPort()
+}
+
 func envSafeValue(value string) string {
 	value = strings.TrimSpace(value)
 	value = strings.NewReplacer("\n", " ", "\r", " ", "=", "-", "#", "").Replace(value)
@@ -234,7 +243,7 @@ func prepareRuntimeWorkspace(p *models.Project) (string, error) {
 	// Runtime selalu melengkapi file operasional yang aman. Secret hanya boleh
 	// diisi user lewat .env.local; .env.example tidak pernah berisi credential.
 	if _, exists := files[".env.example"]; !exists {
-		files[".env.example"] = "VITE_API_BASE_URL=http://localhost:18082\nVITE_APP_NAME=WebBuilder App\n# Isi secret hanya di .env.local, jangan commit credential.\n"
+		files[".env.example"] = "VITE_API_BASE_URL=" + apiBaseURL() + "\nVITE_APP_NAME=WebBuilder App\n# Isi secret hanya di .env.local, jangan commit credential.\n"
 	}
 	if _, exists := files["README.md"]; !exists {
 		files["README.md"] = fmt.Sprintf(`# %s

@@ -66,3 +66,51 @@ func TestContractRejectsTooFewTypeScriptFiles(t *testing.T) {
 		t.Fatalf("proyek 2 file TS seharusnya ditandai: %v", issues)
 	}
 }
+
+// TestScaffoldApiBaseURLFollowsServerPort mengunci bahwa .env.example dan
+// README hasil scaffold memakai port listen server yang sebenarnya
+// (env PORT), bukan hardcode 18082 — regresi untuk server uji (18086)
+// maupun produksi.
+func TestScaffoldApiBaseURLFollowsServerPort(t *testing.T) {
+	t.Setenv("PORT", "18086")
+	files := map[string]string{}
+	added := ensureProjectScaffolding(files)
+	if len(added) == 0 {
+		t.Fatal("ensureProjectScaffolding tidak menambahkan file apa pun")
+	}
+	if got := files[".env.example"]; !strings.Contains(got, "VITE_API_BASE_URL=http://localhost:18086") {
+		t.Errorf(".env.example harus menunjuk port server (18086), dapat: %q", got)
+	}
+	if strings.Contains(files[".env.example"], "18082") {
+		t.Errorf(".env.example masih berisi port lama 18082: %q", files[".env.example"])
+	}
+	if got := files["README.md"]; !strings.Contains(got, "http://localhost:18086") {
+		t.Errorf("README harus menunjuk port server (18086), dapat potongan: %q", firstLineWith(got, "VITE_API_BASE_URL"))
+	}
+	if strings.Contains(files["README.md"], "18082") {
+		t.Error("README masih berisi port lama 18082")
+	}
+	if strings.Contains(files[".env.example"], "__API_BASE_URL__") || strings.Contains(files["README.md"], "__API_BASE_URL__") {
+		t.Error("placeholder __API_BASE_URL__ bocor ke scaffold")
+	}
+}
+
+func firstLineWith(text, token string) string {
+	for _, line := range strings.Split(text, "\n") {
+		if strings.Contains(line, token) {
+			return line
+		}
+	}
+	return ""
+}
+
+// TestScaffoldApiBaseURLDefaultPort memastikan default tetap 18082 saat
+// PORT tidak diset (perilaku lama untuk server yang jalan tanpa env).
+func TestScaffoldApiBaseURLDefaultPort(t *testing.T) {
+	t.Setenv("PORT", "")
+	files := map[string]string{}
+	ensureProjectScaffolding(files)
+	if got := files[".env.example"]; !strings.Contains(got, "VITE_API_BASE_URL=http://localhost:18082") {
+		t.Errorf("tanpa PORT, .env.example harus default 18082, dapat: %q", got)
+	}
+}
