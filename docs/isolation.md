@@ -60,9 +60,37 @@ Batas Fase 1 (lihat `docs/mcp-browser-integration-plan.md` §4):
 Fail-closed: bila flag nyala tapi Chrome/MCP tidak tersedia (mis.
 `CHROME_FOR_TESTING_PATH` menunjuk path tak ada, atau server MCP gagal
 start), pipeline mencatat error jelas di log dan agent berjalan TANPA alat
-browser — bukan diam-diam. Alat yang aktif di Fase 1 hanya
-`browser_list_console_messages`; alat allowlist lain (§5 rencana) belum
-diekspos sampai Fase 2.
+browser — bukan diam-diam.
+
+### Migrasi acceptance + screenshot ke MCP (Fase 2)
+
+`browserAcceptance` dan `runtimeCaptureScreenshot`
+(`server/internal/handler/runtime.go`) memakai MCP sebagai jalur UTAMA
+bila kedua flag di atas nyala — lewat helper one-shot
+`server/internal/browser/acceptance.go` (`RunAcceptance`,
+`CaptureScreenshot`: satu profil Chrome per pemanggilan, dihapus
+sesudahnya, timeout 30 dtk mengikuti ctx pemanggil). Struktur hasil
+acceptance SAMA seperti skrip playwright lama (`http`, `hasBody`,
+`consoleErrors`, `failedAppResources`, `sdk`) supaya pemakai di
+`features.go` / `repair.go` tidak berubah; verdict gagal MCP
+(`ErrAcceptanceFailed`) bersifat final dan TIDAK fallback ke playwright.
+
+Bila flag mati, perilaku persis seperti sebelum Fase 2 (jalur playwright
+lama). Bila flag nyala tapi MCP gagal start, jalur playwright lama
+dipakai sebagai FALLBACK sementara dan kegagalan MCP di-log (`slog.Warn`).
+
+Perbedaan perilaku yang disengaja terhadap skrip lama: 404 `favicon.ico`
+diabaikan saat menilai (bukan console error dan bukan failed resource) —
+halaman tanpa favicon tidak boleh membuat acceptance gagal. Parser
+console dipakai ulang dari Trek A (`ParseConsoleErrors` di
+`server/internal/browser/verify.go`): baris "Failed to load resource"
+juga dibuang dari `consoleErrors` karena tidak menyebut URL — kegagalan
+resource dinilai lewat daftar network.
+
+Jalur playwright lama (`browserAcceptancePlaywright` + skrip inline di
+`runtimeCaptureScreenshot`) berstatus **deprecated — dihapus di rilis
+berikutnya, diganti MCP**. Skrip node inline-nya dipertahankan hanya
+selama fallback itu hidup; jangan menambah pemakai baru.
 
 ## Interface Executor
 
@@ -217,12 +245,12 @@ Dua jebakan yang ditemukan saat verifikasi (2026-11-15) — keduanya membuat
   (`Start`/`Stop`) ke paket runtime, lalu pindahkan dev server ke sana.
   (Install bootstrap di `runtimeDevStart` SUDAH lewat adapter bila flag
   nyala; hanya proses dev-nya yang masih jalur lama.)
-- **Screenshot** (`runtimeCaptureScreenshot`) dan **browserAcceptance**:
-  menjalankan skrip milik server (playwright-core), bukan kode tenant —
-  tidak ada manfaat keamanan dari migrasi, dan path Chromium/playwright
-  di dalamnya hardcode per host dan sudah rapuh di VM ini (lihat catatan
-  PR #10: playwright-core di `/opt/webbuilder/...` tidak ada,
-  Chromium di-hardcode ke `/root/.cache/...`).
+- **Screenshot** (`runtimeCaptureScreenshot`) dan **browserAcceptance**
+  sudah dimigrasi ke MCP di Fase 2 (lihat "Migrasi acceptance +
+  screenshot ke MCP" di atas). Jalur playwright lamanya masih ada sebagai
+  fallback sementara dan ditandai **deprecated — dihapus di rilis
+  berikutnya, diganti MCP**; skrip node inline-nya belum dihapus karena
+  fallback masih memakainya.
 - `customdomain.go` (ssh infra) dan `payment.go` (binary clipkupay):
   bukan kode tenant.
 
@@ -236,8 +264,8 @@ Dua jebakan yang ditemukan saat verifikasi (2026-11-15) — keduanya membuat
   daemon tersedia, atau tambahkan gVisor/Firecracker sebagai adapter
   ketiga nanti.
 - **Dev server** masih jalur lama (lihat atas) — ini permukaan tenant yang
-  belum terisolasi. Screenshot/browserAcceptance sengaja tidak dimigrasi
-  (skrip server, bukan kode tenant).
+  belum terisolasi. Screenshot/browserAcceptance sudah lewat MCP bila flag
+  browser nyala, dengan fallback playwright lama yang ditandai deprecated.
 - Tidak ada batas CPU/memori pada `ProcessExecutor` (tidak ada cgroup);
   batas yang ada baru timeout dan batas output.
 
