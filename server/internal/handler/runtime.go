@@ -338,6 +338,24 @@ Environment variable lokal disimpan di file .env.local; jangan commit secret ata
 			if _, exists := deps["autoprefixer"]; !exists {
 				deps["autoprefixer"] = "10.4.20"
 			}
+			// Script build memanggil `vite build`, tetapi package.json hasil
+			// model sering tidak memuat vite/react/react-dom sama sekali.
+			// Tanpa ketiganya install lolos lalu build gagal `vite: not
+			// found` (exit 127). Tambahkan bila tidak ada di dependencies
+			// MAUPUN devDependencies; versi yang sudah ada (di mana pun)
+			// dihormati dan tidak diduplikasi. Sama seperti scaffold saat
+			// package.json belum ada: ketiganya "latest".
+			for _, name := range []string{"vite", "react", "react-dom"} {
+				if _, exists := deps[name]; exists {
+					continue
+				}
+				if devDeps, ok := manifest["devDependencies"].(map[string]interface{}); ok {
+					if _, exists := devDeps[name]; exists {
+						continue
+					}
+				}
+				deps[name] = "latest"
+			}
 			// Tselaraskan plugin React dengan major vite yang ditulis model.
 			// plugin-react@6 butuh vite>=8 dan mengimpor "vite/internal" yang
 			// TIDAK ada di vite 5 → build gagal ERR_PACKAGE_PATH_NOT_EXPORTED.
