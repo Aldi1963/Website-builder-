@@ -10,8 +10,10 @@ WebBuilder turns natural-language requirements into production-ready web project
 .
 ├── server/       Go API, agent orchestration, runtime, database handlers
 ├── web/          React + TypeScript frontend (Vite)
+├── packages/     Shared workspace packages (ui: shared React UI, types: shared TypeScript types)
+├── services/     Agent worker (Python) — see services/agent-worker/README.md
 ├── docs/         Architecture and development notes
-├── scripts/      Local development and deployment helpers
+├── scripts/      Backup and restore helpers (backup.sh, restore.sh)
 ├── .env.example  Environment variable reference
 └── .gitignore    Source-control safety rules
 ```
@@ -31,8 +33,27 @@ go build .
 ```bash
 cd web
 pnpm install
+pnpm typecheck
 pnpm build
 ```
+
+### Backup and restore
+
+```bash
+scripts/backup.sh
+scripts/restore.sh
+```
+
+See `scripts/` for usage and what each script backs up. Backups, runtime
+data and databases are excluded from Git (see `.gitignore`).
+
+## Configuration
+
+Server configuration is documented in `.env.example` — it lists every
+variable the Go server reads, which ones are required, and which settings
+instead live in the database (admin panel). Copy it to `.env` locally
+and never commit secrets. Startup validation for the required variables
+lives in `server/internal/config/`.
 
 ## Security
 
@@ -40,4 +61,4 @@ Runtime data, databases, credentials, tokens, logs, generated bundles, and compi
 
 ## License
 
-Proprietary project. All rights reserved.
+Proprietary — see [LICENSE](LICENSE). All rights reserved.
