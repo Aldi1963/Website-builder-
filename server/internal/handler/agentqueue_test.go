@@ -1,11 +1,14 @@
 // Tes wiring DBQueue -> handler agent (end-to-end, bukan unit adapter).
 //
 // Pipeline agent dieksekusi consumer queue dengan AI stub (httptest server
-// OpenAI-compatible) dan proyek yang memenuhi kontrak TypeScript, supaya
-// satu-satunya kegagalan adalah acceptance (package.json tanpa script
-// build -> "Missing script: build") — run berakhir "failed" TETAPI tetap
-// terminal, dan itu yang dibuktikan: enqueue -> consumer mengeksekusi ->
-// run selesai + job "done" + event SSE mengalir lewat bus.
+// OpenAI-compatible) dan proyek yang memenuhi kontrak TypeScript.
+// prepareRuntimeWorkspace kini melengkapi vite/react/react-dom sehingga
+// `npm install` + `vite build` nyata LOLOS; run tetap berakhir "failed"
+// tetapi di fase database sesudah build (Postgres app tidak tersedia di
+// lingkungan test) — TETAP terminal, dan itu yang dibuktikan: enqueue ->
+// consumer mengeksekusi -> run selesai + job "done" + event SSE mengalir
+// lewat bus. Test juga menegaskan build benar-benar jalan (dist/index.html
+// ada) dan errornya bukan lagi "vite: not found".
 //
 // Catatan: acceptance menjalankan `npm install` + `npm run build` nyata di
 // server/internal/runtime/project-<id> (relatif terhadap CWD paket
@@ -21,6 +24,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -65,11 +69,11 @@ func makeAdminUser(t *testing.T, db *gorm.DB, email string) models.User {
 // (14 file wajib, index.html kecil + module script, >=3 file .ts/.tsx di
 // src/, tanpa .js/.jsx) supaya enforceProjectContract tidak memanggil AI.
 // package.json SENGAJA tanpa dependensi vite/react: prepareRuntimeWorkspace
-// menambahkan script "build": "vite build" tetapi TIDAK menambahkan dep
-// vite/react bila package.json sudah ada, jadi acceptance gagal cepat
-// dengan "vite: not found" (exit 127, TIDAK repairable -> repair tidak
-// terpanggil, stub AI hanya dipanggil sekali untuk stream). Run berakhir
-// "failed" yang tetap terminal — itu yang dibuktikan test ini.
+// wajib melengkapinya (script "build": "vite build" + dep vite/react/
+// react-dom "latest") sehingga `vite build` nyata lolos. Run tetap
+// berakhir "failed" — kini di fase database sesudah build (Postgres app
+// tidak tersedia di lingkungan test) — yang tetap terminal, dan itu yang
+// dibuktikan test ini.
 func contractFiles() map[string]string {
 	return map[string]string{
 		"package.json":              "{\"name\":\"uji\",\"private\":true,\"version\":\"0.0.0\",\"type\":\"module\"}",
@@ -241,9 +245,18 @@ func TestAgentQueueEndToEnd(t *testing.T) {
 	enqueueTestJob(t, mgr, run, proj.ID, user.ID, "Perbaiki tampilan dashboard")
 	final := waitForRunTerminal(t, db, run.ID, 120*time.Second)
 	t.Logf("run final: status=%q summary=%q error=%q", final.Status, final.Summary, final.Error)
-	// Acceptance gagal (tanpa script build) -> run "failed", TETAP terminal.
+	// Acceptance gagal di fase database (Postgres app tidak tersedia di
+	// lingkungan test) -> run "failed", TETAP terminal. Yang penting:
+	// build vite-nya sendiri lolos — bukan lagi "vite: not found".
 	if final.Status != "failed" {
-		t.Fatalf("harapkan run failed (acceptance tanpa build script), dapat %q: %s", final.Status, final.Error)
+		t.Fatalf("harapkan run failed (acceptance fase database), dapat %q: %s", final.Status, final.Error)
+	}
+	if strings.Contains(final.Error, "vite: not found") {
+		t.Fatalf("build tidak boleh lagi gagal 'vite: not found': %s", final.Error)
+	}
+	// Bukti build jalan: dist/index.html hasil `vite build` nyata ada.
+	if _, err := os.Stat(filepath.Join("..", "runtime", fmt.Sprintf("project-%d", proj.ID), "dist", "index.html")); err != nil {
+		t.Fatalf("harapkan dist/index.html hasil vite build ada: %v", err)
 	}
 	rec := jobRecord(t, db, run.ID)
 	if rec.Status != "done" {
