@@ -775,7 +775,7 @@ AUTONOMOUS BLUEPRINT (EMPTY PROJECT):
 		}
 	}
 	send("result", gin.H{"status": finalStatus, "summary": finalSummary, "changedFiles": changed, "intent": intent,
-		"verification":   saveChatVerification(db, assistantMsgID, p.ID, run.ID, verification),
+		"verification":   saveChatVerification(db, assistantMsgID, session.ID, p.ID, run.ID, verification),
 		"screenshotPath": verification.ScreenshotPath})
 	return nil
 }
@@ -785,14 +785,30 @@ AUTONOMOUS BLUEPRINT (EMPTY PROJECT):
 // objek yang sama persis untuk event SSE `result` — satu sumber, dua
 // pemakaian, supaya riwayat setelah reload menampilkan kartu yang sama
 // dengan chat live. Tidak menyimpan apa pun bila loop verifikasi tidak
-// jalan (Attempted false) atau tidak ada pesan asisten (msgID 0 —
-// jawaban model kosong): pesan seperti itu tetap tanpa kartu.
-func saveChatVerification(db *gorm.DB, msgID, projectID, runID uint, verification browserVerificationOutcome) gin.H {
+// jalan (Attempted false).
+//
+// Bila jawaban model kosong, pipeline tidak membuat pesan asisten
+// (msgID 0): verifikasi tetap disimpan sebagai pesan kartu tersendiri
+// — asisten, konten kosong, hanya verification — persis bentuk yang
+// dipakai frontend live untuk kartu (Builder.tsx: setMsgs [...,
+// {role: "assistant", content: "", verification}]). Tanpa ini, kartu
+// tampil di live tapi hilang setelah reload.
+func saveChatVerification(db *gorm.DB, msgID, sessionID, projectID, runID uint, verification browserVerificationOutcome) gin.H {
 	verificationObj := gin.H{"attempted": verification.Attempted, "passed": verification.Passed, "rounds": verification.Rounds, "consoleErrors": verification.ConsoleErrors, "failedRequests": verification.FailedRequests, "screenshotPath": verification.ScreenshotPath, "screenshotUrl": verificationScreenshotURL(projectID, runID, verification.ScreenshotPath)}
-	if verification.Attempted && msgID != 0 {
-		if vj, err := json.Marshal(verificationObj); err == nil {
-			db.Model(&models.ChatMessage{}).Where("id = ?", msgID).Update("verification", string(vj))
-		}
+	if !verification.Attempted {
+		return verificationObj
 	}
+	vj, err := json.Marshal(verificationObj)
+	if err != nil {
+		return verificationObj
+	}
+	if msgID != 0 {
+		db.Model(&models.ChatMessage{}).Where("id = ?", msgID).Update("verification", string(vj))
+		return verificationObj
+	}
+	if sessionID == 0 {
+		return verificationObj
+	}
+	db.Create(&models.ChatMessage{SessionID: sessionID, Role: "assistant", Content: "", Verification: string(vj)})
 	return verificationObj
 }

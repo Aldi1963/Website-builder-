@@ -48,7 +48,7 @@ func TestSaveChatVerificationSkipsWhenNotAttempted(t *testing.T) {
 		t.Fatalf("create: %v", err)
 	}
 	// Loop tidak jalan: tidak ada yang disimpan, walau pesan ada.
-	obj := saveChatVerification(db, msg.ID, 1, 1, browserVerificationOutcome{Attempted: false})
+	obj := saveChatVerification(db, msg.ID, 1, 1, 1, browserVerificationOutcome{Attempted: false})
 	if obj["attempted"] != false {
 		t.Fatalf("objek SSE harus tetap membawa attempted=false, dapat %v", obj["attempted"])
 	}
@@ -57,9 +57,47 @@ func TestSaveChatVerificationSkipsWhenNotAttempted(t *testing.T) {
 	if back.Verification != "" {
 		t.Fatalf("verification tidak-attempted harus tetap kosong, dapat %q", back.Verification)
 	}
-	// Tanpa pesan asisten (jawaban model kosong): tidak ada yang ditulis,
-	// dan tidak panic.
-	saveChatVerification(db, 0, 1, 1, browserVerificationOutcome{Attempted: true, Passed: true, Rounds: 1})
+}
+
+func TestSaveChatVerificationCreatesCardMessageWhenEmptyAnswer(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.AutoMigrate(&models.ChatMessage{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	outcome := browserVerificationOutcome{Attempted: true, Passed: false, Rounds: 2, ConsoleErrors: []string{"e1"}, FailedRequests: []string{}, ScreenshotPath: "p"}
+	// Jawaban model kosong (msgID 0) + verifikasi dicoba: harus lahir
+	// SATU pesan kartu tersendiri — asisten, konten kosong, verification
+	// JSON sama persis dengan objek SSE `result`.
+	obj := saveChatVerification(db, 0, 7, 1, 1, outcome)
+	if obj["attempted"] != true {
+		t.Fatalf("objek SSE harus membawa attempted=true, dapat %v", obj["attempted"])
+	}
+	var msgs []models.ChatMessage
+	db.Order("id").Find(&msgs)
+	if len(msgs) != 1 {
+		t.Fatalf("harus tepat 1 pesan kartu, dapat %d", len(msgs))
+	}
+	card := msgs[0]
+	if card.Role != "assistant" || card.Content != "" || card.SessionID != 7 {
+		t.Fatalf("pesan kartu harus asisten/konten kosong/sesi 7, dapat %+v", card)
+	}
+	var storedObj map[string]any
+	if err := json.Unmarshal([]byte(card.Verification), &storedObj); err != nil {
+		t.Fatalf("kolom verification harus JSON sah: %v", err)
+	}
+	sseJSON, _ := json.Marshal(obj)
+	var sseObj map[string]any
+	_ = json.Unmarshal(sseJSON, &sseObj)
+	if fmt.Sprint(storedObj) != fmt.Sprint(sseObj) {
+		t.Fatalf("kolom DB != objek SSE:\nDB:  %v\nSSE: %v", storedObj, sseObj)
+	}
+	// Tanpa sesi (sessionID 0) atau tanpa verifikasi: tidak ada pesan baru.
+	saveChatVerification(db, 0, 0, 1, 1, outcome)
+	saveChatVerification(db, 0, 7, 1, 1, browserVerificationOutcome{Attempted: false})
+	db.Order("id").Find(&msgs)
+	if len(msgs) != 1 {
+		t.Fatalf("kasus tanpa-sesi/tanpa-verifikasi tidak boleh menambah pesan, dapat %d", len(msgs))
+	}
 }
 
 func TestChatMessageAutoMigrateHasVerificationColumn(t *testing.T) {
@@ -105,7 +143,7 @@ func TestGetChatReturnsPersistedVerification(t *testing.T) {
 		t.Fatalf("create assistant msg: %v", err)
 	}
 	outcome := browserVerificationOutcome{Attempted: true, Passed: true, Rounds: 1, ScreenshotPath: shotPath, ConsoleErrors: []string{}, FailedRequests: []string{}}
-	sseObj := saveChatVerification(db, assistantMsg.ID, p.ID, run.ID, outcome)
+	sseObj := saveChatVerification(db, assistantMsg.ID, session.ID, p.ID, run.ID, outcome)
 	// 3. Pesan dengan isi kolom rusak — harus tampil tanpa kartu.
 	if err := db.Create(&models.ChatMessage{SessionID: session.ID, Role: "assistant", Content: "pesan rusak", Verification: "{bukan json"}).Error; err != nil {
 		t.Fatalf("create corrupt msg: %v", err)
@@ -115,7 +153,7 @@ func TestGetChatReturnsPersistedVerification(t *testing.T) {
 	if err := db.Create(&plainMsg).Error; err != nil {
 		t.Fatalf("create plain msg: %v", err)
 	}
-	saveChatVerification(db, plainMsg.ID, p.ID, run.ID, browserVerificationOutcome{Attempted: false})
+	saveChatVerification(db, plainMsg.ID, session.ID, p.ID, run.ID, browserVerificationOutcome{Attempted: false})
 
 	// Kolom mentah di DB harus sama persis dengan objek SSE `result`.
 	var stored models.ChatMessage
