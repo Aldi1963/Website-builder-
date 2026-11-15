@@ -1051,6 +1051,18 @@ paths:
           description: OK
         '401':
           description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/clone-from-url:
+    post:
+      operationId: postApiProjectsClonefromurl
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/projects/clone-from-url'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
   /api/projects/import-github:
     post:
       operationId: postApiProjectsImportgithub

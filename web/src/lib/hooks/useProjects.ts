@@ -19,6 +19,19 @@ export function useCreateProject() {
   });
 }
 
+// Clone website dari URL: server men-scrape + men-regenerasi sebagai
+// proyek React, lalu meng-enqueue run agent (progres terlihat di Builder).
+export function useCloneFromURL() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ url, name }: { url: string; name?: string }) =>
+      api.cloneFromURL(url, name),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: projectKeys.lists() });
+    },
+  });
+}
+
 // Bentuk respons createProject tidak konsisten di server (project.id
 // atau id di root); pemanggil lama sudah menangani kedua bentuk ini.
 export function projectIdFromCreateResponse(d: any): string | null {
