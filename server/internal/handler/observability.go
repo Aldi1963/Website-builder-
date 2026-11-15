@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"webbuilder/internal/browser"
 	"webbuilder/internal/observability"
 
 	"github.com/gin-gonic/gin"
@@ -27,6 +28,17 @@ import (
 // diberi gate (lihat docs/observability.md).
 func RegisterObservability(r *gin.Engine, db *gorm.DB) {
 	metrics := observability.NewMetrics()
+	// Wiring metrik browser (Fase 3 item 2): pipeline membuat browser
+	// Client lewat browser.NewClientForRun di agentpipeline.go — yang
+	// tidak memegang instance Metrics ini — jadi observer default
+	// paket browser dipasang ke instance yang sama dengan /metrics di
+	// sini. NewClient men-snapshot observer default, sehingga SEMUA
+	// pemanggilan CallTool/callAcceptanceTool (model-driven maupun
+	// scripted VerifyPreview/acceptance) tercatat di
+	// browser_tool_calls_total + histogram durasi tanpa perubahan di
+	// agent.go/agentpipeline.go. Tanda tangan
+	// Metrics.RecordBrowserTool sama persis dengan browser.CallObserver.
+	browser.SetDefaultCallObserver(metrics.RecordBrowserTool)
 	r.Use(observability.LoggingMiddleware(RequestID))
 	r.Use(observability.MetricsMiddleware(metrics))
 	r.GET("/healthz", gin.WrapF(observability.LivenessHandler()))
