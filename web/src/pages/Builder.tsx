@@ -10,7 +10,11 @@ import {
   rankOccurrences,
   excludeHeadOccurrences,
   hasTagOccurrence,
+  findSplitTextOccurrences,
+  applySplitTextEdit,
+  splitStyleTarget,
   type TextOccurrence,
+  type SplitTextOccurrence,
   type StyleTarget,
 } from "../lib/visualEditor";
 import ProjectSettingsModal from "./ProjectSettingsModal";
@@ -686,7 +690,7 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
   const veIsImg = (selectedEl?.tag || "").toUpperCase() === "IMG";
   // Kemunculan literal teks/src di file sumber (pencocokan literal —
   // lihat web/src/lib/visualEditor.ts untuk desain + batasannya).
-  const veOccurrences: TextOccurrence[] = useMemo(() => {
+  const veLiteralOccurrences: TextOccurrence[] = useMemo(() => {
     if (!selectedEl) return [];
     const found = veIsImg && selectedEl.src
       ? findLiteralOccurrences(files, selectedEl.src, true)
@@ -700,16 +704,31 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
     // diklik (pernah terjadi: klik <h1> malah mengubah <title>).
     return excludeHeadOccurrences(rankOccurrences(found, selectedEl.tag || ""), selectedEl.tag || "");
   }, [selectedEl, files, veIsImg]);
+  // Bila literal tidak ketemu, coba teks TERPECAH: teks render yang
+  // dipecah <br/>/<em>/<strong>/<span> di dalam satu elemen — dipetakan
+  // ke sekumpulan node teks penyusunnya, edit membagi teks baru ke
+  // node-node itu dengan markup dipertahankan.
+  const veSplitOccurrences: SplitTextOccurrence[] = useMemo(() => {
+    if (!selectedEl || veIsImg || !selectedEl.text) return [];
+    if (veLiteralOccurrences.length > 0) return [];
+    return findSplitTextOccurrences(files, selectedEl.text, selectedEl.tag || "");
+  }, [selectedEl, files, veIsImg, veLiteralOccurrences]);
+  const veOccurrences: (TextOccurrence | SplitTextOccurrence)[] =
+    veLiteralOccurrences.length > 0 ? veLiteralOccurrences : veSplitOccurrences;
   const veOcc = veOccurrences[veOccIdx] || null;
   // Bila tak satu pun kemunculan berada di dalam tag yang diklik, teks
   // itu kemungkinan terpecah di sumber (mis. <br/>/<em> dalam heading)
   // — panel menampilkan peringatan, bukan pilihan default yang salah.
+  // Kemunculan split-text selalu berada di dalam tag yang diklik
+  // (ditemukan dari tag itu), jadi peringatan tidak berlaku untuknya.
   const veHasTagOcc = useMemo(() => {
     if (!selectedEl) return false;
-    return hasTagOccurrence(veOccurrences, selectedEl.tag || "");
-  }, [selectedEl, veOccurrences]);
+    if (veSplitOccurrences.length > 0) return true;
+    return hasTagOccurrence(veLiteralOccurrences, selectedEl.tag || "");
+  }, [selectedEl, veLiteralOccurrences, veSplitOccurrences]);
   const veStyleTarget: StyleTarget | null = useMemo(() => {
     if (!selectedEl || !veOcc || veIsImg) return null;
+    if (veOcc.kind === "split-text") return splitStyleTarget(files, veOcc);
     return findStyleTarget(files, veOcc, selectedEl.tag || "");
   }, [selectedEl, veOcc, files, veIsImg]);
 
@@ -743,14 +762,17 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
     if (veIsImg) {
       const newSrc = veSrc.trim();
       if (newSrc && newSrc !== (selectedEl.src || "")) {
-        if (!veOcc) { setVeMsg("URL gambar lama tidak ditemukan di file sumber — simpan dibatalkan."); return; }
+        // Gambar selalu literal (split-text hanya untuk teks).
+        if (!veOcc || veOcc.kind === "split-text") { setVeMsg("URL gambar lama tidak ditemukan di file sumber — simpan dibatalkan."); return; }
         const r = applyLiteralEdit(next, veOcc, selectedEl.src || "", newSrc);
         if (!r.ok) { setVeMsg(r.error); return; }
         next = r.files; changedFile = r.file;
       }
     } else if (veText !== (selectedEl.text || "")) {
       if (!veOcc) { setVeMsg("Teks tidak ditemukan apa adanya di file sumber — simpan dibatalkan. Coba aksi AI di bawah atau edit kode."); return; }
-      const r = applyLiteralEdit(next, veOcc, selectedEl.text || "", veText);
+      const r = veOcc.kind === "split-text"
+        ? applySplitTextEdit(next, veOcc, veText)
+        : applyLiteralEdit(next, veOcc, selectedEl.text || "", veText);
       if (!r.ok) { setVeMsg(r.error); return; }
       next = r.files; changedFile = r.file;
     }
@@ -2946,6 +2968,11 @@ if (App) {
                     Ditemukan di <code style={{ fontFamily: "monospace" }}>{veOcc?.file}:{veOcc?.line}</code>
                     {veOccurrences.length > 1 && " — teks yang sama muncul di beberapa tempat, pilih salah satu:"}
                   </div>
+                  {veOcc?.kind === "split-text" && (
+                    <div style={{ fontSize: 12, color: "#1e40af", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: 10, marginBottom: 10 }}>
+                      Teks ini terpecah di sumber (<code>&lt;br/&gt;</code>/<code>&lt;em&gt;</code>/…) — teks baru dibagi ke node aslinya mengikuti jumlah kata tiap bagian, markup dipertahankan. Bila teks baru lebih pendek, bagian yang kehabisan kata dikosongkan (pembungkusnya tetap ada).
+                    </div>
+                  )}
                   {!veHasTagOcc && (
                     <div style={{ fontSize: 12, color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: 10, marginBottom: 10 }}>
                       Perhatian: tidak ada kemunculan teks ini di dalam elemen &lt;{selectedEl.tag.toLowerCase()}&gt; — teks yang diklik kemungkinan terpecah menjadi beberapa bagian di sumber (mis. <code>&lt;br/&gt;</code> atau <code>&lt;em&gt;</code> di dalam heading). Menyimpan di sini akan mengubah kemunculan lain; bila ragu, gunakan aksi AI di bawah.
@@ -3000,7 +3027,7 @@ if (App) {
                       </div>
                     </div>
                   ) : (
-                    !veIsImg && veOcc && veOcc.kind !== "jsx-text" && (
+                    !veIsImg && veOcc && (veOcc.kind === "string" || veOcc.kind === "attribute") && (
                       <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 12 }}>Gaya (warna/ukuran) tidak bisa diubah di sini: teks ini dari string/data, bukan teks JSX langsung.</div>
                     )
                   )}

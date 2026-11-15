@@ -10,7 +10,31 @@ import {
   hasTagOccurrence,
   escapeJsxText,
   escapeStringLiteral,
+  findSplitTextOccurrences,
+  applySplitTextEdit,
+  splitStyleTarget,
+  normalizeRenderedText,
 } from "./visualEditor";
+
+const SPLIT_FILES = {
+  "src/App.tsx": `export default function App() {
+  return (
+    <div>
+      <h1>Kopi<br/><em>Nikmat.</em></h1>
+      <h2>
+        Teh
+        <br />
+        <strong>Manis Sekali</strong>
+      </h2>
+      <p>Belajar <span>React</span> itu <code>seru</code> banget</p>
+      <h3>{"Judul"}<span>{"Ekspresi"}</span></h3>
+      <h4>Kopi &amp; Teh</h4>
+      <h5> Halo <em>{nama}</em></h5>
+    </div>
+  );
+}
+`,
+};
 
 const FILES = {
   "src/App.tsx": `export default function App() {
@@ -210,5 +234,131 @@ describe("mergeStyleInner", () => {
       'color: "#222", fontSize: 14',
     );
     expect(mergeStyleInner("", { fontSize: 20 })).toBe("fontSize: 20");
+  });
+});
+
+describe("findSplitTextOccurrences", () => {
+  it("memetakan heading dengan <br/> + <em> ke dua segmen", () => {
+    // innerText bridge untuk <br/> adalah newline — dinormalisasi.
+    const occ = findSplitTextOccurrences(SPLIT_FILES, "Kopi\nNikmat.", "H1");
+    expect(occ).toHaveLength(1);
+    expect(occ[0].kind).toBe("split-text");
+    expect(occ[0].tagName).toBe("h1");
+    expect(occ[0].renderedText).toBe("Kopi Nikmat.");
+    expect(occ[0].segments.map((s) => s.text)).toEqual(["Kopi", " ", "Nikmat."]);
+    expect(occ[0].line).toBe(4);
+  });
+
+  it("memetakan teks multi-baris dengan indentasi JSX", () => {
+    const occ = findSplitTextOccurrences(SPLIT_FILES, "Teh Manis Sekali", "h2");
+    expect(occ).toHaveLength(1);
+    expect(occ[0].segments.map((s) => s.text)).toEqual(["Teh", " ", "Manis Sekali"]);
+  });
+
+  it("memetakan teks yang dipecah <span> dan <code> di dalam <p>", () => {
+    const occ = findSplitTextOccurrences(SPLIT_FILES, "Belajar React itu seru banget", "p");
+    expect(occ).toHaveLength(1);
+    expect(occ[0].segments.map((s) => s.text)).toEqual([
+      "Belajar ",
+      "React",
+      " itu ",
+      "seru",
+      " banget",
+    ]);
+  });
+
+  it("memetakan segmen string expression {\"...\"}", () => {
+    // {"Judul"}{"Ekspresi"} me-render tanpa spasi di antaranya.
+    const occ = findSplitTextOccurrences(SPLIT_FILES, "JudulEkspresi", "h3");
+    expect(occ).toHaveLength(1);
+    expect(occ[0].segments.map((s) => s.kind)).toEqual(["string", "string"]);
+  });
+
+  it("mendekode entity HTML (&amp;) saat membandingkan", () => {
+    const occ = findSplitTextOccurrences(SPLIT_FILES, "Kopi & Teh", "h4");
+    expect(occ).toHaveLength(1);
+  });
+
+  it("tidak memetakan teks dengan expression/variabel di dalamnya", () => {
+    expect(findSplitTextOccurrences(SPLIT_FILES, "Halo Aldi", "h5")).toEqual([]);
+  });
+
+  it("tidak cocok bila teks render berbeda atau tag salah", () => {
+    expect(findSplitTextOccurrences(SPLIT_FILES, "Kopi Pahit.", "h1")).toEqual([]);
+    expect(findSplitTextOccurrences(SPLIT_FILES, "Kopi Nikmat.", "h2")).toEqual([]);
+    expect(findSplitTextOccurrences(SPLIT_FILES, "   ", "h1")).toEqual([]);
+  });
+
+  it("normalizeRenderedText menyamakan newline/spasi ganda", () => {
+    expect(normalizeRenderedText("Kopi\n  Nikmat. ")).toBe("Kopi Nikmat.");
+  });
+});
+
+describe("applySplitTextEdit", () => {
+  it("membagi teks baru ke segmen asal, markup dipertahankan", () => {
+    const occ = findSplitTextOccurrences(SPLIT_FILES, "Kopi Nikmat.", "h1");
+    const res = applySplitTextEdit(SPLIT_FILES, occ[0], "Teh Manis.");
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.files["src/App.tsx"]).toContain("<h1>Teh<br/><em>Manis.</em></h1>");
+  });
+
+  it("kata sisa masuk ke segmen terakhir; segmen yang kehabisan kata dikosongkan", () => {
+    const occ = findSplitTextOccurrences(SPLIT_FILES, "Belajar React itu seru banget", "p");
+    const res = applySplitTextEdit(SPLIT_FILES, occ[0], "Ayo ngoding bareng teman-teman semua");
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    // Segmen: ["Belajar "(1 kata), "React"(1), " itu "(1), "seru"(1), " banget"(1)]
+    // → Ayo | ngoding | bareng | teman-teman | semua
+    expect(res.files["src/App.tsx"]).toContain(
+      "<p>Ayo <span>ngoding</span> bareng <code>teman-teman</code> semua</p>",
+    );
+    const occ2 = findSplitTextOccurrences(SPLIT_FILES, "Kopi Nikmat.", "h1");
+    const res2 = applySplitTextEdit(SPLIT_FILES, occ2[0], "Kopi");
+    expect(res2.ok).toBe(true);
+    if (!res2.ok) return;
+    expect(res2.files["src/App.tsx"]).toContain("<h1>Kopi<br/><em></em></h1>");
+  });
+
+  it("meng-escape karakter khusus JSX pada segmen teks", () => {
+    const occ = findSplitTextOccurrences(SPLIT_FILES, "Kopi Nikmat.", "h1");
+    const res = applySplitTextEdit(SPLIT_FILES, occ[0], "Diskon {50%} <gratis>");
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.files["src/App.tsx"]).toContain(
+      '<h1>Diskon<br/><em>{"{"}50%{"}"} &lt;gratis&gt;</em></h1>',
+    );
+  });
+
+  it("mengedit segmen string expression dengan escape string", () => {
+    const occ = findSplitTextOccurrences(SPLIT_FILES, "JudulEkspresi", "h3");
+    const res = applySplitTextEdit(SPLIT_FILES, occ[0], 'Baru "Keren"');
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.files["src/App.tsx"]).toContain('{"Baru"}<span>{"\\"Keren\\""}</span>');
+  });
+
+  it("menolak bila teks baru kosong / sama / file berubah", () => {
+    const occ = findSplitTextOccurrences(SPLIT_FILES, "Kopi Nikmat.", "h1");
+    expect(applySplitTextEdit(SPLIT_FILES, occ[0], "   ").ok).toBe(false);
+    expect(applySplitTextEdit(SPLIT_FILES, occ[0], "Kopi Nikmat.").ok).toBe(false);
+    const changed = {
+      ...SPLIT_FILES,
+      "src/App.tsx": SPLIT_FILES["src/App.tsx"].replace("Nikmat.", "Pahit."),
+    };
+    expect(applySplitTextEdit(changed, occ[0], "Teh Manis.").ok).toBe(false);
+  });
+
+  it("splitStyleTarget menemukan tag pembuka h1 untuk edit gaya", () => {
+    const occ = findSplitTextOccurrences(SPLIT_FILES, "Kopi Nikmat.", "h1");
+    const target = splitStyleTarget(SPLIT_FILES, occ[0]);
+    expect(target).not.toBeNull();
+    expect(target?.tagName).toBe("h1");
+    const res = applyStyleEdit(SPLIT_FILES, target!, { color: "#ff0000" });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.files["src/App.tsx"]).toContain(
+      '<h1 style={{ color: "#ff0000" }}>Kopi<br/><em>Nikmat.</em></h1>',
+    );
   });
 });
