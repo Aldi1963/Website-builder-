@@ -26,6 +26,44 @@ Flag opsional (hanya dibaca bila eksekusi sudah nyala):
 | `WEBBUILDER_TENANT_EXEC_TIMEOUT_SECONDS` | `60` | Timeout default per eksekusi (detik) |
 | `WEBBUILDER_TENANT_EXEC_MAX_OUTPUT_BYTES` | `1048576` (1 MiB) | Batas total byte stdout+stderr yang disimpan |
 
+## Alat browser agent (chrome-devtools-mcp, Fase 1)
+
+Alat browser agent (`server/internal/browser/`) menggerakkan hasil
+eksekusi tenant di Chrome headless sungguhan — jadi gating-nya berlapis:
+alat browser HANYA aktif bila **kedua** flag nyala:
+
+```bash
+WEBBUILDER_ENABLE_BROWSER_TOOLS=1
+WEBBUILDER_ENABLE_TENANT_EXEC=1
+```
+
+Hanya nilai persis `"1"` yang menyalakan tiap flag. Bila salah satu mati,
+katalog agent tidak berisi alat `browser_*` sama sekali dan panggilan
+`browser_*` ditolak dengan error jelas.
+
+Satu klien MCP + satu Chrome per agent run (dibuat saat pipeline mulai —
+model harus tahu alatnya ada sebelum memanggilnya — ditutup `defer` saat
+run selesai, termasuk saat run dibatalkan). Profil Chrome per run di bawah
+`runtime/project-<id>/run-<id>/browser/chrome-profile/`, dihapus saat
+tutup; tidak ada proses Chrome/MCP yatim.
+
+Batas Fase 1 (lihat `docs/mcp-browser-integration-plan.md` §4):
+
+| Env / batas | Default | Keterangan |
+| --- | ------- | ---------- |
+| `CHROME_DEVTOOLS_MCP_CMD` | `npx -y chrome-devtools-mcp@1.13.0` | Command server MCP (versi di-pin, bukan `@latest`) |
+| `CHROME_FOR_TESTING_PATH` | kosong (auto-detect) | Path biner Chrome for Testing |
+| Timeout per panggilan tool | 30 dtk | Mengikuti deadline ctx pemanggil |
+| Cap hasil tool | 64 KiB | Kelebihan dipotong + marker |
+| URL yang boleh dibuka | — | Hanya `http(s)://127.0.0.1/*` dan `http(s)://localhost/*` (origin preview proyek sendiri); URL luar ditolak di lapis klien |
+
+Fail-closed: bila flag nyala tapi Chrome/MCP tidak tersedia (mis.
+`CHROME_FOR_TESTING_PATH` menunjuk path tak ada, atau server MCP gagal
+start), pipeline mencatat error jelas di log dan agent berjalan TANPA alat
+browser — bukan diam-diam. Alat yang aktif di Fase 1 hanya
+`browser_list_console_messages`; alat allowlist lain (§5 rencana) belum
+diekspos sampai Fase 2.
+
 ## Interface Executor
 
 ```go
