@@ -125,8 +125,10 @@ troubleshooting ada di `docs/browser-tools.md`; ringkasnya:
   berakar di PID server MCP (via `/proc`) sebelum sesi ditutup dan
   mencatat ke slog (`bytes`, `mib`, `melebihi_512mib`); ambang 512 MiB
   per run — hanya dicatat, Chrome tidak pernah dibunuh karena memori;
-  bila tidak tersedia hasilnya -1 dan run lanjut. Queue workers
-  default 2 → maks 2 Chrome bersamaan → puncak ~1 GiB hanya untuk
+  bila tidak tersedia hasilnya -1 dan run lanjut. Hasil ukur nyata
+  (6 run Chrome asli): satu run ≈ 1,1 GiB (1084–1175 MiB) dan setiap
+  run melewati ambang 512 MiB. Queue workers
+  default 2 → maks 2 Chrome bersamaan → puncak ~2,2 GiB hanya untuk
   Chrome.
 - **Parser network** (`ParseFailedRequests` vs `parseNetworkFailures`)
   memakai satu inti bersama (`failedNetworkRequests`,

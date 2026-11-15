@@ -401,16 +401,21 @@ Chrome diukur, tidak dibunuh karena memori.
 - **Ambang**: `ChromeMemoryHighBytes` = **512 MiB** per run
   (`melebihi_512mib: true` di log bila terlampaui). Chrome tidak
   pernah dibunuh karena melewati ambang — hanya diukur + dicatat.
+- **Hasil ukur nyata** (6 run Chrome asli, log `Close()`): satu run
+  ≈ **1,1 GiB** — kisaran ukur 1084–1175 MiB — dan **setiap** run
+  sejauh ini melewati ambang 512 MiB (`melebihi_512mib=true` di semua
+  6 run). Ambang 512 MiB tetap hanya garis peringatan, bukan batas
+  yang ditegakkan.
 - **Batas worker bersamaan**: queue workers default 2
   (`WEBBUILDER_QUEUE_WORKERS=2`) → maks 2 Chrome bersamaan → kebutuhan
-  puncak **~1 GiB hanya untuk Chrome** (di luar server + build).
-  Bila worker dinaikkan, kalikan: N worker → puncak ~N × 512 MiB.
+  puncak **~2,2 GiB hanya untuk Chrome** (di luar server + build).
+  Bila worker dinaikkan, kalikan: N worker → puncak ~N × 1,1 GiB.
   Jaga memori host saat menaikkan `WEBBUILDER_QUEUE_WORKERS`.
 
 Contoh log:
 
 ```
-INFO browser: memori Chrome akhir run bytes=12410880 mib=11 melebihi_512mib=false
+INFO browser: memori Chrome akhir run bytes=1136947200 mib=1084 melebihi_512mib=true
 ```
 
 ## Screenshot verifikasi (PR #14 + #15, ringkas)
