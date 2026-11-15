@@ -1,0 +1,3124 @@
+# GENERATED — jangan edit manual. Regenerasi: cd server && go run ./cmd/generate-openapi
+# Sumber: route Gin (handler.RegisterRoutes + rute publik di server/main.go).
+# Lihat docs/api-contracts.md untuk cara kerja dan batasannya.
+openapi: 3.0.3
+info:
+  title: WebBuilder API
+  version: 0.1.0
+  description: 'API builder WebBuilder (build.clipku.my.id). Spec ini adalah inventaris route + parameter path + model auth; skema body tidak dimodelkan (lihat docs/api-contracts.md).'
+servers:
+  - url: https://build.clipku.my.id
+paths:
+  /api/admin/ai-config:
+    get:
+      operationId: getApiAdminAiconfig
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/admin/ai-config'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    put:
+      operationId: putApiAdminAiconfig
+      x-auth: jwt-or-apikey
+      summary: 'PUT /api/admin/ai-config'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/admin/ai-config/test:
+    post:
+      operationId: postApiAdminAiconfigTest
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/admin/ai-config/test'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/admin/ai-models:
+    get:
+      operationId: getApiAdminAimodels
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/admin/ai-models'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/admin/ai-usage:
+    get:
+      operationId: getApiAdminAiusage
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/admin/ai-usage'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/admin/audit:
+    get:
+      operationId: getApiAdminAudit
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/admin/audit'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/admin/blocked:
+    get:
+      operationId: getApiAdminBlocked
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/admin/blocked'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    post:
+      operationId: postApiAdminBlocked
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/admin/blocked'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/admin/blocked/{id}:
+    delete:
+      operationId: deleteApiAdminBlockedId
+      x-auth: jwt-or-apikey
+      summary: 'DELETE /api/admin/blocked/{id}'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/admin/broadcast:
+    post:
+      operationId: postApiAdminBroadcast
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/admin/broadcast'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/admin/export/revenue:
+    get:
+      operationId: getApiAdminExportRevenue
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/admin/export/revenue'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/admin/export/users:
+    get:
+      operationId: getApiAdminExportUsers
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/admin/export/users'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/admin/maintenance:
+    post:
+      operationId: postApiAdminMaintenance
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/admin/maintenance'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/admin/revenue:
+    get:
+      operationId: getApiAdminRevenue
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/admin/revenue'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/admin/settings:
+    get:
+      operationId: getApiAdminSettings
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/admin/settings'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    put:
+      operationId: putApiAdminSettings
+      x-auth: jwt-or-apikey
+      summary: 'PUT /api/admin/settings'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/admin/stats:
+    get:
+      operationId: getApiAdminStats
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/admin/stats'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/admin/templates:
+    get:
+      operationId: getApiAdminTemplates
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/admin/templates'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    post:
+      operationId: postApiAdminTemplates
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/admin/templates'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/admin/templates/{id}:
+    put:
+      operationId: putApiAdminTemplatesId
+      x-auth: jwt-or-apikey
+      summary: 'PUT /api/admin/templates/{id}'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    delete:
+      operationId: deleteApiAdminTemplatesId
+      x-auth: jwt-or-apikey
+      summary: 'DELETE /api/admin/templates/{id}'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/admin/users:
+    get:
+      operationId: getApiAdminUsers
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/admin/users'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/admin/users/{id}:
+    put:
+      operationId: putApiAdminUsersId
+      x-auth: jwt-or-apikey
+      summary: 'PUT /api/admin/users/{id}'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/admin/users/{id}/impersonate:
+    post:
+      operationId: postApiAdminUsersIdImpersonate
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/admin/users/{id}/impersonate'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/admin/users/{id}/plan:
+    post:
+      operationId: postApiAdminUsersIdPlan
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/admin/users/{id}/plan'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/ai/enhance:
+    post:
+      operationId: postApiAiEnhance
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/ai/enhance'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/ai/image:
+    post:
+      operationId: postApiAiImage
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/ai/image'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/api-keys:
+    get:
+      operationId: getApiApikeys
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/api-keys'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    post:
+      operationId: postApiApikeys
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/api-keys'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/api-keys/{id}:
+    delete:
+      operationId: deleteApiApikeysId
+      x-auth: jwt-or-apikey
+      summary: 'DELETE /api/api-keys/{id}'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/app-api/{id}/auth/login:
+    post:
+      operationId: postApiAppapiIdAuthLogin
+      x-auth: public
+      summary: 'POST /api/app-api/{id}/auth/login'
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+  /api/app-api/{id}/auth/logout:
+    post:
+      operationId: postApiAppapiIdAuthLogout
+      x-auth: public
+      summary: 'POST /api/app-api/{id}/auth/logout'
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+  /api/app-api/{id}/auth/me:
+    get:
+      operationId: getApiAppapiIdAuthMe
+      x-auth: public
+      summary: 'GET /api/app-api/{id}/auth/me'
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+  /api/app-api/{id}/auth/register:
+    post:
+      operationId: postApiAppapiIdAuthRegister
+      x-auth: public
+      summary: 'POST /api/app-api/{id}/auth/register'
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+  /api/app-api/{id}/db/delete:
+    post:
+      operationId: postApiAppapiIdDbDelete
+      x-auth: project-session
+      summary: 'POST /api/app-api/{id}/db/delete'
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — header X-Project-Session tidak valid atau kedaluwarsa
+  /api/app-api/{id}/db/insert:
+    post:
+      operationId: postApiAppapiIdDbInsert
+      x-auth: project-session
+      summary: 'POST /api/app-api/{id}/db/insert'
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — header X-Project-Session tidak valid atau kedaluwarsa
+  /api/app-api/{id}/db/query:
+    post:
+      operationId: postApiAppapiIdDbQuery
+      x-auth: project-session
+      summary: 'POST /api/app-api/{id}/db/query'
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — header X-Project-Session tidak valid atau kedaluwarsa
+  /api/app-api/{id}/db/select:
+    post:
+      operationId: postApiAppapiIdDbSelect
+      x-auth: project-session
+      summary: 'POST /api/app-api/{id}/db/select'
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — header X-Project-Session tidak valid atau kedaluwarsa
+  /api/app-api/{id}/db/update:
+    post:
+      operationId: postApiAppapiIdDbUpdate
+      x-auth: project-session
+      summary: 'POST /api/app-api/{id}/db/update'
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — header X-Project-Session tidak valid atau kedaluwarsa
+  /api/auth/forgot-password:
+    post:
+      operationId: postApiAuthForgotpassword
+      x-auth: public
+      summary: 'POST /api/auth/forgot-password'
+      responses:
+        '200':
+          description: OK
+  /api/auth/login:
+    post:
+      operationId: postApiAuthLogin
+      x-auth: public
+      summary: 'POST /api/auth/login'
+      responses:
+        '200':
+          description: OK
+  /api/auth/oauth/status:
+    get:
+      operationId: getApiAuthOauthStatus
+      x-auth: public
+      summary: 'GET /api/auth/oauth/status'
+      responses:
+        '200':
+          description: OK
+  /api/auth/oauth/{provider}:
+    get:
+      operationId: getApiAuthOauthProvider
+      x-auth: public
+      summary: 'GET /api/auth/oauth/{provider}'
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+  /api/auth/oauth/{provider}/callback:
+    get:
+      operationId: getApiAuthOauthProviderCallback
+      x-auth: public
+      summary: 'GET /api/auth/oauth/{provider}/callback'
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+  /api/auth/register:
+    post:
+      operationId: postApiAuthRegister
+      x-auth: public
+      summary: 'POST /api/auth/register'
+      responses:
+        '200':
+          description: OK
+  /api/auth/reset-password:
+    post:
+      operationId: postApiAuthResetpassword
+      x-auth: public
+      summary: 'POST /api/auth/reset-password'
+      responses:
+        '200':
+          description: OK
+  /api/billing:
+    get:
+      operationId: getApiBilling
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/billing'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/billing/checkout:
+    post:
+      operationId: postApiBillingCheckout
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/billing/checkout'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/billing/status/{orderId}:
+    get:
+      operationId: getApiBillingStatusOrderId
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/billing/status/{orderId}'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/billing/webhook:
+    post:
+      operationId: postApiBillingWebhook
+      x-auth: public
+      summary: 'POST /api/billing/webhook'
+      responses:
+        '200':
+          description: OK
+  /api/deployments:
+    get:
+      operationId: getApiDeployments
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/deployments'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/deployments/{id}/rollback:
+    post:
+      operationId: postApiDeploymentsIdRollback
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/deployments/{id}/rollback'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/domains:
+    get:
+      operationId: getApiDomains
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/domains'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    post:
+      operationId: postApiDomains
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/domains'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/domains/{id}:
+    delete:
+      operationId: deleteApiDomainsId
+      x-auth: jwt-or-apikey
+      summary: 'DELETE /api/domains/{id}'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/domains/{id}/dns:
+    get:
+      operationId: getApiDomainsIdDns
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/domains/{id}/dns'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/domains/{id}/ssl:
+    post:
+      operationId: postApiDomainsIdSsl
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/domains/{id}/ssl'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/domains/{id}/verify:
+    post:
+      operationId: postApiDomainsIdVerify
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/domains/{id}/verify'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/github:
+    get:
+      operationId: getApiGithub
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/github'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    put:
+      operationId: putApiGithub
+      x-auth: jwt-or-apikey
+      summary: 'PUT /api/github'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/health:
+    get:
+      operationId: getApiHealth
+      x-auth: public
+      summary: 'GET /api/health'
+      responses:
+        '200':
+          description: OK
+  /api/me:
+    get:
+      operationId: getApiMe
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/me'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    put:
+      operationId: putApiMe
+      x-auth: jwt-or-apikey
+      summary: 'PUT /api/me'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/me/2fa:
+    get:
+      operationId: getApiMe2fa
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/me/2fa'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/me/2fa/disable:
+    post:
+      operationId: postApiMe2faDisable
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/me/2fa/disable'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/me/2fa/setup:
+    post:
+      operationId: postApiMe2faSetup
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/me/2fa/setup'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/me/2fa/verify:
+    post:
+      operationId: postApiMe2faVerify
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/me/2fa/verify'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/me/password:
+    put:
+      operationId: putApiMePassword
+      x-auth: jwt-or-apikey
+      summary: 'PUT /api/me/password'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/notifications:
+    get:
+      operationId: getApiNotifications
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/notifications'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/notifications/read:
+    post:
+      operationId: postApiNotificationsRead
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/notifications/read'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects:
+    get:
+      operationId: getApiProjects
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/projects'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    post:
+      operationId: postApiProjects
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/projects'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/import-github:
+    post:
+      operationId: postApiProjectsImportgithub
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/projects/import-github'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}:
+    get:
+      operationId: getApiProjectsId
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/projects/{id}'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    put:
+      operationId: putApiProjectsId
+      x-auth: jwt-or-apikey
+      summary: 'PUT /api/projects/{id}'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    delete:
+      operationId: deleteApiProjectsId
+      x-auth: jwt-or-apikey
+      summary: 'DELETE /api/projects/{id}'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/agent/plan:
+    put:
+      operationId: putApiProjectsIdAgentPlan
+      x-auth: jwt-or-apikey
+      summary: 'PUT /api/projects/{id}/agent/plan'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/agent/runs:
+    get:
+      operationId: getApiProjectsIdAgentRuns
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/projects/{id}/agent/runs'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/agent/runs/{runId}:
+    get:
+      operationId: getApiProjectsIdAgentRunsRunId
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/projects/{id}/agent/runs/{runId}'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    put:
+      operationId: putApiProjectsIdAgentRunsRunId
+      x-auth: jwt-or-apikey
+      summary: 'PUT /api/projects/{id}/agent/runs/{runId}'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/agent/runs/{runId}/cancel:
+    post:
+      operationId: postApiProjectsIdAgentRunsRunIdCancel
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/projects/{id}/agent/runs/{runId}/cancel'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/api-docs:
+    get:
+      operationId: getApiProjectsIdApidocs
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/projects/{id}/api-docs'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/app/cron:
+    get:
+      operationId: getApiProjectsIdAppCron
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/projects/{id}/app/cron'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    post:
+      operationId: postApiProjectsIdAppCron
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/projects/{id}/app/cron'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/app/cron/{jobId}:
+    put:
+      operationId: putApiProjectsIdAppCronJobId
+      x-auth: jwt-or-apikey
+      summary: 'PUT /api/projects/{id}/app/cron/{jobId}'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    delete:
+      operationId: deleteApiProjectsIdAppCronJobId
+      x-auth: jwt-or-apikey
+      summary: 'DELETE /api/projects/{id}/app/cron/{jobId}'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/app/files:
+    get:
+      operationId: getApiProjectsIdAppFiles
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/projects/{id}/app/files'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    post:
+      operationId: postApiProjectsIdAppFiles
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/projects/{id}/app/files'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/app/files/{name}:
+    delete:
+      operationId: deleteApiProjectsIdAppFilesName
+      x-auth: jwt-or-apikey
+      summary: 'DELETE /api/projects/{id}/app/files/{name}'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/blueprint:
+    get:
+      operationId: getApiProjectsIdBlueprint
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/projects/{id}/blueprint'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    put:
+      operationId: putApiProjectsIdBlueprint
+      x-auth: jwt-or-apikey
+      summary: 'PUT /api/projects/{id}/blueprint'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/chat:
+    get:
+      operationId: getApiProjectsIdChat
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/projects/{id}/chat'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    post:
+      operationId: postApiProjectsIdChat
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/projects/{id}/chat'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/comments:
+    get:
+      operationId: getApiProjectsIdComments
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/projects/{id}/comments'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    post:
+      operationId: postApiProjectsIdComments
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/projects/{id}/comments'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/comments/{cid}:
+    delete:
+      operationId: deleteApiProjectsIdCommentsCid
+      x-auth: jwt-or-apikey
+      summary: 'DELETE /api/projects/{id}/comments/{cid}'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: cid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/comments/{cid}/resolve:
+    post:
+      operationId: postApiProjectsIdCommentsCidResolve
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/projects/{id}/comments/{cid}/resolve'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: cid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/deployments:
+    get:
+      operationId: getApiProjectsIdDeployments
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/projects/{id}/deployments'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/deployments/{depId}/files:
+    get:
+      operationId: getApiProjectsIdDeploymentsDepIdFiles
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/projects/{id}/deployments/{depId}/files'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: depId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/deployments/{depId}/preview/{filepath}:
+    get:
+      operationId: getApiProjectsIdDeploymentsDepIdPreviewFilepath
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/projects/{id}/deployments/{depId}/preview/{filepath}'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: depId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: filepath
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/env:
+    get:
+      operationId: getApiProjectsIdEnv
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/projects/{id}/env'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    post:
+      operationId: postApiProjectsIdEnv
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/projects/{id}/env'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/export:
+    get:
+      operationId: getApiProjectsIdExport
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/projects/{id}/export'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/files:
+    get:
+      operationId: getApiProjectsIdFiles
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/projects/{id}/files'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    post:
+      operationId: postApiProjectsIdFiles
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/projects/{id}/files'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    delete:
+      operationId: deleteApiProjectsIdFiles
+      x-auth: jwt-or-apikey
+      summary: 'DELETE /api/projects/{id}/files'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/files/rename:
+    post:
+      operationId: postApiProjectsIdFilesRename
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/projects/{id}/files/rename'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/form-settings:
+    get:
+      operationId: getApiProjectsIdFormsettings
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/projects/{id}/form-settings'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    put:
+      operationId: putApiProjectsIdFormsettings
+      x-auth: jwt-or-apikey
+      summary: 'PUT /api/projects/{id}/form-settings'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/forms:
+    get:
+      operationId: getApiProjectsIdForms
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/projects/{id}/forms'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/forms/{sid}:
+    delete:
+      operationId: deleteApiProjectsIdFormsSid
+      x-auth: jwt-or-apikey
+      summary: 'DELETE /api/projects/{id}/forms/{sid}'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: sid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/github/pull:
+    post:
+      operationId: postApiProjectsIdGithubPull
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/projects/{id}/github/pull'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/github/push:
+    post:
+      operationId: postApiProjectsIdGithubPush
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/projects/{id}/github/push'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/health:
+    get:
+      operationId: getApiProjectsIdHealth
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/projects/{id}/health'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/members:
+    get:
+      operationId: getApiProjectsIdMembers
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/projects/{id}/members'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    post:
+      operationId: postApiProjectsIdMembers
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/projects/{id}/members'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/members/{mid}:
+    delete:
+      operationId: deleteApiProjectsIdMembersMid
+      x-auth: jwt-or-apikey
+      summary: 'DELETE /api/projects/{id}/members/{mid}'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: mid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/migrations:
+    get:
+      operationId: getApiProjectsIdMigrations
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/projects/{id}/migrations'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    post:
+      operationId: postApiProjectsIdMigrations
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/projects/{id}/migrations'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/migrations/{mid}/rollback:
+    post:
+      operationId: postApiProjectsIdMigrationsMidRollback
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/projects/{id}/migrations/{mid}/rollback'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: mid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/policies:
+    get:
+      operationId: getApiProjectsIdPolicies
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/projects/{id}/policies'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    post:
+      operationId: postApiProjectsIdPolicies
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/projects/{id}/policies'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/proposal:
+    get:
+      operationId: getApiProjectsIdProposal
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/projects/{id}/proposal'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/proposal/apply:
+    post:
+      operationId: postApiProjectsIdProposalApply
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/projects/{id}/proposal/apply'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/proposal/reject:
+    post:
+      operationId: postApiProjectsIdProposalReject
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/projects/{id}/proposal/reject'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/publish:
+    post:
+      operationId: postApiProjectsIdPublish
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/projects/{id}/publish'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/runtime/build:
+    post:
+      operationId: postApiProjectsIdRuntimeBuild
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/projects/{id}/runtime/build'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/runtime/db-verify:
+    post:
+      operationId: postApiProjectsIdRuntimeDbverify
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/projects/{id}/runtime/db-verify'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/runtime/dev/log-stream:
+    get:
+      operationId: getApiProjectsIdRuntimeDevLogstream
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/projects/{id}/runtime/dev/log-stream'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/runtime/dev/logs:
+    get:
+      operationId: getApiProjectsIdRuntimeDevLogs
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/projects/{id}/runtime/dev/logs'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/runtime/dev/start:
+    post:
+      operationId: postApiProjectsIdRuntimeDevStart
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/projects/{id}/runtime/dev/start'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/runtime/dev/status:
+    get:
+      operationId: getApiProjectsIdRuntimeDevStatus
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/projects/{id}/runtime/dev/status'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/runtime/dev/stop:
+    post:
+      operationId: postApiProjectsIdRuntimeDevStop
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/projects/{id}/runtime/dev/stop'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/runtime/dev/sync:
+    post:
+      operationId: postApiProjectsIdRuntimeDevSync
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/projects/{id}/runtime/dev/sync'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/runtime/info:
+    get:
+      operationId: getApiProjectsIdRuntimeInfo
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/projects/{id}/runtime/info'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/runtime/install:
+    post:
+      operationId: postApiProjectsIdRuntimeInstall
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/projects/{id}/runtime/install'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/runtime/matrix:
+    get:
+      operationId: getApiProjectsIdRuntimeMatrix
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/projects/{id}/runtime/matrix'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/runtime/pipeline:
+    post:
+      operationId: postApiProjectsIdRuntimePipeline
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/projects/{id}/runtime/pipeline'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/runtime/preview/{filepath}:
+    get:
+      operationId: getApiProjectsIdRuntimePreviewFilepath
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/projects/{id}/runtime/preview/{filepath}'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: filepath
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    post:
+      operationId: postApiProjectsIdRuntimePreviewFilepath
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/projects/{id}/runtime/preview/{filepath}'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: filepath
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    put:
+      operationId: putApiProjectsIdRuntimePreviewFilepath
+      x-auth: jwt-or-apikey
+      summary: 'PUT /api/projects/{id}/runtime/preview/{filepath}'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: filepath
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    patch:
+      operationId: patchApiProjectsIdRuntimePreviewFilepath
+      x-auth: jwt-or-apikey
+      summary: 'PATCH /api/projects/{id}/runtime/preview/{filepath}'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: filepath
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    delete:
+      operationId: deleteApiProjectsIdRuntimePreviewFilepath
+      x-auth: jwt-or-apikey
+      summary: 'DELETE /api/projects/{id}/runtime/preview/{filepath}'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: filepath
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    head:
+      operationId: headApiProjectsIdRuntimePreviewFilepath
+      x-auth: jwt-or-apikey
+      summary: 'HEAD /api/projects/{id}/runtime/preview/{filepath}'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: filepath
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    options:
+      operationId: optionsApiProjectsIdRuntimePreviewFilepath
+      x-auth: jwt-or-apikey
+      summary: 'OPTIONS /api/projects/{id}/runtime/preview/{filepath}'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: filepath
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    connect:
+      operationId: connectApiProjectsIdRuntimePreviewFilepath
+      x-auth: jwt-or-apikey
+      summary: 'CONNECT /api/projects/{id}/runtime/preview/{filepath}'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: filepath
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    trace:
+      operationId: traceApiProjectsIdRuntimePreviewFilepath
+      x-auth: jwt-or-apikey
+      summary: 'TRACE /api/projects/{id}/runtime/preview/{filepath}'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: filepath
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/runtime/screenshot:
+    post:
+      operationId: postApiProjectsIdRuntimeScreenshot
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/projects/{id}/runtime/screenshot'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/runtime/screenshots/{name}:
+    get:
+      operationId: getApiProjectsIdRuntimeScreenshotsName
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/projects/{id}/runtime/screenshots/{name}'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/runtime/verify:
+    post:
+      operationId: postApiProjectsIdRuntimeVerify
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/projects/{id}/runtime/verify'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/seo:
+    get:
+      operationId: getApiProjectsIdSeo
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/projects/{id}/seo'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    put:
+      operationId: putApiProjectsIdSeo
+      x-auth: jwt-or-apikey
+      summary: 'PUT /api/projects/{id}/seo'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/settings:
+    get:
+      operationId: getApiProjectsIdSettings
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/projects/{id}/settings'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    put:
+      operationId: putApiProjectsIdSettings
+      x-auth: jwt-or-apikey
+      summary: 'PUT /api/projects/{id}/settings'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/share:
+    post:
+      operationId: postApiProjectsIdShare
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/projects/{id}/share'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    delete:
+      operationId: deleteApiProjectsIdShare
+      x-auth: jwt-or-apikey
+      summary: 'DELETE /api/projects/{id}/share'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/smoke-test:
+    get:
+      operationId: getApiProjectsIdSmoketest
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/projects/{id}/smoke-test'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/stats:
+    get:
+      operationId: getApiProjectsIdStats
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/projects/{id}/stats'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/tables:
+    get:
+      operationId: getApiProjectsIdTables
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/projects/{id}/tables'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    post:
+      operationId: postApiProjectsIdTables
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/projects/{id}/tables'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/tables/{name}:
+    get:
+      operationId: getApiProjectsIdTablesName
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/projects/{id}/tables/{name}'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    delete:
+      operationId: deleteApiProjectsIdTablesName
+      x-auth: jwt-or-apikey
+      summary: 'DELETE /api/projects/{id}/tables/{name}'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/tables/{name}/columns:
+    post:
+      operationId: postApiProjectsIdTablesNameColumns
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/projects/{id}/tables/{name}/columns'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/tables/{name}/rows:
+    post:
+      operationId: postApiProjectsIdTablesNameRows
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/projects/{id}/tables/{name}/rows'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/tables/{name}/rows/{rowId}:
+    patch:
+      operationId: patchApiProjectsIdTablesNameRowsRowId
+      x-auth: jwt-or-apikey
+      summary: 'PATCH /api/projects/{id}/tables/{name}/rows/{rowId}'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: rowId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    delete:
+      operationId: deleteApiProjectsIdTablesNameRowsRowId
+      x-auth: jwt-or-apikey
+      summary: 'DELETE /api/projects/{id}/tables/{name}/rows/{rowId}'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: rowId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/versions:
+    get:
+      operationId: getApiProjectsIdVersions
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/projects/{id}/versions'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/versions/checkpoint:
+    post:
+      operationId: postApiProjectsIdVersionsCheckpoint
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/projects/{id}/versions/checkpoint'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/versions/{vid}/files:
+    get:
+      operationId: getApiProjectsIdVersionsVidFiles
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/projects/{id}/versions/{vid}/files'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: vid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/versions/{vid}/restore:
+    post:
+      operationId: postApiProjectsIdVersionsVidRestore
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/projects/{id}/versions/{vid}/restore'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: vid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/webhooks:
+    get:
+      operationId: getApiProjectsIdWebhooks
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/projects/{id}/webhooks'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    post:
+      operationId: postApiProjectsIdWebhooks
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/projects/{id}/webhooks'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/webhooks/{wid}:
+    delete:
+      operationId: deleteApiProjectsIdWebhooksWid
+      x-auth: jwt-or-apikey
+      summary: 'DELETE /api/projects/{id}/webhooks/{wid}'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: wid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/public-settings:
+    get:
+      operationId: getApiPublicsettings
+      x-auth: public
+      summary: 'GET /api/public-settings'
+      responses:
+        '200':
+          description: OK
+  /api/templates:
+    get:
+      operationId: getApiTemplates
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/templates'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    post:
+      operationId: postApiTemplates
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/templates'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/templates/{id}:
+    delete:
+      operationId: deleteApiTemplatesId
+      x-auth: jwt-or-apikey
+      summary: 'DELETE /api/templates/{id}'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/templates/{id}/use:
+    post:
+      operationId: postApiTemplatesIdUse
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/templates/{id}/use'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/upload:
+    post:
+      operationId: postApiUpload
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/upload'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/usage:
+    get:
+      operationId: getApiUsage
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/usage'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /app-files/{projectID}/{name}:
+    get:
+      operationId: getAppfilesProjectIDName
+      x-auth: public
+      summary: 'GET /app-files/{projectID}/{name}'
+      parameters:
+        - name: projectID
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+  /f/{token}:
+    post:
+      operationId: postFToken
+      x-auth: public
+      summary: 'POST /f/{token}'
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+  /healthz:
+    get:
+      operationId: getHealthz
+      x-auth: public
+      summary: 'GET /healthz'
+      responses:
+        '200':
+          description: OK
+  /metrics:
+    get:
+      operationId: getMetrics
+      x-auth: public
+      summary: 'GET /metrics'
+      responses:
+        '200':
+          description: OK
+  /pub-assets/{slug}/{filepath}:
+    get:
+      operationId: getPubassetsSlugFilepath
+      x-auth: public
+      summary: 'GET /pub-assets/{slug}/{filepath}'
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: filepath
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+  /pub/{slug}:
+    get:
+      operationId: getPubSlug
+      x-auth: public
+      summary: 'GET /pub/{slug}'
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+  /readyz:
+    get:
+      operationId: getReadyz
+      x-auth: public
+      summary: 'GET /readyz'
+      responses:
+        '200':
+          description: OK
+  /share-assets/{token}/{filepath}:
+    get:
+      operationId: getShareassetsTokenFilepath
+      x-auth: public
+      summary: 'GET /share-assets/{token}/{filepath}'
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: filepath
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+  /share/{token}:
+    get:
+      operationId: getShareToken
+      x-auth: public
+      summary: 'GET /share/{token}'
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 'Header Authorization: Bearer <token>. Token berupa JWT builder (klaim uid, 30 hari) atau API key pribadi wb_* (hash sha256 disimpan di DB).'
