@@ -2,7 +2,7 @@ import { lazy, Suspense, useState, useEffect } from "react";
 import AuthV2 from "./pages/AuthV2";
 import LandingV2 from "./pages/LandingV2";
 import "./index.css";
-import { getToken, setToken, jwtPayload } from "./lib/api";
+import { api, getToken, setToken, jwtPayload } from "./lib/api";
 import { useCreateProject, projectIdFromCreateResponse } from "./lib/hooks/useProjects";
 import { useMe, usePublicSettings } from "./lib/hooks/useDashboard";
 
@@ -32,6 +32,26 @@ export default function App() {
   const meQuery = useMe(!!getToken());
   const pubQuery = usePublicSettings();
 
+  // Pulihkan proyek terakhir (dulu di Rebuild.tsx via localStorage
+  // wb-current-project): reload tidak lagi menjatuhkan user ke Dashboard.
+  // Divalidasi ke daftar proyek agar id basi dibersihkan, dan tidak menimpa
+  // proyek yang baru saja dibuat dari pendingPrompt (functional setPid).
+  useEffect(() => {
+    if (!logged) return;
+    const saved = Number(localStorage.getItem("wb-current-project") || 0);
+    if (!saved) return;
+    api.projects().then((d: any) => {
+      const found = (d.projects || []).find((p: any) => Number(p.id) === saved);
+      if (found) setPid((cur) => cur ?? String(found.id));
+      else localStorage.removeItem("wb-current-project");
+    }).catch(() => localStorage.removeItem("wb-current-project"));
+  }, [logged]);
+
+  function openProject(id: string) {
+    localStorage.setItem("wb-current-project", id);
+    setPid(id);
+  }
+
   function handleLandingStart(p?: string) {
     if (p?.trim()) setPendingPrompt(p.trim());
     setShowLanding(false);
@@ -49,6 +69,7 @@ export default function App() {
         const d = await createProjectMut.mutateAsync({ name, framework: "react" });
         const newPid = projectIdFromCreateResponse(d);
         if (newPid) {
+          localStorage.setItem("wb-current-project", newPid);
           setPid(newPid);
           // pendingPrompt diteruskan ke Builder sebagai initialPrompt, dibersihkan saat kembali
         } else {
@@ -135,8 +156,8 @@ export default function App() {
   );
 
   if (window.location.pathname === "/admin") return <>{banner}<AdminRoute onBack={() => { window.history.pushState({}, "", "/"); window.location.reload(); }} /></>;
-  if (pid) return <>{banner}<Suspense fallback={PageFallback}><Builder pid={pid} initialPrompt={pendingPrompt || undefined} onBack={() => { setPid(null); setPendingPrompt(null); }} /></Suspense></>;
-  return <>{banner}<Suspense fallback={PageFallback}><Dashboard onOpen={setPid} /></Suspense></>;
+  if (pid) return <>{banner}<Suspense fallback={PageFallback}><Builder pid={pid} initialPrompt={pendingPrompt || undefined} onBack={() => { localStorage.removeItem("wb-current-project"); setPid(null); setPendingPrompt(null); }} /></Suspense></>;
+  return <>{banner}<Suspense fallback={PageFallback}><Dashboard onOpen={openProject} /></Suspense></>;
 }
 
 function AdminRoute({ onBack }: { onBack: () => void }) {

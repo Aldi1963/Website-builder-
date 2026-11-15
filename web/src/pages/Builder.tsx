@@ -36,6 +36,7 @@ import {
   useSaveProjectSettings,
   useTables,
   usePolicies,
+  useUsage,
   useUpdateAgentRun,
   useUploadFile,
   fetchAgentRuns,
@@ -264,6 +265,136 @@ function renderMarkdown(content: string) {
   return <div>{elements}</div>;
 }
 
+// Kartu kuis klarifikasi (port dari QuizWizard Rebuild.tsx): server mengirim
+// event SSE "clarification" berisi 3-5 pertanyaan sebelum build. Tanpa kartu
+// ini user tidak bisa menjawab dan run macet di waiting_for_confirmation.
+function QuizCard({ clarification, onDone, onAuto, onChoose, onClose }: {
+  clarification: any;
+  onDone: (answers: string[]) => void;
+  onAuto: () => void;
+  onChoose: (answer: string) => void;
+  onClose: () => void;
+}) {
+  const qs = clarification?.questions || [];
+  const [quizIdx, setQuizIdx] = useState(0);
+  const [quizAnswers, setQuizAnswers] = useState<string[]>([]);
+  // Bentuk kedua dari server (clarificationPlan): satu pertanyaan + opsi.
+  if (qs.length === 0) {
+    return (
+      <div style={{ alignSelf: "flex-start", width: "95%", background: "#fff", border: "1px solid #fed7aa", borderRadius: 14, padding: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+          <b style={{ fontSize: 13, flex: 1 }}>Perjelas fokus perubahan</b>
+          <button onClick={onClose} aria-label="Tutup" style={{ border: "none", background: "none", cursor: "pointer", fontSize: 16, color: "#94a3b8" }}>×</button>
+        </div>
+        <p style={{ fontSize: 13, color: "#475569", margin: "0 0 10px" }}>{clarification?.question || clarification?.summary || "Pilih fokus perubahan:"}</p>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {(clarification?.options || []).map((o: string) => (
+            <button key={o} onClick={() => onChoose(o)} style={{ border: `1px solid ${ORANGE}`, background: "#fff7ed", color: "#9a3412", borderRadius: 999, padding: "7px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>{o}</button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  const q = qs[quizIdx] || { question: "", options: [] };
+  const isLast = quizIdx >= qs.length - 1;
+  const isText = q.type === "text";
+  const sel = quizAnswers[quizIdx];
+  const canNext = isText || !!sel;
+  const choose = (label: string) => {
+    const a = [...quizAnswers];
+    a[quizIdx] = label;
+    setQuizAnswers(a);
+  };
+  return (
+    <div style={{ alignSelf: "flex-start", width: "95%", background: "#fff", border: "1px solid #fed7aa", borderRadius: 14, padding: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+        <span style={{ width: 24, height: 24, borderRadius: 6, background: "#fff7ed", border: "1px solid #fed7aa", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: ORANGE, fontSize: 13 }}>?</span>
+        <div style={{ flex: 1 }}>
+          <b style={{ fontSize: 13, display: "block" }}>Beberapa pertanyaan sebelum membangun</b>
+          <small style={{ fontSize: 11, color: "#64748b" }}>Jawab seperlunya agar hasil lebih tepat</small>
+        </div>
+        <button onClick={onClose} aria-label="Tutup" style={{ border: "none", background: "none", cursor: "pointer", fontSize: 16, color: "#94a3b8" }}>×</button>
+      </div>
+      <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
+        {qs.map((_: any, i: number) => (
+          <span key={i} style={{ flex: 1, height: 4, borderRadius: 2, background: i === quizIdx ? ORANGE : i < quizIdx ? "#fdba74" : "#e2e8f0" }} />
+        ))}
+      </div>
+      <h3 style={{ fontSize: 14, margin: "0 0 10px" }}>{q.question}</h3>
+      {isText ? (
+        <textarea value={sel || ""} onChange={(e) => choose(e.target.value)} placeholder="Ketik jawabanmu..." rows={3} style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 10px", fontSize: 13, fontFamily: "inherit", boxSizing: "border-box", resize: "vertical" }} />
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {(q.options || []).map((o: any, oi: number) => {
+            const label = typeof o === "string" ? o : (o.label || "");
+            const rec = typeof o !== "string" && !!o.recommended;
+            return (
+              <button key={oi} onClick={() => choose(label)} style={{ textAlign: "left", border: sel === label ? `2px solid ${ORANGE}` : "1px solid #e2e8f0", background: sel === label ? "#fff7ed" : "#fff", borderRadius: 8, padding: "9px 12px", fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ width: 14, height: 14, borderRadius: "50%", border: `2px solid ${sel === label ? ORANGE : "#cbd5e1"}`, background: sel === label ? ORANGE : "#fff", flexShrink: 0 }} />
+                {label}{rec && <em style={{ fontSize: 11, color: "#64748b", marginLeft: 4 }}>(recommended)</em>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12 }}>
+        <button onClick={onAuto} style={{ border: "none", background: "none", color: "#64748b", fontSize: 12, cursor: "pointer", padding: "6px 4px" }}>Lewati semua</button>
+        <span style={{ flex: 1, textAlign: "center", fontSize: 11, color: "#94a3b8" }}>{quizIdx + 1} dari {qs.length}</span>
+        <button onClick={onAuto} style={{ border: "1px solid #e2e8f0", background: "#fff", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Pilih otomatis</button>
+        <button disabled={!canNext} onClick={() => { if (isLast) onDone(quizAnswers); else setQuizIdx(quizIdx + 1); }} style={{ border: "none", background: ORANGE, color: "#fff", borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: 700, cursor: canNext ? "pointer" : "not-allowed", opacity: canNext ? 1 : 0.5 }}>{isLast ? "Mulai membangun" : "Berikutnya"}</button>
+      </div>
+    </div>
+  );
+}
+
+// Kartu tinjau rencana (port dari discovery card + AnalysisPanel Rebuild.tsx):
+// server mengirim event SSE "discovery" untuk proyek baru; build hanya jalan
+// setelah user menyetujui (confirm: true).
+function DiscoveryCard({ discovery, onApprove, onApproveDefaults, onEditPlan }: {
+  discovery: any;
+  onApprove: () => void;
+  onApproveDefaults: () => void;
+  onEditPlan: () => void;
+}) {
+  const list = (v: any) => (Array.isArray(v) ? v : []);
+  const chips = (items: any[]) => (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+      {items.map((x: any) => (
+        <span key={String(x)} style={{ background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: 999, padding: "3px 10px", fontSize: 11 }}>{String(x)}</span>
+      ))}
+    </div>
+  );
+  return (
+    <div style={{ alignSelf: "flex-start", width: "95%", background: "#fff", border: "1px solid #fed7aa", borderRadius: 14, padding: 14 }}>
+      <b style={{ fontSize: 13, display: "block", marginBottom: 4 }}>Rencana sebelum membangun</b>
+      <p style={{ fontSize: 13, color: "#475569", margin: "0 0 10px", lineHeight: 1.5 }}>{discovery?.summary || "Saya sudah menyusun rencana implementasi."}</p>
+      {discovery?.architectureProfile && (
+        <div style={{ fontSize: 12, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 10px", marginBottom: 10 }}>
+          <b>Arsitektur: {discovery.architectureProfile}</b>
+          {discovery?.folderStrategy && <span style={{ display: "block", color: "#64748b", marginTop: 2 }}>Folder: {discovery.folderStrategy}</span>}
+        </div>
+      )}
+      {list(discovery?.modules).length > 0 && (
+        <div style={{ marginBottom: 10 }}><b style={{ fontSize: 11, color: "#64748b", display: "block", marginBottom: 4 }}>MODUL</b>{chips(list(discovery.modules))}</div>
+      )}
+      {list(discovery?.entities).length > 0 && (
+        <div style={{ marginBottom: 10 }}><b style={{ fontSize: 11, color: "#64748b", display: "block", marginBottom: 4 }}>ENTITY DATABASE</b>{chips(list(discovery.entities))}</div>
+      )}
+      {list(discovery?.assumptions).length > 0 && (
+        <ul style={{ fontSize: 12, color: "#475569", margin: "0 0 10px", paddingLeft: 18 }}>{list(discovery.assumptions).map((a: any) => <li key={String(a)}>{String(a)}</li>)}</ul>
+      )}
+      {list(discovery?.steps).length > 0 && (
+        <ol style={{ fontSize: 12, color: "#475569", margin: "0 0 12px", paddingLeft: 18 }}>{list(discovery.steps).map((s: any) => <li key={String(s)}>{String(s)}</li>)}</ol>
+      )}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button onClick={onApproveDefaults} style={{ border: "none", background: ORANGE, color: "#fff", borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Mulai dengan asumsi ini</button>
+        <button onClick={onApprove} style={{ border: `1px solid ${ORANGE}`, background: "#fff7ed", color: "#9a3412", borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Setujui &amp; bangun</button>
+        <button onClick={onEditPlan} style={{ border: "1px solid #e2e8f0", background: "#fff", borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Ubah rencana</button>
+      </div>
+    </div>
+  );
+}
+
 export default function Builder({ pid, onBack, initialPrompt }: { pid: string; onBack: () => void; initialPrompt?: string }) {
   // Project-scoped store: reset seluruh state builder saat pid berganti.
   const initProject = useBuilderStore((s) => s.initProject);
@@ -471,6 +602,18 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
   const setAutoFixCount = useBuilderStore((s) => s.setAutoFixCount);
   const selfTestStatus = useBuilderStore((s) => s.selfTestStatus);
   const setSelfTestStatus = useBuilderStore((s) => s.setSelfTestStatus);
+  // Gate discovery/klarifikasi dari server: payload event SSE "clarification"
+  // / "discovery" ditampung di sini lalu dirender sebagai kartu di bawah chat.
+  const clarification = useBuilderStore((s) => s.clarification);
+  const setClarification = useBuilderStore((s) => s.setClarification);
+  const discovery = useBuilderStore((s) => s.discovery);
+  const setDiscovery = useBuilderStore((s) => s.setDiscovery);
+  // Kredit/kuota: bar ringkas di atas composer (dulu di Rebuild.tsx).
+  // Detail lengkap tetap di Dashboard → tab Usage.
+  const usageQuery = useUsage(true);
+  const quota = usageQuery.data;
+  const quotaRemaining = quota ? Math.max(0, (Number(quota.tokensLimit) || 0) - (Number(quota.tokensUsed) || 0)) : null;
+  const quotaExhausted = quotaRemaining !== null && quotaRemaining <= 0;
   const previewErrorsRef = useRef<string[]>([]);
   const autoFixCountRef = useRef(0);
   const livePreviewSwitched = useRef(false);
@@ -827,7 +970,7 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
     setTermLines((l) => [...l, out]);
   }
 
-  async function send(overrideText?: string, isAutoFix = false) {
+  async function send(overrideText?: string, isAutoFix = false, confirmed = false) {
     let text = (typeof overrideText === "string" ? overrideText : input).trim();
     if (attachedFile) {
       text += "\n\n[File: " + attachedFile.filename + "]\n" + attachedFile.full.slice(0, 8000);
@@ -840,6 +983,14 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
       attachedImageRef.current = null;
     }
     if (!text || streaming) return;
+    // Gate discovery/klarifikasi yang sedang menunggu dianggap dijawab oleh
+    // pesan ini (sama seperti Rebuild: confirm ikut terkirim bila discovery
+    // masih pending), lalu kartunya ditutup supaya tidak menggantung.
+    const pendingGate = !!clarification || !!discovery;
+    if (pendingGate) {
+      setClarification(null);
+      setDiscovery(null);
+    }
     // Reset counter auto-fix untuk pesan baru dari user (bukan dari auto-fix)
     if (!isAutoFix) {
       autoFixCountRef.current = 0;
@@ -860,6 +1011,10 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
           image: img || undefined,
           previewErrors: previewErrors.slice(-8),
           terminalLines: termLines.slice(-80),
+          // confirm: lewati gate discovery/klarifikasi server. Wajib true
+          // saat user menyetujui rencana/jawaban, atau saat gate sedang
+          // pending (pesan apa pun saat itu dihitung sebagai jawaban).
+          confirm: confirmed || pendingGate,
         }),
       });
       if (!r.ok) {
@@ -875,6 +1030,9 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
       const reader = r.body.getReader();
       const dec = new TextDecoder();
       let buf = "", full = "", resultStatus = "", resultSummary = "";
+      // True bila stream ini berakhir di gate discovery/klarifikasi: tidak
+      // ada hasil build, jadi pipeline pasca-stream di bawah harus dilewati.
+      let gated = false;
       const handleBlock = (block: string) => {
         // SSE bernama: "event: result" + "data: {...}". Sebelumnya hanya baris
         // data yang dibaca sehingga status akhir (completed/failed) dan progres
@@ -892,6 +1050,22 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
         if (evName === "result" && chunk && typeof chunk === "object") {
           resultStatus = chunk.status || "";
           resultSummary = chunk.summary || "";
+          return;
+        }
+        // Gate server: simpan payload ke store agar dirender sebagai kartu
+        // (kuis klarifikasi / tinjau rencana) di bawah chat. Tanpa ini
+        // event terabaikan, run macet waiting_for_confirmation, dan user
+        // melihat chat diam tanpa balasan.
+        if (evName === "clarification" && chunk && typeof chunk === "object") {
+          gated = true;
+          setClarification(chunk);
+          setMsgs((m) => [...m, { role: "assistant", content: chunk.summary || "Aku butuh sedikit arahan sebelum mengubah project." }]);
+          return;
+        }
+        if (evName === "discovery" && chunk && typeof chunk === "object") {
+          gated = true;
+          setDiscovery(chunk);
+          setMsgs((m) => [...m, { role: "assistant", content: chunk.summary || "Saya sudah menyusun rencana implementasi. Tinjau sebelum membangun." }]);
           return;
         }
         if (evName === "auto_fix" && chunk && typeof chunk === "object") {
@@ -952,8 +1126,9 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
       }
       // Server sudah menjalankan pipeline + auto-repair sendiri (maks 3x).
       // Klien tidak boleh mengulang perbaikan: itu memicu dua alur edit yang
-      // saling menimpa dan biaya AI ganda.
-      if (mode !== "ask" && mode !== "plan" && mode !== "review") {
+      // saling menimpa dan biaya AI ganda. Dilewati juga bila stream berakhir
+      // di gate discovery/klarifikasi (belum ada build sama sekali).
+      if (!gated && mode !== "ask" && mode !== "plan" && mode !== "review") {
         if (resultStatus === "failed") {
           const detail = lastLinesText(resultSummary, 4);
           setMsgs((m) => [...m, { role: "assistant", content: "⚠️ Belum berhasil.\n" + detail }]);
@@ -975,6 +1150,31 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
       setStreaming(false);
       setStreamText("");
     }
+  }
+
+  // Jawaban gate discovery/klarifikasi (port dari Rebuild.tsx): jawaban
+  // dikirim sebagai pesan chat dengan confirm: true agar server melewati
+  // gate dan mulai membangun.
+  function quizSubmit(answers: string[]) {
+    const qs = clarification?.questions || [];
+    const qa = qs.map((q: any, i: number) => "- " + q.question + ": " + (answers[i] || "(dilewati)"));
+    send("Jawaban klarifikasi saya: " + qa.join(" | ") + ". Lanjutkan membangun sesuai jawaban di atas dengan penilaian terbaikmu.", false, true);
+  }
+  function quizAuto() {
+    send("Tidak perlu klarifikasi, lanjutkan dengan penilaian terbaikmu.", false, true);
+  }
+  function chooseClarification(answer: string) {
+    send(answer + ". Lanjutkan perubahan yang paling tepat dan verifikasi hasilnya.", false, true);
+  }
+  function confirmDiscovery() {
+    send("Gunakan rencana dan asumsi default tersebut. Mulai implementasi sekarang.", false, true);
+  }
+  function approveBuild() {
+    send("Blueprint disetujui. Mulai implementasi dan verifikasi end-to-end sekarang.", false, true);
+  }
+  function editPlan() {
+    setInput("Ubah rencana: ");
+    setTimeout(() => document.getElementById("wb-prompt")?.focus(), 50);
   }
 
   async function waitForRuntimeReady(maxAttempts = 15): Promise<any> {
@@ -1983,7 +2183,20 @@ if (App) {
             AI mengetes hasil...
           </div>
         )}
+        {clarification && !streaming && (
+          <QuizCard clarification={clarification} onDone={quizSubmit} onAuto={quizAuto} onChoose={chooseClarification} onClose={() => setClarification(null)} />
+        )}
+        {discovery && !streaming && (
+          <DiscoveryCard discovery={discovery} onApprove={approveBuild} onApproveDefaults={confirmDiscovery} onEditPlan={editPlan} />
+        )}
       </div>
+      {quota && quotaRemaining !== null && (
+        <div style={{ padding: "6px 12px", borderTop: "1px solid #e5e7eb", background: quotaExhausted ? "#fef2f2" : "#fff", fontSize: 12, color: quotaExhausted ? "#b91c1c" : "#64748b", display: "flex", alignItems: "center", gap: 8 }}>
+          <span>✦ Kredit tersisa: {quotaRemaining.toLocaleString("id-ID")}</span>
+          <small>{quota.plan || "free"}</small>
+          {quotaExhausted && <span style={{ marginLeft: "auto", fontWeight: 700 }}>Kredit habis — upgrade paket untuk lanjut</span>}
+        </div>
+      )}
       <div style={{ padding: isMobile ? "7px 8px calc(7px + env(safe-area-inset-bottom))" : 10, borderTop: "1px solid #e5e7eb", background: "#fff", position: "relative", flexShrink: 0 }}>
         {/* Slash Command Menu Popup */}
         {input.startsWith("/") && (
@@ -2056,8 +2269,8 @@ if (App) {
                 send();
               }
             }}
-            placeholder={listening ? "Mendengarkan..." : canEdit ? "Apa yang ingin kamu ubah?" : "Mode lihat saja"}
-            disabled={streaming || !canEdit}
+            placeholder={listening ? "Mendengarkan..." : quotaExhausted ? "Kredit habis — tingkatkan paket untuk lanjut" : canEdit ? "Apa yang ingin kamu ubah?" : "Mode lihat saja"}
+            disabled={streaming || !canEdit || quotaExhausted}
             rows={1}
             style={{
               flex: 1,
@@ -2079,7 +2292,7 @@ if (App) {
             {isMobile && <div style={{ display: "flex", gap: 4 }}>{chatActionButtons}</div>}
             {!isMobile && <span style={{ flex: 1, fontSize: 10, color: "#94a3b8" }}>Enter untuk mengirim · Shift+Enter untuk baris baru</span>}
             {isMobile && <span style={{ flex: 1 }} />}
-            <button id="wb-send-btn" onClick={() => send()} disabled={streaming || !input.trim() || !canEdit}
+            <button id="wb-send-btn" onClick={() => send()} disabled={streaming || !input.trim() || !canEdit || quotaExhausted}
             style={{ background: ORANGE, color: "#fff", border: "none", borderRadius: 8, padding: 10, cursor: "pointer", display: "flex", flexShrink: 0 }}>
             <Send size={15} />
           </button>

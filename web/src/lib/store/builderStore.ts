@@ -77,6 +77,12 @@ interface BuilderFields {
   blueprintSaving: boolean;
   autoFixCount: number;
   selfTestStatus: null | "testing" | "fixing";
+  // Gate discovery/klarifikasi server (features.go): pesan pertama proyek
+  // baru selalu dijawab event SSE "discovery", permintaan vague dijawab
+  // "clarification". Tanpa state ini event tersebut terabaikan dan build
+  // tidak pernah jalan (run macet waiting_for_confirmation).
+  clarification: any | null;
+  discovery: any | null;
   mobileTreeOpen: boolean;
   attachedImage: string | null;
   fileMenuPath: string | null;
@@ -157,6 +163,8 @@ const initialState: BuilderFields = {
   blueprintSaving: false,
   autoFixCount: 0,
   selfTestStatus: null,
+  clarification: null,
+  discovery: null,
   mobileTreeOpen: true,
   attachedImage: null,
   fileMenuPath: null,
@@ -241,6 +249,8 @@ interface BuilderStore extends Fields {
   setBlueprintSaving: Setter<"blueprintSaving">;
   setAutoFixCount: Setter<"autoFixCount">;
   setSelfTestStatus: Setter<"selfTestStatus">;
+  setClarification: Setter<"clarification">;
+  setDiscovery: Setter<"discovery">;
   setMobileTreeOpen: Setter<"mobileTreeOpen">;
   setAttachedImage: Setter<"attachedImage">;
   setFileMenuPath: Setter<"fileMenuPath">;
@@ -326,6 +336,8 @@ export const useBuilderStore = create<BuilderStore>()((set) => {
     setBlueprintSaving: s("blueprintSaving"),
     setAutoFixCount: s("autoFixCount"),
     setSelfTestStatus: s("selfTestStatus"),
+    setClarification: s("clarification"),
+    setDiscovery: s("discovery"),
     setMobileTreeOpen: s("mobileTreeOpen"),
     setAttachedImage: s("attachedImage"),
     setFileMenuPath: s("fileMenuPath"),
