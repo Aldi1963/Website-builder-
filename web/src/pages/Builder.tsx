@@ -1,8 +1,64 @@
-import Editor from "@monaco-editor/react";
-import { useEffect, useRef, useState } from "react";
-import { api, getToken } from "../lib/api";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { getToken } from "../lib/api";
 import ProjectSettingsModal from "./ProjectSettingsModal";
-import { SandpackProvider, SandpackPreview, SandpackConsole } from "@codesandbox/sandpack-react";
+import { useBuilderStore } from "../lib/store/builderStore";
+import {
+  useAddComment,
+  useAgentRunDetail,
+  useAgentRuns,
+  useApplyProposal,
+  useBlueprint,
+  useChatHistory,
+  useCheckpointVersion,
+  useComments,
+  useCreateProjectFile,
+  useCreateTable,
+  useDeleteProjectFile,
+  useEnhancePrompt,
+  useGenerateImage,
+  useGitHubPushPull,
+  useGitHubSettings,
+  useProject,
+  useProjectSettings,
+  useProjectVersions,
+  usePublishProject,
+  useRejectProposal,
+  useRenameProjectFile,
+  useResolveComment,
+  useRestoreVersion,
+  useRuntimeActions,
+  useRuntimeStatus,
+  useSaveBlueprint,
+  useSaveGitHubSettings,
+  useSavePolicy,
+  useSaveProject,
+  useSaveProjectSettings,
+  useTables,
+  usePolicies,
+  useUsage,
+  useUpdateAgentRun,
+  useUploadFile,
+  fetchAgentRuns,
+  fetchProjectVersions,
+  fetchRuntimeStatus,
+  fetchSmokeTest,
+  fetchTableDetail,
+  fetchVersionFiles,
+  downloadProjectExport,
+} from "../lib/hooks";
+import { projectKeys } from "../lib/hooks/queryKeys";
+
+// Code-splitting: Monaco dan Sandpack TIDAK masuk bundle awal — keduanya
+// dimuat on-demand saat Builder dirender (React.lazy + Suspense).
+// SandpackConsole sengaja tidak diimpor: tidak pernah dipakai.
+const Editor = lazy(() => import("@monaco-editor/react"));
+const SandpackProvider = lazy(() =>
+  import("@codesandbox/sandpack-react").then((m) => ({ default: m.SandpackProvider })),
+);
+const SandpackPreview = lazy(() =>
+  import("@codesandbox/sandpack-react").then((m) => ({ default: m.SandpackPreview })),
+);
 import {
   ArrowLeft, ChevronRight, ChevronDown, File, Folder, FolderOpen,
   Play, Send, X, Plus, RefreshCw, Monitor,
@@ -209,39 +265,178 @@ function renderMarkdown(content: string) {
   return <div>{elements}</div>;
 }
 
-export default function Builder({ pid, onBack, initialPrompt }: { pid: string; onBack: () => void; initialPrompt?: string }) {
-  const [project, setProject] = useState<any>(null);
-  const [myRole, setMyRole] = useState("owner");
-  const canEdit = myRole !== "viewer";
-  const [publishing, setPublishing] = useState(false);
-  const [pubUrl, setPubUrl] = useState("");
-  const [comments, setComments] = useState<any[]>([]);
-  const [showComments, setShowComments] = useState(false);
-  const [newComment, setNewComment] = useState("");
-
-  async function loadComments() {
-    try {
-      const r = await fetch(`/api/projects/${pid}/comments`, { headers: { Authorization: "Bearer " + getToken() } });
-      const d = await r.json();
-      setComments(d.comments || []);
-    } catch {}
+// Kartu kuis klarifikasi (port dari QuizWizard Rebuild.tsx): server mengirim
+// event SSE "clarification" berisi 3-5 pertanyaan sebelum build. Tanpa kartu
+// ini user tidak bisa menjawab dan run macet di waiting_for_confirmation.
+function QuizCard({ clarification, onDone, onAuto, onChoose, onClose }: {
+  clarification: any;
+  onDone: (answers: string[]) => void;
+  onAuto: () => void;
+  onChoose: (answer: string) => void;
+  onClose: () => void;
+}) {
+  const qs = clarification?.questions || [];
+  const [quizIdx, setQuizIdx] = useState(0);
+  const [quizAnswers, setQuizAnswers] = useState<string[]>([]);
+  // Bentuk kedua dari server (clarificationPlan): satu pertanyaan + opsi.
+  if (qs.length === 0) {
+    return (
+      <div style={{ alignSelf: "flex-start", width: "95%", background: "#fff", border: "1px solid #fed7aa", borderRadius: 14, padding: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+          <b style={{ fontSize: 13, flex: 1 }}>Perjelas fokus perubahan</b>
+          <button onClick={onClose} aria-label="Tutup" style={{ border: "none", background: "none", cursor: "pointer", fontSize: 16, color: "#94a3b8" }}>×</button>
+        </div>
+        <p style={{ fontSize: 13, color: "#475569", margin: "0 0 10px" }}>{clarification?.question || clarification?.summary || "Pilih fokus perubahan:"}</p>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {(clarification?.options || []).map((o: string) => (
+            <button key={o} onClick={() => onChoose(o)} style={{ border: `1px solid ${ORANGE}`, background: "#fff7ed", color: "#9a3412", borderRadius: 999, padding: "7px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>{o}</button>
+          ))}
+        </div>
+      </div>
+    );
   }
+  const q = qs[quizIdx] || { question: "", options: [] };
+  const isLast = quizIdx >= qs.length - 1;
+  const isText = q.type === "text";
+  const sel = quizAnswers[quizIdx];
+  const canNext = isText || !!sel;
+  const choose = (label: string) => {
+    const a = [...quizAnswers];
+    a[quizIdx] = label;
+    setQuizAnswers(a);
+  };
+  return (
+    <div style={{ alignSelf: "flex-start", width: "95%", background: "#fff", border: "1px solid #fed7aa", borderRadius: 14, padding: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+        <span style={{ width: 24, height: 24, borderRadius: 6, background: "#fff7ed", border: "1px solid #fed7aa", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: ORANGE, fontSize: 13 }}>?</span>
+        <div style={{ flex: 1 }}>
+          <b style={{ fontSize: 13, display: "block" }}>Beberapa pertanyaan sebelum membangun</b>
+          <small style={{ fontSize: 11, color: "#64748b" }}>Jawab seperlunya agar hasil lebih tepat</small>
+        </div>
+        <button onClick={onClose} aria-label="Tutup" style={{ border: "none", background: "none", cursor: "pointer", fontSize: 16, color: "#94a3b8" }}>×</button>
+      </div>
+      <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
+        {qs.map((_: any, i: number) => (
+          <span key={i} style={{ flex: 1, height: 4, borderRadius: 2, background: i === quizIdx ? ORANGE : i < quizIdx ? "#fdba74" : "#e2e8f0" }} />
+        ))}
+      </div>
+      <h3 style={{ fontSize: 14, margin: "0 0 10px" }}>{q.question}</h3>
+      {isText ? (
+        <textarea value={sel || ""} onChange={(e) => choose(e.target.value)} placeholder="Ketik jawabanmu..." rows={3} style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 10px", fontSize: 13, fontFamily: "inherit", boxSizing: "border-box", resize: "vertical" }} />
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {(q.options || []).map((o: any, oi: number) => {
+            const label = typeof o === "string" ? o : (o.label || "");
+            const rec = typeof o !== "string" && !!o.recommended;
+            return (
+              <button key={oi} onClick={() => choose(label)} style={{ textAlign: "left", border: sel === label ? `2px solid ${ORANGE}` : "1px solid #e2e8f0", background: sel === label ? "#fff7ed" : "#fff", borderRadius: 8, padding: "9px 12px", fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ width: 14, height: 14, borderRadius: "50%", border: `2px solid ${sel === label ? ORANGE : "#cbd5e1"}`, background: sel === label ? ORANGE : "#fff", flexShrink: 0 }} />
+                {label}{rec && <em style={{ fontSize: 11, color: "#64748b", marginLeft: 4 }}>(recommended)</em>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12 }}>
+        <button onClick={onAuto} style={{ border: "none", background: "none", color: "#64748b", fontSize: 12, cursor: "pointer", padding: "6px 4px" }}>Lewati semua</button>
+        <span style={{ flex: 1, textAlign: "center", fontSize: 11, color: "#94a3b8" }}>{quizIdx + 1} dari {qs.length}</span>
+        <button onClick={onAuto} style={{ border: "1px solid #e2e8f0", background: "#fff", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Pilih otomatis</button>
+        <button disabled={!canNext} onClick={() => { if (isLast) onDone(quizAnswers); else setQuizIdx(quizIdx + 1); }} style={{ border: "none", background: ORANGE, color: "#fff", borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: 700, cursor: canNext ? "pointer" : "not-allowed", opacity: canNext ? 1 : 0.5 }}>{isLast ? "Mulai membangun" : "Berikutnya"}</button>
+      </div>
+    </div>
+  );
+}
+
+// Kartu tinjau rencana (port dari discovery card + AnalysisPanel Rebuild.tsx):
+// server mengirim event SSE "discovery" untuk proyek baru; build hanya jalan
+// setelah user menyetujui (confirm: true).
+function DiscoveryCard({ discovery, onApprove, onApproveDefaults, onEditPlan }: {
+  discovery: any;
+  onApprove: () => void;
+  onApproveDefaults: () => void;
+  onEditPlan: () => void;
+}) {
+  const list = (v: any) => (Array.isArray(v) ? v : []);
+  const chips = (items: any[]) => (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+      {items.map((x: any) => (
+        <span key={String(x)} style={{ background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: 999, padding: "3px 10px", fontSize: 11 }}>{String(x)}</span>
+      ))}
+    </div>
+  );
+  return (
+    <div style={{ alignSelf: "flex-start", width: "95%", background: "#fff", border: "1px solid #fed7aa", borderRadius: 14, padding: 14 }}>
+      <b style={{ fontSize: 13, display: "block", marginBottom: 4 }}>Rencana sebelum membangun</b>
+      <p style={{ fontSize: 13, color: "#475569", margin: "0 0 10px", lineHeight: 1.5 }}>{discovery?.summary || "Saya sudah menyusun rencana implementasi."}</p>
+      {discovery?.architectureProfile && (
+        <div style={{ fontSize: 12, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 10px", marginBottom: 10 }}>
+          <b>Arsitektur: {discovery.architectureProfile}</b>
+          {discovery?.folderStrategy && <span style={{ display: "block", color: "#64748b", marginTop: 2 }}>Folder: {discovery.folderStrategy}</span>}
+        </div>
+      )}
+      {list(discovery?.modules).length > 0 && (
+        <div style={{ marginBottom: 10 }}><b style={{ fontSize: 11, color: "#64748b", display: "block", marginBottom: 4 }}>MODUL</b>{chips(list(discovery.modules))}</div>
+      )}
+      {list(discovery?.entities).length > 0 && (
+        <div style={{ marginBottom: 10 }}><b style={{ fontSize: 11, color: "#64748b", display: "block", marginBottom: 4 }}>ENTITY DATABASE</b>{chips(list(discovery.entities))}</div>
+      )}
+      {list(discovery?.assumptions).length > 0 && (
+        <ul style={{ fontSize: 12, color: "#475569", margin: "0 0 10px", paddingLeft: 18 }}>{list(discovery.assumptions).map((a: any) => <li key={String(a)}>{String(a)}</li>)}</ul>
+      )}
+      {list(discovery?.steps).length > 0 && (
+        <ol style={{ fontSize: 12, color: "#475569", margin: "0 0 12px", paddingLeft: 18 }}>{list(discovery.steps).map((s: any) => <li key={String(s)}>{String(s)}</li>)}</ol>
+      )}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button onClick={onApproveDefaults} style={{ border: "none", background: ORANGE, color: "#fff", borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Mulai dengan asumsi ini</button>
+        <button onClick={onApprove} style={{ border: `1px solid ${ORANGE}`, background: "#fff7ed", color: "#9a3412", borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Setujui &amp; bangun</button>
+        <button onClick={onEditPlan} style={{ border: "1px solid #e2e8f0", background: "#fff", borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Ubah rencana</button>
+      </div>
+    </div>
+  );
+}
+
+export default function Builder({ pid, onBack, initialPrompt }: { pid: string; onBack: () => void; initialPrompt?: string }) {
+  // Project-scoped store: reset seluruh state builder saat pid berganti.
+  const initProject = useBuilderStore((s) => s.initProject);
+  useEffect(() => { initProject(pid); }, [pid]);
+  const project = useBuilderStore((s) => s.project);
+  const setProject = useBuilderStore((s) => s.setProject);
+  const myRole = useBuilderStore((s) => s.myRole);
+  const setMyRole = useBuilderStore((s) => s.setMyRole);
+  const canEdit = myRole !== "viewer";
+  const publishing = useBuilderStore((s) => s.publishing);
+  const setPublishing = useBuilderStore((s) => s.setPublishing);
+  const pubUrl = useBuilderStore((s) => s.pubUrl);
+  const setPubUrl = useBuilderStore((s) => s.setPubUrl);
+  const comments = useBuilderStore((s) => s.comments);
+  const setComments = useBuilderStore((s) => s.setComments);
+  const showComments = useBuilderStore((s) => s.showComments);
+  const setShowComments = useBuilderStore((s) => s.setShowComments);
+  const newComment = useBuilderStore((s) => s.newComment);
+  const setNewComment = useBuilderStore((s) => s.setNewComment);
+
+  // Komentar: daftar dimuat oleh useComments; mutasi menginvalidasi cache
+  // sehingga daftar segar tanpa pemanggilan fetch manual.
+  const commentsQuery = useComments(pid);
+  const addCommentMut = useAddComment(pid);
+  const resolveCommentMut = useResolveComment(pid);
+  const publishMut = usePublishProject(pid);
+  useEffect(() => {
+    if (commentsQuery.data) setComments(commentsQuery.data.comments || []);
+  }, [commentsQuery.data]);
 
   async function sendComment() {
     if (!newComment.trim() || !activeTab) return;
-    const r = await fetch(`/api/projects/${pid}/comments`, {
-      method: "POST",
-      headers: { Authorization: "Bearer " + getToken(), "Content-Type": "application/json" },
-      body: JSON.stringify({ filePath: activeTab, body: newComment.trim() }),
-    });
-    if (r.ok) { setNewComment(""); loadComments(); }
+    try {
+      await addCommentMut.mutateAsync({ filePath: activeTab, body: newComment.trim() });
+      setNewComment("");
+    } catch {}
   }
 
   async function toggleResolveComment(id: number) {
-    await fetch(`/api/projects/${pid}/comments/${id}/resolve`, {
-      method: "POST", headers: { Authorization: "Bearer " + getToken() },
-    });
-    loadComments();
+    try {
+      await resolveCommentMut.mutateAsync(id);
+    } catch {}
   }
 
   async function doPublish() {
@@ -249,11 +444,7 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
     if (!confirm("Publish proyek ini?")) return;
     setPublishing(true);
     try {
-      const r = await fetch(`/api/projects/${pid}/publish`, {
-        method: "POST", headers: { Authorization: "Bearer " + getToken() },
-      });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.message);
+      const d = await publishMut.mutateAsync();
       setPubUrl(d.url || "");
       alert("Dipublish! " + (d.url || ""));
     } catch (e: any) {
@@ -262,15 +453,24 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
       setPublishing(false);
     }
   }
-  const [files, setFiles] = useState<Record<string, string>>({});
-  const [openTabs, setOpenTabs] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<string>("");
-  const [view, setView] = useState<"code" | "preview" | "db">("preview");
-  const [msgs, setMsgs] = useState<{ role: string; content: string }[]>([]);
-  const [input, setInput] = useState("");
-  const [streaming, setStreaming] = useState(false);
-  const [streamText, setStreamText] = useState("");
-  const [aiActivity, setAiActivity] = useState("Menganalisa kebutuhan proyek");
+  const files = useBuilderStore((s) => s.files);
+  const setFiles = useBuilderStore((s) => s.setFiles);
+  const openTabs = useBuilderStore((s) => s.openTabs);
+  const setOpenTabs = useBuilderStore((s) => s.setOpenTabs);
+  const activeTab = useBuilderStore((s) => s.activeTab);
+  const setActiveTab = useBuilderStore((s) => s.setActiveTab);
+  const view = useBuilderStore((s) => s.view);
+  const setView = useBuilderStore((s) => s.setView);
+  const msgs = useBuilderStore((s) => s.msgs);
+  const setMsgs = useBuilderStore((s) => s.setMsgs);
+  const input = useBuilderStore((s) => s.input);
+  const setInput = useBuilderStore((s) => s.setInput);
+  const streaming = useBuilderStore((s) => s.streaming);
+  const setStreaming = useBuilderStore((s) => s.setStreaming);
+  const streamText = useBuilderStore((s) => s.streamText);
+  const setStreamText = useBuilderStore((s) => s.setStreamText);
+  const aiActivity = useBuilderStore((s) => s.aiActivity);
+  const setAiActivity = useBuilderStore((s) => s.setAiActivity);
   const aiActivities = ["Menganalisa kebutuhan proyek", "Menyusun arsitektur halaman", "Merancang data dan alur pengguna", "Menulis komponen dan service", "Menyiapkan build dan database"]; 
   useEffect(() => {
     if (!streaming) return;
@@ -282,42 +482,76 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
     }, 1800);
     return () => window.clearInterval(timer);
   }, [streaming]);
-  const [mode, setMode] = useState("build");
-  const [termOpen, setTermOpen] = useState(false);
-  const [termLines, setTermLines] = useState<string[]>(["WebBuilder Terminal — ketik 'help'"]);
-  const [termInput, setTermInput] = useState("");
-  const [runtimeRunning, setRuntimeRunning] = useState(false);
-  const [runtimePreview, setRuntimePreview] = useState(false);
-  const [previewToken, setPreviewToken] = useState("");
-  const [pipelinePhase, setPipelinePhase] = useState<"idle" | "sync" | "install-build" | "migration" | "database" | "runtime" | "success" | "failed">("idle");
-  const [pipelineError, setPipelineError] = useState("");
-  const [agentRun, setAgentRun] = useState<any>(null);
-  const [agentTools, setAgentTools] = useState<any[]>([]);
-  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
-  const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false);
+  const mode = useBuilderStore((s) => s.mode);
+  const setMode = useBuilderStore((s) => s.setMode);
+  const termOpen = useBuilderStore((s) => s.termOpen);
+  const setTermOpen = useBuilderStore((s) => s.setTermOpen);
+  const termLines = useBuilderStore((s) => s.termLines);
+  const setTermLines = useBuilderStore((s) => s.setTermLines);
+  const termInput = useBuilderStore((s) => s.termInput);
+  const setTermInput = useBuilderStore((s) => s.setTermInput);
+  const runtimeRunning = useBuilderStore((s) => s.runtimeRunning);
+  const setRuntimeRunning = useBuilderStore((s) => s.setRuntimeRunning);
+  const runtimePreview = useBuilderStore((s) => s.runtimePreview);
+  const setRuntimePreview = useBuilderStore((s) => s.setRuntimePreview);
+  const previewToken = useBuilderStore((s) => s.previewToken);
+  const setPreviewToken = useBuilderStore((s) => s.setPreviewToken);
+  const pipelinePhase = useBuilderStore((s) => s.pipelinePhase);
+  const setPipelinePhase = useBuilderStore((s) => s.setPipelinePhase);
+  const pipelineError = useBuilderStore((s) => s.pipelineError);
+  const setPipelineError = useBuilderStore((s) => s.setPipelineError);
+  const agentRun = useBuilderStore((s) => s.agentRun);
+  const setAgentRun = useBuilderStore((s) => s.setAgentRun);
+  const agentTools = useBuilderStore((s) => s.agentTools);
+  const setAgentTools = useBuilderStore((s) => s.setAgentTools);
+  const diagnosticsOpen = useBuilderStore((s) => s.diagnosticsOpen);
+  const setDiagnosticsOpen = useBuilderStore((s) => s.setDiagnosticsOpen);
+  const workspaceMenuOpen = useBuilderStore((s) => s.workspaceMenuOpen);
+  const setWorkspaceMenuOpen = useBuilderStore((s) => s.setWorkspaceMenuOpen);
   const pipelineLabel = pipelinePhase === "sync" ? "Sinkronisasi file" : pipelinePhase === "install-build" ? "Membangun aplikasi" : pipelinePhase === "migration" ? "Menyiapkan database" : pipelinePhase === "database" ? "Memeriksa database" : pipelinePhase === "runtime" ? "Menyalakan preview" : pipelinePhase === "success" ? "Siap digunakan" : pipelinePhase === "failed" ? "Perlu diperbaiki" : "Siap";
   const runtimeFrameRef = useRef<HTMLIFrameElement>(null);
-  const [device, setDevice] = useState("desktop");
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({ src: true });
-  const [previewKey, setPreviewKey] = useState(0);
-  const [tables, setTables] = useState<string[]>([]);
-  const [newTable, setNewTable] = useState("");
-  const [selectedTable, setSelectedTable] = useState<any>(null);
-  const [tableLoading, setTableLoading] = useState(false);
-  const [policies, setPolicies] = useState<any[]>([]);
-  const [paletteOpen, setPaletteOpen] = useState(false);
-  const [paletteQuery, setPaletteQuery] = useState("");
-  const [mobileTab, setMobileTab] = useState("chat");
-  const [attachedFile, setAttachedFile] = useState<{ filename: string; full: string } | null>(null);
-  const [enhancing, setEnhancing] = useState(false);
-  const [proposal, setProposal] = useState<string[] | null>(null);
-  const [proposalSel, setProposalSel] = useState<Record<string, boolean>>({});
-  const [versions, setVersions] = useState<any[]>([]);
-  const [showVersions, setShowVersions] = useState(false);
-  const [checkpointLabel, setCheckpointLabel] = useState("");
-  const [savingCheckpoint, setSavingCheckpoint] = useState(false);
-  const [previewVersion, setPreviewVersion] = useState<{ id: number; label: string; files: Record<string, string> } | null>(null);
-  const [listening, setListening] = useState(false);
+  const device = useBuilderStore((s) => s.device);
+  const setDevice = useBuilderStore((s) => s.setDevice);
+  const expanded = useBuilderStore((s) => s.expanded);
+  const setExpanded = useBuilderStore((s) => s.setExpanded);
+  const previewKey = useBuilderStore((s) => s.previewKey);
+  const setPreviewKey = useBuilderStore((s) => s.setPreviewKey);
+  const tables = useBuilderStore((s) => s.tables);
+  const setTables = useBuilderStore((s) => s.setTables);
+  const newTable = useBuilderStore((s) => s.newTable);
+  const setNewTable = useBuilderStore((s) => s.setNewTable);
+  const selectedTable = useBuilderStore((s) => s.selectedTable);
+  const setSelectedTable = useBuilderStore((s) => s.setSelectedTable);
+  const tableLoading = useBuilderStore((s) => s.tableLoading);
+  const setTableLoading = useBuilderStore((s) => s.setTableLoading);
+  const policies = useBuilderStore((s) => s.policies);
+  const setPolicies = useBuilderStore((s) => s.setPolicies);
+  const paletteOpen = useBuilderStore((s) => s.paletteOpen);
+  const setPaletteOpen = useBuilderStore((s) => s.setPaletteOpen);
+  const paletteQuery = useBuilderStore((s) => s.paletteQuery);
+  const setPaletteQuery = useBuilderStore((s) => s.setPaletteQuery);
+  const mobileTab = useBuilderStore((s) => s.mobileTab);
+  const setMobileTab = useBuilderStore((s) => s.setMobileTab);
+  const attachedFile = useBuilderStore((s) => s.attachedFile);
+  const setAttachedFile = useBuilderStore((s) => s.setAttachedFile);
+  const enhancing = useBuilderStore((s) => s.enhancing);
+  const setEnhancing = useBuilderStore((s) => s.setEnhancing);
+  const proposal = useBuilderStore((s) => s.proposal);
+  const setProposal = useBuilderStore((s) => s.setProposal);
+  const proposalSel = useBuilderStore((s) => s.proposalSel);
+  const setProposalSel = useBuilderStore((s) => s.setProposalSel);
+  const versions = useBuilderStore((s) => s.versions);
+  const setVersions = useBuilderStore((s) => s.setVersions);
+  const showVersions = useBuilderStore((s) => s.showVersions);
+  const setShowVersions = useBuilderStore((s) => s.setShowVersions);
+  const checkpointLabel = useBuilderStore((s) => s.checkpointLabel);
+  const setCheckpointLabel = useBuilderStore((s) => s.setCheckpointLabel);
+  const savingCheckpoint = useBuilderStore((s) => s.savingCheckpoint);
+  const setSavingCheckpoint = useBuilderStore((s) => s.setSavingCheckpoint);
+  const previewVersion = useBuilderStore((s) => s.previewVersion);
+  const setPreviewVersion = useBuilderStore((s) => s.setPreviewVersion);
+  const listening = useBuilderStore((s) => s.listening);
+  const setListening = useBuilderStore((s) => s.setListening);
 
   function toggleListening() {
     const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -347,17 +581,39 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
       setListening(false);
     }
   }
-  const [selectMode, setSelectMode] = useState(false);
-  const [selectedEl, setSelectedEl] = useState<any>(null);
-  const [previewErrors, setPreviewErrors] = useState<string[]>([]);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [projSettings, setProjSettings] = useState<any>(null);
-  const [blueprintOpen, setBlueprintOpen] = useState(false);
-  const [blueprint, setBlueprint] = useState("");
-  const [blueprintSaving, setBlueprintSaving] = useState(false);
+  const selectMode = useBuilderStore((s) => s.selectMode);
+  const setSelectMode = useBuilderStore((s) => s.setSelectMode);
+  const selectedEl = useBuilderStore((s) => s.selectedEl);
+  const setSelectedEl = useBuilderStore((s) => s.setSelectedEl);
+  const previewErrors = useBuilderStore((s) => s.previewErrors);
+  const setPreviewErrors = useBuilderStore((s) => s.setPreviewErrors);
+  const settingsOpen = useBuilderStore((s) => s.settingsOpen);
+  const setSettingsOpen = useBuilderStore((s) => s.setSettingsOpen);
+  const projSettings = useBuilderStore((s) => s.projSettings);
+  const setProjSettings = useBuilderStore((s) => s.setProjSettings);
+  const blueprintOpen = useBuilderStore((s) => s.blueprintOpen);
+  const setBlueprintOpen = useBuilderStore((s) => s.setBlueprintOpen);
+  const blueprint = useBuilderStore((s) => s.blueprint);
+  const setBlueprint = useBuilderStore((s) => s.setBlueprint);
+  const blueprintSaving = useBuilderStore((s) => s.blueprintSaving);
+  const setBlueprintSaving = useBuilderStore((s) => s.setBlueprintSaving);
   // Live build streaming + auto-fix loop + self-test
-  const [autoFixCount, setAutoFixCount] = useState(0);
-  const [selfTestStatus, setSelfTestStatus] = useState<null | "testing" | "fixing">(null);
+  const autoFixCount = useBuilderStore((s) => s.autoFixCount);
+  const setAutoFixCount = useBuilderStore((s) => s.setAutoFixCount);
+  const selfTestStatus = useBuilderStore((s) => s.selfTestStatus);
+  const setSelfTestStatus = useBuilderStore((s) => s.setSelfTestStatus);
+  // Gate discovery/klarifikasi dari server: payload event SSE "clarification"
+  // / "discovery" ditampung di sini lalu dirender sebagai kartu di bawah chat.
+  const clarification = useBuilderStore((s) => s.clarification);
+  const setClarification = useBuilderStore((s) => s.setClarification);
+  const discovery = useBuilderStore((s) => s.discovery);
+  const setDiscovery = useBuilderStore((s) => s.setDiscovery);
+  // Kredit/kuota: bar ringkas di atas composer (dulu di Rebuild.tsx).
+  // Detail lengkap tetap di Dashboard → tab Usage.
+  const usageQuery = useUsage(true);
+  const quota = usageQuery.data;
+  const quotaRemaining = quota ? Math.max(0, (Number(quota.tokensLimit) || 0) - (Number(quota.tokensUsed) || 0)) : null;
+  const quotaExhausted = quotaRemaining !== null && quotaRemaining <= 0;
   const previewErrorsRef = useRef<string[]>([]);
   const autoFixCountRef = useRef(0);
   const livePreviewSwitched = useRef(false);
@@ -374,36 +630,32 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
     }
   }, [initialPrompt]);
   useEffect(() => { previewErrorsRef.current = previewErrors; }, [previewErrors]);
+  // Agent runs: polling manual diganti useQuery dengan refetchInterval
+  // yang sama seperti sebelumnya (1200ms saat streaming, 5000ms bila tidak).
+  const agentRunsQuery = useAgentRuns(pid, streaming);
+  const latestRun = agentRunsQuery.data?.runs?.[0];
+  const agentRunDetailQuery = useAgentRunDetail(pid, latestRun?.id, streaming);
   useEffect(() => {
-    let timer: number | undefined;
-    const poll = async () => {
-      try {
-        const r = await fetch(`/api/projects/${pid}/agent/runs`, { headers: { Authorization: "Bearer " + getToken() } });
-        if (!r.ok) return;
-        const d = await r.json();
-        const latest = d.runs?.[0];
-        if (!latest) return;
-        setAgentRun(latest);
-        const detail = await fetch(`/api/projects/${pid}/agent/runs/${latest.id}`, { headers: { Authorization: "Bearer " + getToken() } });
-        if (detail.ok) setAgentTools((await detail.json()).tools || []);
-      } catch {}
-    };
-    poll();
-    timer = window.setInterval(poll, streaming ? 1200 : 5000);
-    return () => { if (timer) window.clearInterval(timer); };
-  }, [pid, streaming]);
-  async function loadBlueprint() {
-    const r = await fetch(`/api/projects/${pid}/blueprint`, { headers: { Authorization: "Bearer " + getToken() } });
-    const d = await r.json();
-    setBlueprint(d.blueprint || "");
+    if (latestRun) setAgentRun(latestRun);
+  }, [latestRun]);
+  useEffect(() => {
+    if (agentRunDetailQuery.data) setAgentTools(agentRunDetailQuery.data.tools || []);
+  }, [agentRunDetailQuery.data]);
+  const updateAgentRunMut = useUpdateAgentRun(pid);
+  function loadBlueprint() {
     setBlueprintOpen(true);
   }
+  // Blueprint dimuat saat modal dibuka (query enabled oleh blueprintOpen).
+  const blueprintQuery = useBlueprint(pid, blueprintOpen);
+  const saveBlueprintMut = useSaveBlueprint(pid);
+  useEffect(() => {
+    if (blueprintOpen && blueprintQuery.data) setBlueprint(blueprintQuery.data.blueprint || "");
+  }, [blueprintOpen, blueprintQuery.data]);
   async function saveBlueprint() {
     if (!blueprint.trim()) return;
     setBlueprintSaving(true);
     try {
-      const r = await fetch(`/api/projects/${pid}/blueprint`, { method: "PUT", headers: { Authorization: "Bearer " + getToken(), "Content-Type": "application/json" }, body: JSON.stringify({ blueprint }) });
-      if (!r.ok) throw new Error((await r.json()).error || "Gagal menyimpan blueprint");
+      await saveBlueprintMut.mutateAsync(blueprint);
       setBlueprintOpen(false);
       setMsgs((m) => [...m, { role: "assistant", content: "✅ Blueprint disetujui. AI akan mengikuti rencana ini pada generate berikutnya." }]);
     } catch (e: any) { alert(e.message); } finally { setBlueprintSaving(false); }
@@ -412,41 +664,50 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
   const msgsRef = useRef<HTMLDivElement>(null);
   const navRef = useRef<HTMLDivElement>(null);
 
+  // Data proyek + riwayat chat dimuat oleh TanStack Query. Sinkronisasi
+  // ke store hanya sekali per pid (guard ref) agar refetch/invalidasi
+  // sesudah save tidak menimpa edit lokal.
+  const qc = useQueryClient();
+  const projectQuery = useProject(pid);
+  const chatQuery = useChatHistory(pid);
+  const projectLoadedRef = useRef<string | null>(null);
+  const chatLoadedRef = useRef<string | null>(null);
   useEffect(() => {
-    api.getProject(pid).then(async (d) => {
-      setProject(d.project);
-      setMyRole(d.role || "owner");
-      loadComments();
-      const f = JSON.parse(d.project.files || "{}");
-      setFiles(f);
-      const keys = Object.keys(f);
-      if (keys.length > 0) {
-        const entry = keys.find((k) => k.includes("App.")) || keys[0];
-        setOpenTabs([entry]);
-        setActiveTab(entry);
-      }
-      // Change 1: Load chat history
-      try {
-        const chatR = await fetch(`/api/projects/${pid}/chat`, { headers: { Authorization: 'Bearer ' + getToken() } });
-        const chatD = await chatR.json();
-        if (chatD.messages?.length) {
-          setMsgs(chatD.messages.map((m: any) => ({ role: m.role, content: m.content })));
-        }
-      } catch {}
-      // Change 5: auto-send initial prompt from sessionStorage
-      const initPrompt = sessionStorage.getItem('wb_initial_prompt');
-      if (initPrompt) {
-        sessionStorage.removeItem('wb_initial_prompt');
+    const d = projectQuery.data;
+    if (!d || projectLoadedRef.current === pid) return;
+    projectLoadedRef.current = pid;
+    setProject(d.project);
+    setMyRole(d.role || "owner");
+    const f = JSON.parse(d.project.files || "{}");
+    setFiles(f);
+    const keys = Object.keys(f);
+    if (keys.length > 0) {
+      const entry = keys.find((k) => k.includes("App.")) || keys[0];
+      setOpenTabs([entry]);
+      setActiveTab(entry);
+    }
+    // Change 5: auto-send initial prompt from sessionStorage
+    const initPrompt = sessionStorage.getItem('wb_initial_prompt');
+    if (initPrompt) {
+      sessionStorage.removeItem('wb_initial_prompt');
+      setTimeout(() => {
+        setInput(initPrompt);
         setTimeout(() => {
-          setInput(initPrompt);
-          setTimeout(() => {
-            const btn = document.getElementById('wb-send-btn') as HTMLButtonElement;
-            btn?.click();
-          }, 100);
-        }, 500);
-      }
-    }).catch(() => {});
-  }, [pid]);
+          const btn = document.getElementById('wb-send-btn') as HTMLButtonElement;
+          btn?.click();
+        }, 100);
+      }, 500);
+    }
+  }, [pid, projectQuery.data]);
+  // Change 1: Load chat history (sekali per pid, hanya bila chat masih kosong).
+  useEffect(() => {
+    const messages = chatQuery.data?.messages;
+    if (!messages?.length || chatLoadedRef.current === pid) return;
+    chatLoadedRef.current = pid;
+    if (useBuilderStore.getState().msgs.length === 0) {
+      setMsgs(messages.map((m: any) => ({ role: m.role, content: m.content })));
+    }
+  }, [pid, chatQuery.data]);
 
   useEffect(() => {
     const el = msgsRef.current;
@@ -490,15 +751,21 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
       } catch {}
     };
     consume();
-    const statusTimer = window.setInterval(async () => {
-      try {
-        const r = await fetch(`/api/projects/${pid}/runtime/dev/status`, { headers: { Authorization: "Bearer " + getToken() } });
-        const d = await r.json();
-        if (active) setRuntimeRunning(d.status === "running" || d.status === "starting");
-      } catch {}
-    }, 3000);
-    return () => { active = false; controller.abort(); window.clearInterval(statusTimer); };
+    return () => { active = false; controller.abort(); };
   }, [termOpen, runtimeRunning, pid]);
+
+  // Status runtime di-poll oleh useRuntimeStatus (tiap 3 detik, aktif
+  // hanya saat terminal terbuka dan runtime berjalan — sama seperti
+  // timer lama yang kini diganti query ini).
+  const runtimeStatusQuery = useRuntimeStatus(pid, termOpen && runtimeRunning);
+  useEffect(() => {
+    const d = runtimeStatusQuery.data;
+    if (d) setRuntimeRunning(d.status === "running" || d.status === "starting");
+  }, [runtimeStatusQuery.data]);
+
+  // Aksi runtime satu-tembak (sync/start/stop/install/build/verifikasi/
+  // pipeline) sebagai mutasi TanStack.
+  const runtimeActions = useRuntimeActions(pid);
 
   // Terima pesan dari preview iframe (error console + click-to-edit)
   useEffect(() => {
@@ -558,10 +825,7 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
       setPreviewKey((k) => k + 1);
       if (runtimePreview) {
         try {
-          await fetch(`/api/projects/${pid}/runtime/dev/sync`, {
-            method: "POST",
-            headers: { Authorization: "Bearer " + getToken() },
-          });
+          await runtimeActions.sync();
         } catch {}
       }
     }, 1200);
@@ -578,17 +842,15 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
     return () => window.removeEventListener("keydown", onKey);
   }, [activeTab, files]);
 
+  const saveProjectMut = useSaveProject(pid);
   async function saveFiles(nf: Record<string, string>) {
     if (!canEdit) return;
     setFiles(nf);
-    await fetch(`/api/projects/${pid}`, {
-      method: "PUT",
-      headers: { Authorization: "Bearer " + getToken(), "Content-Type": "application/json" },
-      body: JSON.stringify({ files: JSON.stringify(nf) }),
-    });
+    await saveProjectMut.mutateAsync(nf);
   }
 
-  const [mobileTreeOpen, setMobileTreeOpen] = useState(true);
+  const mobileTreeOpen = useBuilderStore((s) => s.mobileTreeOpen);
+  const setMobileTreeOpen = useBuilderStore((s) => s.setMobileTreeOpen);
 
   function openFile(path: string) {
     if (!openTabs.includes(path)) setOpenTabs((t) => [...t, path]);
@@ -614,41 +876,46 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
     (window as any).__saveT = setTimeout(() => saveFiles(nf), 1500);
   }
 
-  async function loadTables() {
-    try {
-      const r = await fetch(`/api/projects/${pid}/tables`, { headers: { Authorization: "Bearer " + getToken() } });
-      const d = await r.json();
-      setTables(d.tables || []);
-    } catch {}
-  }
+  // Tabel & policy dimuat otomatis saat tab Database aktif; mutasi
+  // menginvalidasi cache sehingga daftar segar.
+  const tablesQuery = useTables(pid, view === "db");
+  const policiesQuery = usePolicies(pid, view === "db");
+  const createTableMut = useCreateTable(pid);
+  const savePolicyMut = useSavePolicy(pid);
+  useEffect(() => {
+    if (tablesQuery.data) setTables(tablesQuery.data.tables || []);
+  }, [tablesQuery.data]);
+  useEffect(() => {
+    if (policiesQuery.data) setPolicies(policiesQuery.data.policies || []);
+  }, [policiesQuery.data]);
 
   async function loadPolicies() {
-    try { const r = await fetch(`/api/projects/${pid}/policies`, { headers: { Authorization: "Bearer " + getToken() } }); const d = await r.json(); setPolicies(d.policies || []); } catch {}
+    await qc.invalidateQueries({ queryKey: projectKeys.policies(pid) });
   }
 
   async function savePolicy(table: string, role: string, operation: string, enabled: boolean) {
-    await fetch(`/api/projects/${pid}/policies`, { method: "POST", headers: { Authorization: "Bearer " + getToken(), "Content-Type": "application/json" }, body: JSON.stringify({ table, role, operation, enabled }) });
-    loadPolicies();
+    await savePolicyMut.mutateAsync({ table, role, operation, enabled });
   }
 
   async function inspectTable(name: string) {
     setTableLoading(true);
     try {
-      const r = await fetch(`/api/projects/${pid}/tables/${encodeURIComponent(name)}`, { headers: { Authorization: "Bearer " + getToken() } });
-      const d = await r.json();
-      if (r.ok) setSelectedTable(d); else alert(d.message || "Gagal membaca tabel");
-    } finally { setTableLoading(false); }
+      const d = await qc.fetchQuery({
+        queryKey: projectKeys.tableDetail(pid, name),
+        queryFn: () => fetchTableDetail(pid, name),
+      });
+      setSelectedTable(d);
+    } catch (e: any) {
+      alert(e.message || "Gagal membaca tabel");
+    } finally {
+      setTableLoading(false);
+    }
   }
 
   async function createTable() {
     if (!newTable.trim()) return;
-    await fetch(`/api/projects/${pid}/tables`, {
-      method: "POST",
-      headers: { Authorization: "Bearer " + getToken(), "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newTable.trim(), columns: [] }),
-    });
+    await createTableMut.mutateAsync(newTable.trim());
     setNewTable("");
-    loadTables();
   }
 
   async function runTerm(cmd: string) {
@@ -665,8 +932,7 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
     else if (c === "runtime start" || c === "runtime stop") {
       try {
         const action = c.endsWith("start") ? "start" : "stop";
-        const r = await fetch(`/api/projects/${pid}/runtime/dev/${action}`, { method: "POST", headers: { Authorization: "Bearer " + getToken() } });
-        const d = await r.json();
+        const d = await (action === "start" ? runtimeActions.start() : runtimeActions.stop());
         setRuntimeRunning(action === "start" && d.status !== "stopped");
         out = JSON.stringify(d);
       } catch (e: any) { out = "Runtime error: " + (e?.message || e); }
@@ -675,31 +941,27 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
     else if (c === "npm install" || c === "npm i") {
       setTermLines((l) => [...l, "⏳ Menjalankan npm install di runtime sandbox..."]);
       try {
-        const r = await fetch(`/api/projects/${pid}/runtime/install`, { method: "POST", headers: { Authorization: "Bearer " + getToken() } });
-        const d = await r.json();
+        const d = await runtimeActions.install();
         out = (d.output || d.error || "Selesai") + `\n[exit code: ${d.exitCode ?? "?"}]`;
       } catch (e: any) { out = "Runtime error: " + (e?.message || e); }
     } else if (c === "npm run build") {
       setTermLines((l) => [...l, "⏳ Menjalankan npm run build di runtime sandbox..."]);
       try {
-        const r = await fetch(`/api/projects/${pid}/runtime/build`, { method: "POST", headers: { Authorization: "Bearer " + getToken() } });
-        const d = await r.json();
+        const d = await runtimeActions.build();
         out = (d.output || d.error || "Selesai") + `\n[exit code: ${d.exitCode ?? "?"}]`;
         if (d.status === "success") setPreviewErrors([]);
       } catch (e: any) { out = "Runtime error: " + (e?.message || e); }
     } else if (c === "db verify") {
       setTermLines((l) => [...l, "⏳ Menjalankan database connection + CRUD verification..."]);
       try {
-        const r = await fetch(`/api/projects/${pid}/runtime/db-verify`, { method: "POST", headers: { Authorization: "Bearer " + getToken() } });
-        const d = await r.json();
+        const d = await runtimeActions.dbVerify();
         out = (d.message || d.error || "Selesai") + `\nsteps: ${(d.steps || []).join(" → ")}`;
         if (d.status !== "success" && d.error) setPreviewErrors((prev) => [...prev.slice(-4), d.error]);
       } catch (e: any) { out = "Database runtime error: " + (e?.message || e); }
     } else if (c === "verify" || c === "npm run verify") {
       setTermLines((l) => [...l, "⏳ Install + build verification dimulai..."]);
       try {
-        const r = await fetch(`/api/projects/${pid}/runtime/verify`, { method: "POST", headers: { Authorization: "Bearer " + getToken() } });
-        const d = await r.json();
+        const d = await runtimeActions.verify();
         out = (d.output || d.error || "Selesai") + `\n[phase: ${d.phase || "?"}, exit code: ${d.exitCode ?? "?"}]`;
         if (d.status === "success") setPreviewErrors([]);
         else if (d.error) setPreviewErrors((prev) => [...prev, d.error]);
@@ -708,7 +970,7 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
     setTermLines((l) => [...l, out]);
   }
 
-  async function send(overrideText?: string, isAutoFix = false) {
+  async function send(overrideText?: string, isAutoFix = false, confirmed = false) {
     let text = (typeof overrideText === "string" ? overrideText : input).trim();
     if (attachedFile) {
       text += "\n\n[File: " + attachedFile.filename + "]\n" + attachedFile.full.slice(0, 8000);
@@ -721,6 +983,14 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
       attachedImageRef.current = null;
     }
     if (!text || streaming) return;
+    // Gate discovery/klarifikasi yang sedang menunggu dianggap dijawab oleh
+    // pesan ini (sama seperti Rebuild: confirm ikut terkirim bila discovery
+    // masih pending), lalu kartunya ditutup supaya tidak menggantung.
+    const pendingGate = !!clarification || !!discovery;
+    if (pendingGate) {
+      setClarification(null);
+      setDiscovery(null);
+    }
     // Reset counter auto-fix untuk pesan baru dari user (bukan dari auto-fix)
     if (!isAutoFix) {
       autoFixCountRef.current = 0;
@@ -741,6 +1011,10 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
           image: img || undefined,
           previewErrors: previewErrors.slice(-8),
           terminalLines: termLines.slice(-80),
+          // confirm: lewati gate discovery/klarifikasi server. Wajib true
+          // saat user menyetujui rencana/jawaban, atau saat gate sedang
+          // pending (pesan apa pun saat itu dihitung sebagai jawaban).
+          confirm: confirmed || pendingGate,
         }),
       });
       if (!r.ok) {
@@ -756,6 +1030,9 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
       const reader = r.body.getReader();
       const dec = new TextDecoder();
       let buf = "", full = "", resultStatus = "", resultSummary = "";
+      // True bila stream ini berakhir di gate discovery/klarifikasi: tidak
+      // ada hasil build, jadi pipeline pasca-stream di bawah harus dilewati.
+      let gated = false;
       const handleBlock = (block: string) => {
         // SSE bernama: "event: result" + "data: {...}". Sebelumnya hanya baris
         // data yang dibaca sehingga status akhir (completed/failed) dan progres
@@ -773,6 +1050,22 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
         if (evName === "result" && chunk && typeof chunk === "object") {
           resultStatus = chunk.status || "";
           resultSummary = chunk.summary || "";
+          return;
+        }
+        // Gate server: simpan payload ke store agar dirender sebagai kartu
+        // (kuis klarifikasi / tinjau rencana) di bawah chat. Tanpa ini
+        // event terabaikan, run macet waiting_for_confirmation, dan user
+        // melihat chat diam tanpa balasan.
+        if (evName === "clarification" && chunk && typeof chunk === "object") {
+          gated = true;
+          setClarification(chunk);
+          setMsgs((m) => [...m, { role: "assistant", content: chunk.summary || "Aku butuh sedikit arahan sebelum mengubah project." }]);
+          return;
+        }
+        if (evName === "discovery" && chunk && typeof chunk === "object") {
+          gated = true;
+          setDiscovery(chunk);
+          setMsgs((m) => [...m, { role: "assistant", content: chunk.summary || "Saya sudah menyusun rencana implementasi. Tinjau sebelum membangun." }]);
           return;
         }
         if (evName === "auto_fix" && chunk && typeof chunk === "object") {
@@ -825,13 +1118,17 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
       if (full.trim()) {
         setMsgs((m) => [...m, { role: "assistant", content: full }]);
       }
-      const d = await api.getProject(pid);
-      setFiles(JSON.parse(d.project.files || "{}"));
-      setProject(d.project);
+      // Segarkan file dari server (refetch paksa; cache query ikut mutakhir).
+      const { data: d } = await projectQuery.refetch();
+      if (d) {
+        setFiles(JSON.parse(d.project.files || "{}"));
+        setProject(d.project);
+      }
       // Server sudah menjalankan pipeline + auto-repair sendiri (maks 3x).
       // Klien tidak boleh mengulang perbaikan: itu memicu dua alur edit yang
-      // saling menimpa dan biaya AI ganda.
-      if (mode !== "ask" && mode !== "plan" && mode !== "review") {
+      // saling menimpa dan biaya AI ganda. Dilewati juga bila stream berakhir
+      // di gate discovery/klarifikasi (belum ada build sama sekali).
+      if (!gated && mode !== "ask" && mode !== "plan" && mode !== "review") {
         if (resultStatus === "failed") {
           const detail = lastLinesText(resultSummary, 4);
           setMsgs((m) => [...m, { role: "assistant", content: "⚠️ Belum berhasil.\n" + detail }]);
@@ -855,10 +1152,34 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
     }
   }
 
+  // Jawaban gate discovery/klarifikasi (port dari Rebuild.tsx): jawaban
+  // dikirim sebagai pesan chat dengan confirm: true agar server melewati
+  // gate dan mulai membangun.
+  function quizSubmit(answers: string[]) {
+    const qs = clarification?.questions || [];
+    const qa = qs.map((q: any, i: number) => "- " + q.question + ": " + (answers[i] || "(dilewati)"));
+    send("Jawaban klarifikasi saya: " + qa.join(" | ") + ". Lanjutkan membangun sesuai jawaban di atas dengan penilaian terbaikmu.", false, true);
+  }
+  function quizAuto() {
+    send("Tidak perlu klarifikasi, lanjutkan dengan penilaian terbaikmu.", false, true);
+  }
+  function chooseClarification(answer: string) {
+    send(answer + ". Lanjutkan perubahan yang paling tepat dan verifikasi hasilnya.", false, true);
+  }
+  function confirmDiscovery() {
+    send("Gunakan rencana dan asumsi default tersebut. Mulai implementasi sekarang.", false, true);
+  }
+  function approveBuild() {
+    send("Blueprint disetujui. Mulai implementasi dan verifikasi end-to-end sekarang.", false, true);
+  }
+  function editPlan() {
+    setInput("Ubah rencana: ");
+    setTimeout(() => document.getElementById("wb-prompt")?.focus(), 50);
+  }
+
   async function waitForRuntimeReady(maxAttempts = 15): Promise<any> {
     for (let i = 0; i < maxAttempts; i++) {
-      const r = await fetch(`/api/projects/${pid}/runtime/dev/status`, { headers: { Authorization: "Bearer " + getToken() } });
-      const d = await r.json().catch(() => ({}));
+      const d = await fetchRuntimeStatus(pid).catch(() => ({}));
       if (d.status === "running" && d.port) return d;
       await new Promise((resolve) => setTimeout(resolve, 800));
     }
@@ -867,30 +1188,21 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
 
   async function updateLatestAgentRun(phase: string, status = "running", error = "") {
     try {
-      const list = await fetch(`/api/projects/${pid}/agent/runs`, { headers: { Authorization: "Bearer " + getToken() } });
-      const data = await list.json();
+      const data = await fetchAgentRuns(pid);
       const latest = data.runs?.[0];
       if (!latest || latest.status === "completed" || latest.status === "failed") return;
-      await fetch(`/api/projects/${pid}/agent/runs/${latest.id}`, { method: "PUT", headers: { Authorization: "Bearer " + getToken(), "Content-Type": "application/json" }, body: JSON.stringify({ phase, status, error }) });
+      await updateAgentRunMut.mutateAsync({ runId: latest.id, phase, status, error });
     } catch {}
   }
 
   async function autoPrepareAndRunProject(sqlBlocks: string[] = []): Promise<{ status: string; error?: string }> {
-    const auth = { Authorization: "Bearer " + getToken() }; 
     await updateLatestAgentRun("syncing");
-    
-    const post = async (path: string, body?: unknown) => {
-      const r = await fetch(`/api/projects/${pid}${path}`, { method: "POST", headers: body === undefined ? auth : { ...auth, "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(d.error || d.message || `HTTP ${r.status}`);
-      return d;
-    };
     try {
       setTermOpen(true);
       setPipelineError("");
       setPipelinePhase("sync");
       setTermLines((l) => [...l, "🤖 AI pipeline: sinkronisasi file..."]);
-      const sync = await post("/runtime/dev/sync");
+      const sync = await runtimeActions.sync();
       if (sync.error) throw new Error(sync.error);
       setTermLines((l) => [...l, "✅ File tersinkron ke runtime"]);
 
@@ -898,7 +1210,7 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
       await updateLatestAgentRun("install_build");
       setTermLines((l) => [...l, "🤖 AI pipeline: npm install + npm run build..."]);
       if (sqlBlocks.length > 0) { setPipelinePhase("migration"); await updateLatestAgentRun("migration"); }
-      const verify = await post("/runtime/pipeline", { sql: sqlBlocks });
+      const verify = await runtimeActions.pipeline(sqlBlocks);
       await updateLatestAgentRun("database_verify");
       if (verify.migrations?.length) setTermLines((l) => [...l, "✅ Migration backend: " + verify.migrations.join(", ")]);
       if (verify.database === "ready") setTermLines((l) => [...l, "✅ Database backend siap"]);
@@ -920,7 +1232,7 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
       setPipelinePhase("runtime");
       await updateLatestAgentRun("runtime");
       setTermLines((l) => [...l, "🤖 AI pipeline: menjalankan Live Runtime..."]);
-      const runtime = await post("/runtime/dev/start");
+      const runtime = await runtimeActions.start();
       if (runtime.error) throw new Error(runtime.error);
       const ready = await waitForRuntimeReady();
       setRuntimeRunning(true);
@@ -928,9 +1240,15 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
       setPreviewToken(runtime.previewToken || "");
       // Runtime ready is not enough: run a browser/preview acceptance gate before success.
       await updateLatestAgentRun("acceptance_check");
-      const acceptance = await fetch(`/api/projects/${pid}/smoke-test`, { headers: auth });
-      const acceptanceData = await acceptance.json().catch(() => ({}));
-      if (!acceptance.ok || acceptanceData.status === "failed" || acceptanceData.errors?.length) {
+      let acceptanceData: any;
+      try {
+        acceptanceData = await fetchSmokeTest(pid);
+      } catch (e: any) {
+        const error = e.message || "Acceptance check gagal";
+        await updateLatestAgentRun("acceptance_check", "failed", error);
+        throw new Error(error);
+      }
+      if (acceptanceData.status === "failed" || acceptanceData.errors?.length) {
         const error = acceptanceData.error || acceptanceData.message || (acceptanceData.errors || []).join("; ") || "Acceptance check gagal";
         await updateLatestAgentRun("acceptance_check", "failed", error);
         throw new Error(error);
@@ -954,8 +1272,7 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
   async function verifyRuntime() {
     setTermLines((l) => [...l, "⏳ Verifikasi project: npm install + npm run build..."]);
     try {
-      const r = await fetch(`/api/projects/${pid}/runtime/verify`, { method: "POST", headers: { Authorization: "Bearer " + getToken() } });
-      const d = await r.json();
+      const d = await runtimeActions.verify();
       const summary = d.status === "success" ? "✅ Build berhasil" : `❌ Build gagal (${d.phase || "runtime"})`;
       setTermLines((l) => [...l, summary, (d.output || d.error || "").slice(-12000)]);
       if (d.status === "success") setPreviewErrors([]);
@@ -969,16 +1286,20 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
     }
   }
 
+  const applyProposalMut = useApplyProposal(pid);
+  const rejectProposalMut = useRejectProposal(pid);
+  const restoreVersionMut = useRestoreVersion(pid);
+  const checkpointMut = useCheckpointVersion(pid);
+  const versionsQuery = useProjectVersions(pid, showVersions);
+  useEffect(() => {
+    if (versionsQuery.data) setVersions(versionsQuery.data.versions || []);
+  }, [versionsQuery.data]);
+
   async function applyProposal() {
     const accepted = Object.keys(proposalSel).filter((f) => proposalSel[f]);
-    await fetch(`/api/projects/${pid}/proposal/apply`, {
-      method: "POST",
-      headers: { Authorization: "Bearer " + getToken(), "Content-Type": "application/json" },
-      body: JSON.stringify({ files: accepted }),
-    });
+    const d = await applyProposalMut.mutateAsync(accepted);
     setProposal(null);
-    const d = await api.getProject(pid);
-    setFiles(JSON.parse(d.project.files || "{}"));
+    setFiles(d.files);
     setProject(d.project);
     // Change 3: Auto-switch to preview after applying AI changes
     setView("preview");
@@ -986,55 +1307,36 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
   }
 
   async function rejectProposal() {
-    await fetch(`/api/projects/${pid}/proposal/reject`, {
-      method: "POST", headers: { Authorization: "Bearer " + getToken() },
-    });
+    await rejectProposalMut.mutateAsync();
     setProposal(null);
   }
 
-  async function loadVersions() {
-    const r = await fetch(`/api/projects/${pid}/versions`, { headers: { Authorization: "Bearer " + getToken() } });
-    const d = await r.json();
-    setVersions(d.versions || []);
+  function loadVersions() {
     setShowVersions(true);
   }
 
   async function restoreVersion(vid: number) {
     if (!confirm("Kembalikan ke versi ini? Snapshot saat ini akan disimpan dulu sebagai 'Sebelum restore'.")) return;
-    const r = await fetch(`/api/projects/${pid}/versions/${vid}/restore`, {
-      method: "POST", headers: { Authorization: "Bearer " + getToken() },
-    });
-    const d = await r.json();
+    const d = await restoreVersionMut.mutateAsync(vid);
     setShowVersions(false);
     setPreviewVersion(null);
-    if (d.files) {
-      setFiles(JSON.parse(d.files));
-    } else {
-      const proj = await api.getProject(pid);
-      setFiles(JSON.parse(proj.project.files || "{}"));
-    }
+    setFiles(d.files);
   }
 
   async function previewVersionFiles(vid: number, label: string) {
-    const r = await fetch(`/api/projects/${pid}/versions/${vid}/files`, { headers: { Authorization: "Bearer " + getToken() } });
-    const d = await r.json();
+    const d = await qc.fetchQuery({
+      queryKey: projectKeys.versionFiles(pid, vid),
+      queryFn: () => fetchVersionFiles(pid, vid),
+    });
     setPreviewVersion({ id: vid, label, files: d.files || {} });
   }
 
   async function doSaveCheckpoint() {
     const label = checkpointLabel.trim();
     setSavingCheckpoint(true);
-    await fetch(`/api/projects/${pid}/versions/checkpoint`, {
-      method: "POST",
-      headers: { Authorization: "Bearer " + getToken(), "Content-Type": "application/json" },
-      body: JSON.stringify({ label: label || "Checkpoint" }),
-    });
+    await checkpointMut.mutateAsync(label || "Checkpoint");
     setSavingCheckpoint(false);
     setCheckpointLabel("");
-    // reload list
-    const r = await fetch(`/api/projects/${pid}/versions`, { headers: { Authorization: "Bearer " + getToken() } });
-    const d = await r.json();
-    setVersions(d.versions || []);
   }
 
   async function fixErrorWithAI(err: string, attempt = 1) {
@@ -1118,18 +1420,21 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
     }
   }
 
-  async function loadProjectSettings() {
-    const r = await fetch(`/api/projects/${pid}/settings`, { headers: { Authorization: "Bearer " + getToken() } });
-    setProjSettings(await r.json());
+  // Pengaturan proyek dimuat saat modal dibuka (query enabled oleh settingsOpen).
+  const projectSettingsQuery = useProjectSettings(pid, settingsOpen);
+  const saveProjectSettingsMut = useSaveProjectSettings(pid);
+  const enhanceMut = useEnhancePrompt();
+  const uploadFileMut = useUploadFile();
+  useEffect(() => {
+    if (settingsOpen && projectSettingsQuery.data) setProjSettings(projectSettingsQuery.data);
+  }, [settingsOpen, projectSettingsQuery.data]);
+
+  function loadProjectSettings() {
     setSettingsOpen(true);
   }
 
   async function saveProjectSettings(s: any) {
-    await fetch(`/api/projects/${pid}/settings`, {
-      method: "PUT",
-      headers: { Authorization: "Bearer " + getToken(), "Content-Type": "application/json" },
-      body: JSON.stringify(s),
-    });
+    await saveProjectSettingsMut.mutateAsync(s);
     setSettingsOpen(false);
   }
 
@@ -1138,23 +1443,15 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
     if (!text || enhancing) return;
     setEnhancing(true);
     try {
-      const r = await fetch("/api/ai/enhance", {
-        method: "POST",
-        headers: { Authorization: "Bearer " + getToken(), "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: text }),
-      });
-      const d = await r.json();
+      const d = await enhanceMut.mutateAsync(text);
       if (d.enhanced) setInput(d.enhanced);
     } catch {}
     setEnhancing(false);
   }
 
   async function uploadFile(f: File) {
-    const fd = new FormData();
-    fd.append("file", f);
     try {
-      const r = await fetch("/api/upload", { method: "POST", headers: { Authorization: "Bearer " + getToken() }, body: fd });
-      const d = await r.json();
+      const d = await uploadFileMut.mutateAsync(f);
       if (d.isImage) {
         setAttachedFile({ filename: d.filename, full: "", });
         setAttachedImage(d.dataUrl);
@@ -1165,54 +1462,68 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
     } catch {}
   }
 
-  const [attachedImage, setAttachedImage] = useState<string | null>(null);
-  const [genImgOpen, setGenImgOpen] = useState(false);
-  const [fileMenuPath, setFileMenuPath] = useState<string | null>(null);
-  const [renamingPath, setRenamingPath] = useState<string | null>(null);
-  const [renameVal, setRenameVal] = useState("");
-  const [creatingFile, setCreatingFile] = useState(false);
-  const [newFilePath, setNewFilePath] = useState("");
-  const [genImgPrompt, setGenImgPrompt] = useState("");
-  const [genImgLoading, setGenImgLoading] = useState(false);
-  const [genImgResult, setGenImgResult] = useState<string | null>(null);
-  const [ghOpen, setGhOpen] = useState(false);
-  const [ghRepo, setGhRepo] = useState("");
-  const [ghToken, setGhToken] = useState("");
-  const [ghHasToken, setGhHasToken] = useState(false);
-  const [ghLoading, setGhLoading] = useState(false);
+  const attachedImage = useBuilderStore((s) => s.attachedImage);
+  const setAttachedImage = useBuilderStore((s) => s.setAttachedImage);
+  const genImgOpen = useBuilderStore((s) => s.genImgOpen);
+  const setGenImgOpen = useBuilderStore((s) => s.setGenImgOpen);
+  const fileMenuPath = useBuilderStore((s) => s.fileMenuPath);
+  const setFileMenuPath = useBuilderStore((s) => s.setFileMenuPath);
+  const renamingPath = useBuilderStore((s) => s.renamingPath);
+  const setRenamingPath = useBuilderStore((s) => s.setRenamingPath);
+  const renameVal = useBuilderStore((s) => s.renameVal);
+  const setRenameVal = useBuilderStore((s) => s.setRenameVal);
+  const creatingFile = useBuilderStore((s) => s.creatingFile);
+  const setCreatingFile = useBuilderStore((s) => s.setCreatingFile);
+  const newFilePath = useBuilderStore((s) => s.newFilePath);
+  const setNewFilePath = useBuilderStore((s) => s.setNewFilePath);
+  const genImgPrompt = useBuilderStore((s) => s.genImgPrompt);
+  const setGenImgPrompt = useBuilderStore((s) => s.setGenImgPrompt);
+  const genImgLoading = useBuilderStore((s) => s.genImgLoading);
+  const setGenImgLoading = useBuilderStore((s) => s.setGenImgLoading);
+  const genImgResult = useBuilderStore((s) => s.genImgResult);
+  const setGenImgResult = useBuilderStore((s) => s.setGenImgResult);
+  const ghOpen = useBuilderStore((s) => s.ghOpen);
+  const setGhOpen = useBuilderStore((s) => s.setGhOpen);
+  const ghRepo = useBuilderStore((s) => s.ghRepo);
+  const setGhRepo = useBuilderStore((s) => s.setGhRepo);
+  const ghToken = useBuilderStore((s) => s.ghToken);
+  const setGhToken = useBuilderStore((s) => s.setGhToken);
+  const ghHasToken = useBuilderStore((s) => s.ghHasToken);
+  const setGhHasToken = useBuilderStore((s) => s.setGhHasToken);
+  const ghLoading = useBuilderStore((s) => s.ghLoading);
+  const setGhLoading = useBuilderStore((s) => s.setGhLoading);
 
-  async function loadGitHub() {
-    const r = await fetch("/api/github", { headers: { Authorization: "Bearer " + getToken() } });
-    const d = await r.json();
-    setGhRepo(d.repo || "");
-    setGhHasToken(d.hasToken);
+  // GitHub: pengaturan dimuat saat modal dibuka (query enabled oleh ghOpen).
+  const gitHubQuery = useGitHubSettings(ghOpen);
+  const saveGitHubMut = useSaveGitHubSettings();
+  const gitHubPushPullMut = useGitHubPushPull(pid);
+  const generateImageMut = useGenerateImage();
+  useEffect(() => {
+    if (ghOpen && gitHubQuery.data) {
+      setGhRepo(gitHubQuery.data.repo || "");
+      setGhHasToken(gitHubQuery.data.hasToken);
+    }
+  }, [ghOpen, gitHubQuery.data]);
+
+  function loadGitHub() {
     setGhOpen(true);
   }
 
   async function saveGitHub() {
     setGhLoading(true);
-    await fetch("/api/github", {
-      method: "PUT",
-      headers: { Authorization: "Bearer " + getToken(), "Content-Type": "application/json" },
-      body: JSON.stringify({ repo: ghRepo, token: ghToken || undefined }),
-    });
+    await saveGitHubMut.mutateAsync({ repo: ghRepo, token: ghToken || undefined });
     setGhToken("");
     setGhLoading(false);
-    loadGitHub();
   }
 
   async function githubPushPull(action: string) {
     if (!confirm(action === "push" ? "Push semua file ke GitHub?" : "Pull dari GitHub? File lokal akan diganti.")) return;
     setGhLoading(true);
-    const r = await fetch(`/api/projects/${pid}/github/${action}`, {
-      method: "POST", headers: { Authorization: "Bearer " + getToken() },
-    });
-    const d = await r.json();
+    const d = await gitHubPushPullMut.mutateAsync(action);
     alert(d.message);
     setGhLoading(false);
-    if (action === "pull") {
-      const p = await api.getProject(pid);
-      setFiles(JSON.parse(p.project.files || "{}"));
+    if (action === "pull" && d.files) {
+      setFiles(d.files);
     }
   }
 
@@ -1221,12 +1532,7 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
     setGenImgLoading(true);
     setGenImgResult(null);
     try {
-      const r = await fetch("/api/ai/image", {
-        method: "POST",
-        headers: { Authorization: "Bearer " + getToken(), "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: genImgPrompt }),
-      });
-      const d = await r.json();
+      const d = await generateImageMut.mutateAsync(genImgPrompt);
       if (d.url) setGenImgResult(d.url);
       else alert(d.message || "Gagal");
     } catch (e: any) {
@@ -1235,67 +1541,53 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
     setGenImgLoading(false);
   }
 
-  // Change 2: File tree CRUD
-  async function reloadFiles() {
-    const d = await api.getProject(pid);
-    setFiles(JSON.parse(d.project.files || "{}"));
-  }
+  // Change 2: File tree CRUD (mutasi mengembalikan map file terbaru).
+  const createFileMut = useCreateProjectFile(pid);
+  const deleteFileMut = useDeleteProjectFile(pid);
+  const renameFileMut = useRenameProjectFile(pid);
 
   async function createFile() {
     const path = newFilePath.trim();
     if (!path) return;
-    await fetch(`/api/projects/${pid}/files`, {
-      method: "POST",
-      headers: { Authorization: "Bearer " + getToken(), "Content-Type": "application/json" },
-      body: JSON.stringify({ path, content: "" }),
-    });
+    const files = await createFileMut.mutateAsync(path);
     setCreatingFile(false);
     setNewFilePath("");
-    await reloadFiles();
+    setFiles(files);
     openFile(path);
   }
 
   async function deleteFile(path: string) {
     if (!confirm(`Hapus file "${path}"?`)) return;
-    await fetch(`/api/projects/${pid}/files`, {
-      method: "DELETE",
-      headers: { Authorization: "Bearer " + getToken(), "Content-Type": "application/json" },
-      body: JSON.stringify({ path }),
-    });
+    const files = await deleteFileMut.mutateAsync(path);
     setFileMenuPath(null);
     if (activeTab === path) setActiveTab("");
     setOpenTabs((t) => t.filter((x) => x !== path));
-    await reloadFiles();
+    setFiles(files);
   }
 
   async function renameFile(from: string, to: string) {
     const toPath = to.trim();
     if (!toPath || toPath === from) { setRenamingPath(null); return; }
-    await fetch(`/api/projects/${pid}/files/rename`, {
-      method: "POST",
-      headers: { Authorization: "Bearer " + getToken(), "Content-Type": "application/json" },
-      body: JSON.stringify({ from, to: toPath }),
-    });
+    const files = await renameFileMut.mutateAsync({ from, to: toPath });
     setRenamingPath(null);
     setFileMenuPath(null);
     if (activeTab === from) setActiveTab(toPath);
     setOpenTabs((t) => t.map((x) => (x === from ? toPath : x)));
-    await reloadFiles();
+    setFiles(files);
   }
 
   // Change 4: Quick undo
   async function quickUndo() {
-    const r = await fetch(`/api/projects/${pid}/versions`, { headers: { Authorization: "Bearer " + getToken() } });
-    const d = await r.json();
+    const d = await qc.fetchQuery({
+      queryKey: projectKeys.versions(pid),
+      queryFn: () => fetchProjectVersions(pid),
+    });
     const versions = d.versions || [];
     if (versions.length === 0) { alert("Belum ada riwayat untuk di-undo"); return; }
     const prev = versions[1] || versions[0];
     if (!confirm(`Undo ke: "${prev.label}" (${new Date(prev.createdAt).toLocaleString("id-ID")})?`)) return;
-    const r2 = await fetch(`/api/projects/${pid}/versions/${prev.id}/restore`, {
-      method: "POST", headers: { Authorization: "Bearer " + getToken() },
-    });
-    const d2 = await r2.json();
-    if (d2.files) setFiles(JSON.parse(d2.files));
+    const d2 = await restoreVersionMut.mutateAsync(prev.id);
+    setFiles(d2.files);
   }
   function renderTree(nodes: FileNode[], depth: number): any {
     return nodes.map((n) => {
@@ -1419,8 +1711,10 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
           </div>
           <div style={{ flex: 1, minHeight: 0 }}>
             {activeTab ? (
-              <Editor height="100%" language="typescript" value={files[activeTab] || ""} onChange={onEdit} theme="vs-light"
-                options={{ minimap: { enabled: false }, fontSize: 13, automaticLayout: true }} />
+              <Suspense fallback={<div style={{ padding: 40, color: "#9ca3af", textAlign: "center" }}>Memuat editor…</div>}>
+                <Editor height="100%" language="typescript" value={files[activeTab] || ""} onChange={onEdit} theme="vs-light"
+                  options={{ minimap: { enabled: false }, fontSize: 13, automaticLayout: true }} />
+              </Suspense>
             ) : (
               <div style={{ padding: 40, color: "#9ca3af", textAlign: "center" }}>Pilih file</div>
             )}
@@ -1456,7 +1750,7 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
               style={{ padding: 6, border: "1px solid #e5e7eb", background: diagnosticsOpen ? ORANGE : "#fff", color: diagnosticsOpen ? "#fff" : "#374151", borderRadius: 6, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 }}>
               <Settings size={14} /> {!isMobile && "Diagnostics"}
             </button>
-            {diagnosticsOpen && <button onClick={async () => { setTermOpen(true); setTermLines((l) => [...l, "⏳ Database verification dimulai..."]); try { const r = await fetch(`/api/projects/${pid}/runtime/db-verify`, { method: "POST", headers: { Authorization: "Bearer " + getToken() } }); const d = await r.json(); setTermLines((l) => [...l, d.status === "success" ? "✅ Database CRUD berhasil" : "❌ Database verification gagal", d.message || d.error || "", `steps: ${(d.steps || []).join(" → ")}`]); if (d.status !== "success" && d.error) setPreviewErrors((p) => [...p.slice(-4), d.error]); } catch (e: any) { setTermLines((l) => [...l, "Database error: " + (e?.message || e)]); } }}
+            {diagnosticsOpen && <button onClick={async () => { setTermOpen(true); setTermLines((l) => [...l, "⏳ Database verification dimulai..."]); try { const d = await runtimeActions.dbVerify(); setTermLines((l) => [...l, d.status === "success" ? "✅ Database CRUD berhasil" : "❌ Database verification gagal", d.message || d.error || "", `steps: ${(d.steps || []).join(" → ")}`]); if (d.status !== "success" && d.error) setPreviewErrors((p) => [...p.slice(-4), d.error]); } catch (e: any) { setTermLines((l) => [...l, "Database error: " + (e?.message || e)]); } }}
               title="Validasi database"
               style={{ padding: 6, border: "1px solid #e5e7eb", background: "#fff", color: "#374151", borderRadius: 6, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 }}>
               <Database size={14} /> Verify DB
@@ -1464,12 +1758,10 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
             <button onClick={async () => {
               try {
                 if (runtimeRunning) {
-                  await fetch(`/api/projects/${pid}/runtime/dev/stop`, { method: "POST", headers: { Authorization: "Bearer " + getToken() } });
+                  await runtimeActions.stop();
                   setRuntimeRunning(false); setRuntimePreview(false);
                 } else {
-                  const r = await fetch(`/api/projects/${pid}/runtime/dev/start`, { method: "POST", headers: { Authorization: "Bearer " + getToken() } });
-                  const d = await r.json();
-                  if (!r.ok) throw new Error(d.error || "Runtime gagal dimulai");
+                  const d = await runtimeActions.start();
                   setRuntimeRunning(true); setRuntimePreview(true); setPreviewToken(d.previewToken || ""); setTermOpen(true);
                   setTermLines((l) => [...l, `✅ Runtime dev aktif di port ${d.port}`, "Live preview memakai project runtime asli."]);
                 }
@@ -1502,7 +1794,7 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
             <div style={{ width: deviceWidth, maxWidth: "100%", height: "100%", border: "1px solid #e5e7eb", borderRadius: 8, overflow: "hidden", background: "#fff", display: "flex", flexDirection: "column" }}>
               {runtimePreview ? (
                 <iframe ref={runtimeFrameRef} title="Live Runtime Preview" src={`/api/projects/${pid}/runtime/preview/?token=${encodeURIComponent(previewToken)}&v=${previewKey}`} style={{ width: "100%", height: "100%", border: 0, background: "#fff" }} />
-              ) : <SandpackProvider
+              ) : <Suspense fallback={<div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#9ca3af", fontSize: 13 }}>Memuat preview…</div>}><SandpackProvider
                 key={previewKey}
                 template="react-ts"
                 theme="light"
@@ -1620,7 +1912,7 @@ if (App) {
                   showOpenInCodeSandbox={false}
                   style={{ height: "100%", flex: 1 }}
                 />
-              </SandpackProvider>}
+              </SandpackProvider></Suspense>}
             </div>
           </div>
         </div>
@@ -1891,7 +2183,20 @@ if (App) {
             AI mengetes hasil...
           </div>
         )}
+        {clarification && !streaming && (
+          <QuizCard clarification={clarification} onDone={quizSubmit} onAuto={quizAuto} onChoose={chooseClarification} onClose={() => setClarification(null)} />
+        )}
+        {discovery && !streaming && (
+          <DiscoveryCard discovery={discovery} onApprove={approveBuild} onApproveDefaults={confirmDiscovery} onEditPlan={editPlan} />
+        )}
       </div>
+      {quota && quotaRemaining !== null && (
+        <div style={{ padding: "6px 12px", borderTop: "1px solid #e5e7eb", background: quotaExhausted ? "#fef2f2" : "#fff", fontSize: 12, color: quotaExhausted ? "#b91c1c" : "#64748b", display: "flex", alignItems: "center", gap: 8 }}>
+          <span>✦ Kredit tersisa: {quotaRemaining.toLocaleString("id-ID")}</span>
+          <small>{quota.plan || "free"}</small>
+          {quotaExhausted && <span style={{ marginLeft: "auto", fontWeight: 700 }}>Kredit habis — upgrade paket untuk lanjut</span>}
+        </div>
+      )}
       <div style={{ padding: isMobile ? "7px 8px calc(7px + env(safe-area-inset-bottom))" : 10, borderTop: "1px solid #e5e7eb", background: "#fff", position: "relative", flexShrink: 0 }}>
         {/* Slash Command Menu Popup */}
         {input.startsWith("/") && (
@@ -1964,8 +2269,8 @@ if (App) {
                 send();
               }
             }}
-            placeholder={listening ? "Mendengarkan..." : canEdit ? "Apa yang ingin kamu ubah?" : "Mode lihat saja"}
-            disabled={streaming || !canEdit}
+            placeholder={listening ? "Mendengarkan..." : quotaExhausted ? "Kredit habis — tingkatkan paket untuk lanjut" : canEdit ? "Apa yang ingin kamu ubah?" : "Mode lihat saja"}
+            disabled={streaming || !canEdit || quotaExhausted}
             rows={1}
             style={{
               flex: 1,
@@ -1987,7 +2292,7 @@ if (App) {
             {isMobile && <div style={{ display: "flex", gap: 4 }}>{chatActionButtons}</div>}
             {!isMobile && <span style={{ flex: 1, fontSize: 10, color: "#94a3b8" }}>Enter untuk mengirim · Shift+Enter untuk baris baru</span>}
             {isMobile && <span style={{ flex: 1 }} />}
-            <button id="wb-send-btn" onClick={() => send()} disabled={streaming || !input.trim() || !canEdit}
+            <button id="wb-send-btn" onClick={() => send()} disabled={streaming || !input.trim() || !canEdit || quotaExhausted}
             style={{ background: ORANGE, color: "#fff", border: "none", borderRadius: 8, padding: 10, cursor: "pointer", display: "flex", flexShrink: 0 }}>
             <Send size={15} />
           </button>
@@ -2038,7 +2343,7 @@ if (App) {
             <Sparkles size={15} /> {!isMobile && (input.trim() ? "Buat / Perbaiki" : "Mulai Buat")}
           </button>
         )}
-        {!isMobile && <button onClick={() => { setShowComments(!showComments); loadComments(); }} title="Komentar"
+        {!isMobile && <button onClick={() => setShowComments(!showComments)} title="Komentar"
           style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8, padding: 8, cursor: "pointer", display: "flex", flexShrink: 0, position: "relative" }}>
           <MessageSquare size={16} style={{ color: "#6b7280" }} />
           {comments.filter((c) => !c.resolved).length > 0 && (
@@ -2071,13 +2376,7 @@ if (App) {
         <button
           onClick={async () => {
             try {
-              const r = await fetch(`/api/projects/${pid}/export`, { headers: { Authorization: "Bearer " + getToken() } });
-              const blob = await r.blob();
-              const url = window.URL.createObjectURL(blob);
-              const a = document.createElement("a");
-              a.href = url;
-              a.download = `${project.slug || "project"}.zip`;
-              a.click();
+              await downloadProjectExport(pid, project.slug || "project");
             } catch (e: any) { alert("Gagal download ZIP: " + e.message); }
           }}
           title="Export Project ZIP (Download Source Code)"
@@ -2098,7 +2397,7 @@ if (App) {
             <button onClick={() => { setView("preview"); setPreviewKey((k) => k + 1); }} style={{ padding: "8px 14px", border: "none", cursor: "pointer", background: view === "preview" ? ORANGE : "#fff", color: view === "preview" ? "#fff" : "#374151", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
               <Play size={14} /> Preview
             </button>
-            <button onClick={() => { setView("db"); loadTables(); }} style={{ padding: "8px 14px", border: "none", cursor: "pointer", background: view === "db" ? ORANGE : "#fff", color: view === "db" ? "#fff" : "#374151", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+            <button onClick={() => setView("db")} style={{ padding: "8px 14px", border: "none", cursor: "pointer", background: view === "db" ? ORANGE : "#fff", color: view === "db" ? "#fff" : "#374151", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
               <Database size={14} /> Database
             </button>
           </div>
@@ -2114,7 +2413,7 @@ if (App) {
       {isMobile && (
         <div ref={navRef} style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 50, display: "flex", borderTop: "1px solid #e5e7eb", background: "#fff", paddingBottom: "env(safe-area-inset-bottom)", boxSizing: "border-box", maxWidth: "100vw" }}>
           {[["chat", "Chat", MessageSquare], ["code", "Build", Code2], ["preview", "Preview", Play], ["db", "Data", Database]].map(([id, label, Icon]: any) => (
-            <button key={id} onClick={() => { setMobileTab(id); if (id === "preview") { setView("preview"); setPreviewKey((k) => k + 1); } else if (id === "db") { setView("db"); loadTables(); } else if (id === "code") setView("code"); }}
+            <button key={id} onClick={() => { setMobileTab(id); if (id === "preview") { setView("preview"); setPreviewKey((k) => k + 1); } else if (id === "db") { setView("db"); } else if (id === "code") setView("code"); }}
               style={{ flex: "1 1 0", minWidth: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 2, padding: "8px 0", border: "none", background: "none", cursor: "pointer", color: mobileTab === id ? ORANGE : "#6b7280", fontSize: 11, fontWeight: mobileTab === id ? 700 : 400 }}>
               <Icon size={18} />{label}
             </button>

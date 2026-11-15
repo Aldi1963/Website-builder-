@@ -1,44 +1,47 @@
 package main
 
 import (
+	"context"
 	"log"
+	"log/slog"
 	"os"
-	"strings"
 
-	"webbuilder/internal/database/models"
+	"webbuilder/internal/config"
+	"webbuilder/internal/database"
 	"webbuilder/internal/handler"
+	"webbuilder/internal/observability"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
 )
 
 func main() {
 	os.MkdirAll("../data", 0755)
-	// JWT secret wajib dari file/env, tolak start tanpa secret
-	secret := os.Getenv("JWT_SECRET")
-	if secret == "" {
-		if b, err := os.ReadFile("../.jwt-secret"); err == nil {
-			secret = strings.TrimSpace(string(b))
-		}
-	}
-	if secret == "" {
-		log.Fatal("JWT_SECRET tidak diset — server menolak start")
-	}
-	os.Setenv("JWT_SECRET", secret)
+	// Structured logging: semua log aplikasi menjadi JSON via slog.
+	observability.SetDefault(observability.NewLogger(os.Stdout, slog.LevelInfo))
+	slog.SetDefault(observability.Default())
 
-	db, err := gorm.Open(sqlite.Open("../data/webbuilder.db"), &gorm.Config{})
+	// Validasi konfigurasi fail-fast: JWT_SECRET wajib (env atau
+	// ../.jwt-secret); sisanya hanya peringatan, perilaku tidak berubah.
+	cfg, warnings, err := config.Load()
 	if err != nil {
 		log.Fatal(err)
 	}
-	db.AutoMigrate(&models.User{}, &models.Project{}, &models.ChatSession{},
-		&models.ChatMessage{}, &models.ProjectVersion{}, &models.ProjectMigration{}, &models.ProjectEnv{}, &models.AIUsage{}, &models.AgentRun{}, &models.AgentToolCall{}, &models.AgentContext{},
-		&models.Template{}, &models.Deployment{}, &models.Domain{}, &models.AIConfig{},
-		&models.PasswordReset{}, &models.GitHubConfig{}, &models.AuditLog{},
-		&models.PlatformSetting{}, &models.Notification{}, &models.ProjectMember{},
-		&models.UserAPIKey{}, &models.ProjectWebhook{}, &models.VisitStat{},
-		&models.BlockedWord{}, &models.UserTOTP{}, &models.AIProposal{}, &models.AgentRun{}, &models.AgentToolCall{}, &models.FileComment{}, &models.Subscription{}, &models.Payment{},
-		&models.FormSubmission{}, &models.AppFile{}, &models.AppCronJob{})
+	for _, w := range warnings {
+		log.Println("[config]", w)
+	}
+	os.Setenv("JWT_SECRET", cfg.JWTSecret)
+	log.Println("[config]", cfg.Summary())
+
+	// DATABASE_URL kosong -> SQLite default (../data/webbuilder.db) + AutoMigrate.
+	// DATABASE_URL postgres://... -> Postgres + migrasi berversi goose.
+	// Lihat server/internal/database dan docs/database.md.
+	db, driver, err := database.Open()
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := database.Migrate(context.Background(), db, driver); err != nil {
+		log.Fatal(err)
+	}
 
 	r := gin.Default()
 	handler.RegisterRoutes(r, db)

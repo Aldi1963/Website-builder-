@@ -2,18 +2,21 @@ import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "./lib/queryClient";
-import Rebuild from "./Rebuild";
+import App from "./App";
 import AdminPanel from "./pages/AdminPanel";
 import AuthV2 from "./pages/AuthV2";
 import { getToken } from "./lib/api";
-// index.css berisi gaya halaman auth (.wb-auth). Tanpa impor ini halaman login
-// /admin tampil mentah: input polos, tombol menyempil, teks kontras rendah.
+// index.css berisi gaya halaman auth (.wb-auth) dan landing. Tanpa impor ini
+// halaman login /admin tampil mentah: input polos, tombol menyempil, teks
+// kontras rendah. App juga mengimpornya, tapi rute /admin tidak me-render
+// App sehingga main harus mengimpornya sendiri.
 import "./index.css";
-import "./rebuild.css";
 
-// Route /admin harus dipasang di entry point yang BENAR-BENAR di-render.
-// Sebelumnya hanya ada di App.tsx yang tidak di-import main.tsx, sehingga
-// membuka /admin menampilkan landing page publik (dashboard admin mati).
+// Route /admin dijaga AdminGate di entry point (BUKAN AdminRoute di App):
+// non-admin melihat layar "Akses ditolak" + tombol "Ganti akun", bukan
+// redirect diam-diam ke "/". AdminRoute me-redirect non-admin dan error
+// /api/me apa pun ke "/", jadi perilakunya tidak setara — jangan pindah
+// ke AdminRoute tanpa mengubah UX denied di sana juga.
 function AdminGate() {
   const [state, setState] = useState<"checking" | "login" | "denied" | "ok">("checking");
   const [email, setEmail] = useState("");
@@ -68,5 +71,5 @@ function AdminGate() {
 const isAdminRoute = window.location.pathname === "/admin" || window.location.pathname.startsWith("/admin/");
 
 createRoot(document.getElementById("root")!).render(
-  <StrictMode><QueryClientProvider client={queryClient}>{isAdminRoute ? <AdminGate /> : <Rebuild />}</QueryClientProvider></StrictMode>
+  <StrictMode><QueryClientProvider client={queryClient}>{isAdminRoute ? <AdminGate /> : <App />}</QueryClientProvider></StrictMode>
 );

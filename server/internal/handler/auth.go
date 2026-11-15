@@ -77,6 +77,7 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB) {
 	}
 	keyEnc = enc
 	r.Use(RequestContext())
+	RegisterObservability(r, db)
 	r.Use(maintenanceMiddleware(db))
 	r.Use(customDomainMiddleware(db))
 	api := r.Group("/api")

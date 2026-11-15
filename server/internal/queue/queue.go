@@ -12,6 +12,9 @@ type Job struct {
 	ID      string
 	Kind    string
 	Payload []byte
+	// IdempotencyKey dipakai adapter durable (DBQueue) untuk dedupe.
+	// Kosong berarti sama dengan ID. InProcess mengabaikannya.
+	IdempotencyKey string
 }
 
 type Handler func(context.Context, Job) error
