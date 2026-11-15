@@ -2,7 +2,8 @@ import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getToken } from "../lib/api";
 import ProjectSettingsModal from "./ProjectSettingsModal";
-import { useBuilderStore } from "../lib/store/builderStore";
+import VerificationCard, { parseResultVerification } from "../components/VerificationCard";
+import { useBuilderStore, type ChatVerification } from "../lib/store/builderStore";
 import {
   useAddComment,
   useAgentRunDetail,
@@ -1030,6 +1031,10 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
       const reader = r.body.getReader();
       const dec = new TextDecoder();
       let buf = "", full = "", resultStatus = "", resultSummary = "";
+      // Verifikasi browser dari event "result" (parseResultVerification
+      // mengembalikan null bila tidak dicoba / backend lama tanpa
+      // screenshotUrl) — dirender sebagai kartu setelah stream selesai.
+      let resultVerification: ChatVerification | null = null;
       // True bila stream ini berakhir di gate discovery/klarifikasi: tidak
       // ada hasil build, jadi pipeline pasca-stream di bawah harus dilewati.
       let gated = false;
@@ -1050,6 +1055,7 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
         if (evName === "result" && chunk && typeof chunk === "object") {
           resultStatus = chunk.status || "";
           resultSummary = chunk.summary || "";
+          resultVerification = parseResultVerification(chunk);
           return;
         }
         // Gate server: simpan payload ke store agar dirender sebagai kartu
@@ -1142,6 +1148,13 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
             setMsgs((m) => [...m, { role: "assistant", content: "⚠️ Belum berhasil.\n" + lastLinesText(pipelineDetail, 4) }]);
             setPreviewErrors((prev) => [...prev.slice(-4), pipelineDetail]);
           }
+        }
+        // Kartu verifikasi browser (screenshot + ringkasan) sebagai pesan
+        // tersendiri di bawah pesan status — hanya bila event "result"
+        // membawa verification yang dicoba + screenshotUrl.
+        if (resultVerification) {
+          const verification: ChatVerification = resultVerification;
+          setMsgs((m) => [...m, { role: "assistant", content: "", verification }]);
         }
       }
     } catch (e: any) {
@@ -2120,6 +2133,8 @@ if (App) {
                   )}
 
                   {isBuildFailureMessage(m.content) ? renderBuildFailureCard(m.content, () => fixErrorWithAI(m.content)) : renderMarkdown(m.content)}
+
+                  {m.verification && <VerificationCard verification={m.verification} />}
 
                   {badges.length > 0 && (
                     <div style={{ marginTop: 12, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 10 }}>

@@ -15,6 +15,27 @@ import { create } from "zustand";
 export type PipelinePhase = "idle" | "sync" | "install-build" | "migration" | "database" | "runtime" | "success" | "failed";
 export type BuilderView = "code" | "preview" | "db";
 
+// Hasil verifikasi browser (event SSE "result", lihat agentpipeline.go):
+// kartu screenshot + ringkasan yang dirender di chat oleh VerificationCard.
+// screenshotUrl = URL RELATIF endpoint penyajian screenshot
+// (mis. /api/projects/:id/runtime/screenshots/verification/:runId/...).
+// screenshotPath absolut server TIDAK PERNAH disimpan di state klien dan
+// tidak pernah dipakai sebagai src gambar.
+export interface ChatVerification {
+  attempted: boolean;
+  passed: boolean;
+  rounds: number;
+  consoleErrors: string[];
+  failedRequests: string[];
+  screenshotUrl?: string;
+}
+
+export interface ChatMessage {
+  role: string;
+  content: string;
+  verification?: ChatVerification;
+}
+
 interface BuilderFields {
   projectId: string | null;
   project: any;
@@ -28,7 +49,7 @@ interface BuilderFields {
   openTabs: string[];
   activeTab: string;
   view: "code" | "preview" | "db";
-  msgs: { role: string; content: string }[];
+  msgs: ChatMessage[];
   input: string;
   streaming: boolean;
   streamText: string;
