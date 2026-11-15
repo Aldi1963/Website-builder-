@@ -468,6 +468,10 @@ func postChat(db *gorm.DB) gin.HandlerFunc {
 			TerminalLines []string               `json:"terminalLines"`
 			Confirm       bool                   `json:"confirm"`
 			Context       map[string]interface{} `json:"context"`
+			// ProviderID/Model: pilihan provider+model PER PROMPT dari
+			// composer (0/kosong = pakai provider default admin).
+			ProviderID uint   `json:"providerId"`
+			Model      string `json:"model"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(400, gin.H{"message": "Pesan wajib"})
@@ -516,7 +520,15 @@ func postChat(db *gorm.DB) gin.HandlerFunc {
 			c.Writer.Flush()
 			return
 		}
-		provider := getEffectiveAIProvider(db)
+		// Provider+model per prompt: resolve SEKALI di sini — dipakai jalur
+		// percakapan (discuss) dan diteruskan ke pipeline lewat payload
+		// job (pipeline me-resolve ulang dari DB). Pilihan yang tidak
+		// valid ditolak 400 sebelum kuota/run dibuat.
+		provider, providerName, err := resolveAIProvider(db, req.ProviderID, req.Model)
+		if err != nil {
+			c.JSON(400, gin.H{"message": err.Error()})
+			return
+		}
 		if !provider.configured() {
 			c.JSON(500, gin.H{"message": "AI belum dikonfigurasi admin. Buka Settings > AI Global."})
 			return
@@ -555,7 +567,7 @@ func postChat(db *gorm.DB) gin.HandlerFunc {
 			if len(history) > 8 {
 				history = history[len(history)-8:]
 			}
-			db.Create(&models.ChatMessage{SessionID: session.ID, Role: "user", Content: req.Message})
+			db.Create(&models.ChatMessage{SessionID: session.ID, Role: "user", Content: req.Message, Provider: providerName, Model: provider.Model})
 			userMsgID := uint(0)
 			{
 				var last models.ChatMessage
@@ -583,7 +595,7 @@ func postChat(db *gorm.DB) gin.HandlerFunc {
 			if text == "" {
 				text = "Aku belum punya jawaban untuk itu. Mau kita kerjakan bagian mana dulu?"
 			}
-			db.Create(&models.ChatMessage{SessionID: session.ID, Role: "assistant", Content: text})
+			db.Create(&models.ChatMessage{SessionID: session.ID, Role: "assistant", Content: text, Provider: providerName, Model: provider.Model})
 			sendAgentSSE(c, "result", gin.H{"status": "completed", "summary": text})
 			fmt.Fprintf(c.Writer, "data: [DONE]\n\n")
 			c.Writer.Flush()
@@ -601,7 +613,7 @@ func postChat(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		run := createAgentRun(db, p.ID, uid, req.Mode, req.Message)
+		run := createAgentRun(db, p.ID, uid, req.Mode, req.Message, providerName, provider.Model)
 		if run == nil {
 			c.JSON(500, gin.H{"message": "Gagal membuat agent run"})
 			return
@@ -617,6 +629,7 @@ func postChat(db *gorm.DB) gin.HandlerFunc {
 			Message: req.Message, Mode: req.Mode, Image: req.Image,
 			PreviewErrors: req.PreviewErrors, TerminalLines: req.TerminalLines,
 			Confirm: req.Confirm, Intent: string(intent),
+			ProviderID: req.ProviderID, Model: req.Model,
 		})
 		// Enqueue durable: idempotency key = ID run, jadi kirim ganda (retry
 		// client) tidak mengeksekusi ganda. Enqueue memakai Background —

@@ -36,7 +36,19 @@ func getAIProvider() *AIProvider {
 }
 
 func (p *AIProvider) configured() bool {
-	return p.BaseURL != "" && p.APIKey != "" && p.Model != ""
+	// Key boleh kosong (Ollama lokal tanpa auth); yang wajib hanya base
+	// URL + model. Lihat setAuth: header Authorization hanya dikirim
+	// bila key terisi.
+	return p.BaseURL != "" && p.Model != ""
+}
+
+// setAuth memasang header Authorization hanya bila provider punya key.
+// Provider tanpa key (mis. Ollama lokal) tidak boleh dikirimi
+// "Bearer " kosong — sebagian server menolaknya.
+func (p *AIProvider) setAuth(req *http.Request) {
+	if p.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+p.APIKey)
+	}
 }
 
 type chatMsg struct {
@@ -69,7 +81,7 @@ func (p *AIProvider) streamChatWithImage(system, user, imageB64 string, onChunk 
 	})
 	req, _ := http.NewRequest("POST", p.BaseURL+"/chat/completions", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+p.APIKey)
+	p.setAuth(req)
 
 	client := &http.Client{Timeout: 5 * time.Minute}
 	resp, err := client.Do(req)
@@ -376,7 +388,7 @@ func (p *AIProvider) streamChatWithTools(ctx context.Context, system string, his
 		body, _ := json.Marshal(map[string]interface{}{"model": p.Model, "messages": messages, "tools": defs, "tool_choice": "auto", "stream": false, "max_tokens": 16000})
 		req, _ := http.NewRequestWithContext(ctx, "POST", p.BaseURL+"/chat/completions", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "Bearer "+p.APIKey)
+		p.setAuth(req)
 		resp, err := (&http.Client{Timeout: 5 * time.Minute}).Do(req)
 		if err != nil {
 			return err
@@ -466,7 +478,7 @@ func (p *AIProvider) streamChatWithHistory(ctx context.Context, system string, h
 	})
 	req, _ := http.NewRequestWithContext(ctx, "POST", p.BaseURL+"/chat/completions", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+p.APIKey)
+	p.setAuth(req)
 
 	client := &http.Client{Timeout: 5 * time.Minute}
 	resp, err := client.Do(req)
@@ -517,7 +529,7 @@ func (p *AIProvider) generateImage(prompt string) (string, error) {
 	})
 	req, _ := http.NewRequest("POST", p.BaseURL+"/images/generations", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+p.APIKey)
+	p.setAuth(req)
 	client := &http.Client{Timeout: 2 * time.Minute}
 	resp, err := client.Do(req)
 	if err != nil {

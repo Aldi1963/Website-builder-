@@ -66,6 +66,12 @@ type agentPipelineInput struct {
 	TerminalLines []string `json:"terminalLines"`
 	Confirm       bool     `json:"confirm"`
 	Intent        string   `json:"intent"`
+	// ProviderID/Model adalah pilihan provider+model per prompt dari
+	// postChat (0/kosong = pakai default). Pipeline me-resolve ulang
+	// dari DB — bukan dari request HTTP yang sudah mati — supaya
+	// pilihan itu yang benar-benar dipakai LLM.
+	ProviderID uint   `json:"providerId"`
+	Model      string `json:"model"`
 }
 
 var agentQueueMu sync.Mutex

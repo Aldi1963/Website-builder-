@@ -297,8 +297,10 @@ func executeAgentTool(db *gorm.DB, p *models.Project, name string, input map[str
 // dieksekusi — eksekusi dilakukan consumer queue sesudah postChat
 // meng-enqueue job. Pipeline yang mengambil job memanggil
 // updateAgentPhase("analyzing") yang mengubah status menjadi "running".
-func createAgentRun(db *gorm.DB, projectID, userID uint, mode, request string) *models.AgentRun {
-	run := &models.AgentRun{ProjectID: projectID, UserID: userID, Mode: mode, Status: "queued", Phase: "queued", Request: request, StartedAt: time.Now()}
+// providerName/model adalah pilihan provider+model per prompt run ini
+// (dicatat supaya riwayat run konsisten).
+func createAgentRun(db *gorm.DB, projectID, userID uint, mode, request, providerName, model string) *models.AgentRun {
+	run := &models.AgentRun{ProjectID: projectID, UserID: userID, Mode: mode, Status: "queued", Phase: "queued", Request: request, Provider: providerName, Model: model, StartedAt: time.Now()}
 	if err := db.Create(run).Error; err != nil {
 		return nil
 	}

@@ -54,6 +54,13 @@ type ChatMessage struct {
 	SessionID uint   `gorm:"index;not null" json:"sessionId"`
 	Role      string `gorm:"size:20;not null" json:"role"`
 	Content   string `gorm:"type:text" json:"content"`
+	// Provider adalah nama tampil provider AI yang dipakai untuk pesan ini
+	// (mis. "9router"); Model adalah ID modelnya (mis. "cx/gpt-5.6-luna").
+	// Disimpan per pesan supaya riwayat konsisten walau default admin atau
+	// pilihan user berubah sesudahnya. Kosong ("") = pesan lama, sebelum
+	// trek pemilih provider/model per prompt.
+	Provider string `gorm:"size:100;default:''" json:"provider,omitempty"`
+	Model    string `gorm:"size:100;default:''" json:"model,omitempty"`
 	// Verification menyimpan hasil verifikasi browser run ini sebagai JSON
 	// mentah — objek yang sama persis dengan field `verification` di event
 	// SSE `result` (attempted/passed/rounds/consoleErrors/failedRequests/
@@ -148,6 +155,35 @@ type AIConfig struct {
 	APIKey  string `gorm:"size:500" json:"-"`
 	Model   string `gorm:"size:100" json:"model"`
 }
+
+// AIProviderConfig adalah satu provider AI yang dikelola admin (Settings >
+// Provider AI): nama tampil, base URL OpenAI-compatible, API key
+// (terenkripsi AES-256-GCM dengan pola yang sama seperti AIConfig.APIKey),
+// dan daftar model yang tersedia di provider itu (JSON array di Models).
+// Satu baris boleh ditandai default (IsDefault) — itulah provider yang
+// dipakai bila user tidak memilih apa pun di composer. Enabled=false
+// menyembunyikan provider dari pemilih tanpa menghapus konfigurasinya.
+// Provider pertama dibuat otomatis dari konfigurasi AI lama (AIConfig /
+// env AI_*) bila tabel masih kosong — lihat ensureDefaultProviderSeeded —
+// supaya default lama tetap berlaku tanpa migrasi manual.
+type AIProviderConfig struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	Name      string    `gorm:"size:100;not null" json:"name"`
+	BaseURL   string    `gorm:"size:500;not null" json:"baseUrl"`
+	APIKey    string    `gorm:"size:500" json:"-"`
+	Models    string    `gorm:"type:text;default:'[]'" json:"-"`
+	IsDefault bool      `gorm:"default:false" json:"isDefault"`
+	Enabled   bool      `gorm:"default:true" json:"enabled"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// TableName menyamakan nama tabel GORM dengan migrasi goose 00004
+// (ai_provider_configs). Tanpa ini GORM menurunkan "a_iprovider_configs"
+// dari nama struct, sehingga di Postgres (skema dari goose) semua query
+// provider gagal "relation does not exist", sementara SQLite (AutoMigrate)
+// diam-diam memakai nama yang salah itu.
+func (AIProviderConfig) TableName() string { return "ai_provider_configs" }
 
 type PasswordReset struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
@@ -250,6 +286,11 @@ type AgentRun struct {
 	Status        string     `gorm:"size:20;index;not null" json:"status"`
 	Phase         string     `gorm:"size:40" json:"phase"`
 	Request       string     `gorm:"type:text" json:"request"`
+	// Provider/Model: pilihan provider + model per prompt yang dipakai run
+	// ini (lihat ChatMessage). Dicatat supaya riwayat run konsisten dan
+	// pergantian model antar prompt bisa dibuktikan dari DB.
+	Provider      string     `gorm:"size:100;default:''" json:"provider,omitempty"`
+	Model         string     `gorm:"size:100;default:''" json:"model,omitempty"`
 	Summary       string     `gorm:"type:text" json:"summary"`
 	Error         string     `gorm:"type:text" json:"error,omitempty"`
 	Attempt       int        `gorm:"default:0" json:"attempt"`

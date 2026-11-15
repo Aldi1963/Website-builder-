@@ -56,6 +56,100 @@ paths:
           description: OK
         '401':
           description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/admin/ai-providers:
+    get:
+      operationId: getApiAdminAiproviders
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/admin/ai-providers'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    post:
+      operationId: postApiAdminAiproviders
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/admin/ai-providers'
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/admin/ai-providers/{id}:
+    put:
+      operationId: putApiAdminAiprovidersId
+      x-auth: jwt-or-apikey
+      summary: 'PUT /api/admin/ai-providers/{id}'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+    delete:
+      operationId: deleteApiAdminAiprovidersId
+      x-auth: jwt-or-apikey
+      summary: 'DELETE /api/admin/ai-providers/{id}'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/admin/ai-providers/{id}/fetch-models:
+    post:
+      operationId: postApiAdminAiprovidersIdFetchmodels
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/admin/ai-providers/{id}/fetch-models'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/admin/ai-providers/{id}/test:
+    post:
+      operationId: postApiAdminAiprovidersIdTest
+      x-auth: jwt-or-apikey
+      summary: 'POST /api/admin/ai-providers/{id}/test'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
   /api/admin/ai-usage:
     get:
       operationId: getApiAdminAiusage
@@ -335,6 +429,18 @@ paths:
           required: true
           schema:
             type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/ai-providers:
+    get:
+      operationId: getApiAiproviders
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/ai-providers'
+      security:
+        - bearerAuth: []
       responses:
         '200':
           description: OK
@@ -2389,6 +2495,34 @@ paths:
         - bearerAuth: []
       parameters:
         - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized — token JWT / API key tidak valid atau tidak ada
+  /api/projects/{id}/runtime/screenshots/verification/{runId}/{name}:
+    get:
+      operationId: getApiProjectsIdRuntimeScreenshotsVerificationRunIdName
+      x-auth: jwt-or-apikey
+      summary: 'GET /api/projects/{id}/runtime/screenshots/verification/{runId}/{name}'
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: name
           in: path
           required: true
           schema:
