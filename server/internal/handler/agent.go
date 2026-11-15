@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"webbuilder/internal/browser"
 	"webbuilder/internal/database/models"
 
 	"github.com/gin-gonic/gin"
@@ -93,7 +94,36 @@ var agentToolSpecs = []AgentToolSpec{
 	{Name: "run_build", Description: "Menjalankan npm run build pada workspace project secara bounded.", InputSchema: map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}},
 }
 
+// executeAgentToolWithBrowser sama seperti executeAgentTool, tetapi nama
+// "browser_*" di-routing ke klien MCP per-run (bila ada). Dipakai closure
+// `execute` di executeAgentPipeline — satu-satunya jalur yang memegang
+// browser client. Bila bc nil (flag mati atau browser gagal start),
+// panggilan browser ditolak dengan error jelas, bukan diam-diam.
+func executeAgentToolWithBrowser(ctx context.Context, db *gorm.DB, p *models.Project, bc *browser.Client, name string, input map[string]interface{}) (interface{}, error) {
+	if strings.HasPrefix(name, "browser_") {
+		if bc == nil {
+			return nil, fmt.Errorf("alat browser tidak tersedia (flag WEBBUILDER_ENABLE_BROWSER_TOOLS/WEBBUILDER_ENABLE_TENANT_EXEC mati atau browser gagal start)")
+		}
+		mcpName, _ := browser.StripPrefix(name)
+		out, err := bc.CallTool(ctx, mcpName, input)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]interface{}{"output": out}, nil
+	}
+	return executeAgentTool(db, p, name, input)
+}
+
 func agentToolCatalog() []AgentToolSpec { return agentToolSpecs }
+
+// browserToolCatalog mengubah Spec browser menjadi AgentToolSpec.
+func browserToolCatalog(specs []browser.Spec) []AgentToolSpec {
+	out := make([]AgentToolSpec, 0, len(specs))
+	for _, s := range specs {
+		out = append(out, AgentToolSpec{Name: s.Name, Description: s.Description, InputSchema: s.InputSchema})
+	}
+	return out
+}
 
 // argString mengambil argumen pertama yang ada dan tidak kosong dari beberapa
 // alias nama. Model berbeda memakai nama kunci berbeda (path/file/filename),
@@ -135,6 +165,11 @@ func validateAgentPath(raw string) error {
 }
 
 func executeAgentTool(db *gorm.DB, p *models.Project, name string, input map[string]interface{}) (interface{}, error) {
+	// Alat browser hanya tersedia lewat pipeline (klien MCP per-run).
+	// Pemanggilan langsung ke sini tanpa klien ditolak dengan jelas.
+	if strings.HasPrefix(name, "browser_") {
+		return nil, fmt.Errorf("tool browser %q hanya tersedia lewat pipeline agent (butuh browser client per-run)", name)
+	}
 	var files map[string]string
 	if err := json.Unmarshal([]byte(p.Files), &files); err != nil {
 		return nil, err

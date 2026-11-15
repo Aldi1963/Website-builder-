@@ -91,6 +91,17 @@ func projectRuntimeRoot(pid uint) string {
 	return filepath.Join("..", "runtime", fmt.Sprintf("project-%d", pid))
 }
 
+// serverPort adalah port listen server WebBuilder (env PORT, default
+// 18082 — sama seperti server/main.go). Dipakai target proxy /api di
+// vite.config hasil scaffold supaya preview proyek jalan saat server
+// berjalan di port lain (bukan hardcode 18082).
+func serverPort() string {
+	if port := strings.TrimSpace(os.Getenv("PORT")); port != "" {
+		return port
+	}
+	return "18082"
+}
+
 func envSafeValue(value string) string {
 	value = strings.TrimSpace(value)
 	value = strings.NewReplacer("\n", " ", "\r", " ", "=", "-", "#", "").Replace(value)
@@ -411,7 +422,7 @@ Environment variable lokal disimpan di file .env.local; jangan commit secret ata
 	if _, err := os.Stat(viteCfg); os.IsNotExist(err) {
 		content := `import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-export default defineConfig({ plugins: [react()], server: { allowedHosts: true, proxy: { "/api": { target: "http://127.0.0.1:18082", changeOrigin: true } } } });
+export default defineConfig({ plugins: [react()], server: { allowedHosts: true, proxy: { "/api": { target: "http://127.0.0.1:` + serverPort() + `", changeOrigin: true } } } });
 `
 		if err := os.WriteFile(viteCfg, []byte(content), 0644); err != nil {
 			return "", err
@@ -429,7 +440,7 @@ export default defineConfig({ plugins: [react()], server: { allowedHosts: true, 
 				extra += " allowedHosts: true,"
 			}
 			if needsProxy {
-				extra += ` proxy: { "/api": { target: "http://127.0.0.1:18082", changeOrigin: true } },`
+				extra += ` proxy: { "/api": { target: "http://127.0.0.1:` + serverPort() + `", changeOrigin: true } },`
 			}
 			if strings.Contains(s, "server: {") {
 				s = strings.Replace(s, "server: {", "server: {"+extra, 1)

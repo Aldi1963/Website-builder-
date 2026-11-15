@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -85,8 +86,14 @@ func main() {
 		serveIndex(c)
 	})
 
-	log.Println("WebBuilder running on :18082")
-	srv := &http.Server{Addr: "127.0.0.1:18082", Handler: r}
+	// Port listen (default 18082; override via PORT agar bisa jalan
+	// berdampingan dengan layanan lain, mis. saat uji coba).
+	port := strings.TrimSpace(os.Getenv("PORT"))
+	if port == "" {
+		port = "18082"
+	}
+	log.Println("WebBuilder running on :" + port)
+	srv := &http.Server{Addr: "127.0.0.1:" + port, Handler: r}
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatal(err)

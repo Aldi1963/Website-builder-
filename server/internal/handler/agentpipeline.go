@@ -17,9 +17,11 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"strings"
 
 	"webbuilder/guidance"
+	"webbuilder/internal/browser"
 	"webbuilder/internal/database/models"
 
 	"github.com/gin-gonic/gin"
@@ -176,7 +178,35 @@ func executeAgentPipeline(runCtx context.Context, db *gorm.DB, in agentPipelineI
 		sysPrompt += "\n\nMEMORY PROYEK:\n" + p.Memory
 	}
 	// Tool registry tersedia sebagai kontrak agent; parser FILE tetap menjadi fallback kompatibilitas.
-	toolJSON, _ := json.Marshal(agentToolCatalog())
+	// Katalog browser (dinamis, dari tools/list server MCP) digabung bila
+	// flag nyala. Klien browser dibuat di sini — SEBELUM stream LLM —
+	// karena model harus tahu alat itu ada sebelum memanggilnya; klien
+	// tetap satu per run dan ditutup (defer) saat pipeline selesai,
+	// termasuk saat run dibatalkan. Fail-closed: bila Start gagal
+	// (Chrome/MCP tidak tersedia), error dicatat jelas di log dan agent
+	// jalan TANPA alat browser — jangan diam-diam.
+	catalog := agentToolCatalog()
+	var browserClient *browser.Client
+	if browser.Enabled() {
+		runDir := filepath.Join(projectRuntimeRoot(p.ID), fmt.Sprintf("run-%d", run.ID))
+		bc, berr := browser.NewClientForRun(run.ID, runDir)
+		if berr != nil {
+			slog.Error("agent pipeline: browser tools tidak bisa dibuat, lanjut tanpa alat browser", "runId", run.ID, "error", berr)
+		} else if serr := bc.Start(runCtx); serr != nil {
+			slog.Error("agent pipeline: browser tools gagal start, lanjut tanpa alat browser", "runId", run.ID, "error", serr)
+		} else {
+			browserClient = bc
+			defer browserClient.Close()
+			if tools, lerr := browserClient.ListTools(runCtx); lerr != nil {
+				slog.Error("agent pipeline: tools/list browser gagal, lanjut tanpa alat browser", "runId", run.ID, "error", lerr)
+				browserClient = nil
+				_ = bc.Close()
+			} else {
+				catalog = append(catalog, browserToolCatalog(browser.SpecsFromTools(tools))...)
+			}
+		}
+	}
+	toolJSON, _ := json.Marshal(catalog)
 	sysPrompt += "\n\nAVAILABLE PROJECT TOOLS (gunakan hanya bila provider mendukung tool calls; jika tidak, gunakan FILE blocks):\n" + string(toolJSON)
 	if p.Blueprint != "" {
 		sysPrompt += "\n\nBLUEPRINT PROYEK YANG DISETUJUI:\n" + p.Blueprint + "\nIkuti blueprint ini. Jika perubahan menyimpang, jelaskan konflik sebelum mengubah scope."
@@ -289,14 +319,14 @@ AUTONOMOUS BLUEPRINT (EMPTY PROJECT):
 	streamCtx, cancelStream := context.WithCancel(runCtx)
 	registerAgentCancel(run.ID, cancelStream)
 	defer unregisterAgentCancel(run.ID)
-	err := provider.streamChatWithTools(streamCtx, sysPrompt, history, userMsg, agentToolCatalog(), func(name string, input map[string]interface{}) (interface{}, error) {
+	err := provider.streamChatWithTools(streamCtx, sysPrompt, history, userMsg, catalog, func(name string, input map[string]interface{}) (interface{}, error) {
 		// Simpan argumen nyata (bukan label generik) supaya kegagalan tool
 		// bisa didiagnosis tanpa menebak apa yang dikirim model.
 		rj, _ := json.Marshal(input)
 		if run != nil {
 			recordAgentTool(db, run.ID, name, "analyzing", "running", string(rj), "Agent meminta tool", "")
 		}
-		result, toolErr := executeAgentTool(db, p, name, input)
+		result, toolErr := executeAgentToolWithBrowser(streamCtx, db, p, browserClient, name, input)
 		if run != nil {
 			status := "success"
 			detail := "Tool berhasil dijalankan"

@@ -85,6 +85,11 @@ type Config struct {
 	// job dalam satu waktu; dua worker menjaga dua project berbeda tetap
 	// bisa berjalan bersamaan tanpa membanjiri mesin dengan build npm.
 	QueueWorkers int
+
+	// Alat browser agent (chrome-devtools-mcp, Fase 1): hanya "1" yang
+	// menyalakan. Browser tools tetap TIDAK aktif bila eksekusi tenant
+	// mati (lihat browser.Enabled) — keduanya harus nyala.
+	BrowserTools bool
 }
 
 // Load reads the environment (plus the JWT-secret fallback file) and
@@ -163,6 +168,9 @@ func Load() (Config, []string, error) {
 		}
 	}
 
+	// Alat browser agent: default mati; hanya "1" yang menyalakan.
+	cfg.BrowserTools = strings.TrimSpace(os.Getenv("WEBBUILDER_ENABLE_BROWSER_TOOLS")) == "1"
+
 	return cfg, warnings, nil
 }
 
@@ -193,6 +201,7 @@ func (c Config) Summary() map[string]bool {
 		"webbuilder_key":   c.WebbuilderKey != "",
 		"vps_ssh":          c.SSHConfigured(),
 		"queue_db":         c.QueueBackend == "db",
+		"browser_tools":    c.BrowserTools,
 	}
 }
 
