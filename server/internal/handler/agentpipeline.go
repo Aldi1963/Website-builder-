@@ -748,7 +748,7 @@ AUTONOMOUS BLUEPRINT (EMPTY PROJECT):
 		}
 	}
 	send("result", gin.H{"status": finalStatus, "summary": finalSummary, "changedFiles": changed, "intent": intent,
-		"verification":   gin.H{"attempted": verification.Attempted, "passed": verification.Passed, "rounds": verification.Rounds, "consoleErrors": verification.ConsoleErrors, "failedRequests": verification.FailedRequests, "screenshotPath": verification.ScreenshotPath},
+		"verification":   gin.H{"attempted": verification.Attempted, "passed": verification.Passed, "rounds": verification.Rounds, "consoleErrors": verification.ConsoleErrors, "failedRequests": verification.FailedRequests, "screenshotPath": verification.ScreenshotPath, "screenshotUrl": verificationScreenshotURL(p.ID, run.ID, verification.ScreenshotPath)},
 		"screenshotPath": verification.ScreenshotPath})
 	return nil
 }

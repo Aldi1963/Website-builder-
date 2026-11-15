@@ -981,6 +981,90 @@ func runtimeScreenshotFile(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
+// validVerificationScreenshotName menerima hanya nama file screenshot
+// verifikasi yang sah: screenshot-<n>.png dengan <n> angka. Pola ketat
+// ini sekaligus menolak traversal ("..", "/", "\") dan nama file lain —
+// tidak ada normalisasi diam-diam: nama yang tidak cocok ditolak 404.
+func validVerificationScreenshotName(name string) bool {
+	if !strings.HasPrefix(name, "screenshot-") || !strings.HasSuffix(name, ".png") {
+		return false
+	}
+	num := strings.TrimSuffix(strings.TrimPrefix(name, "screenshot-"), ".png")
+	if num == "" {
+		return false
+	}
+	for _, r := range num {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// verificationScreenshotURL mengubah path screenshot verifikasi
+// (runtime/project-<pid>/run-<runId>/screenshot-<n>.png) menjadi URL API
+// relatif yang bisa dimuat <img> frontend, atau "" bila path tidak cocok
+// pola itu — mis. screenshot gagal dipindah dari workspace MCP (path
+// workspace bukan path run) atau verifikasi tidak jalan. URL relatif
+// saja: frontend menambahkan token JWT-nya sebagai ?token= (didukung
+// authMiddleware, jalur yang sama dengan iframe preview) karena <img>
+// tidak bisa mengirim header Authorization.
+func verificationScreenshotURL(projectID, runID uint, screenshotPath string) string {
+	name := filepath.Base(screenshotPath)
+	if !validVerificationScreenshotName(name) {
+		return ""
+	}
+	wantDir := filepath.Join(projectRuntimeRoot(projectID), fmt.Sprintf("run-%d", runID))
+	if filepath.Dir(screenshotPath) != wantDir {
+		return ""
+	}
+	return fmt.Sprintf("/api/projects/%d/runtime/screenshots/verification/%d/%s", projectID, runID, name)
+}
+
+// runtimeVerificationScreenshotFile menyajikan screenshot verifikasi
+// browser satu run: GET /api/projects/:id/runtime/screenshots/
+// verification/:runId/:name. Auth sama seperti endpoint screenshot lama
+// (runtimeProject: owner/editor proyek, lewat authMiddleware).
+//
+// Keamanan path: :runId harus angka dan harus baris agent_runs milik
+// proyek ini (cek DB — run proyek lain / user lain → 404, bukan file);
+// :name harus persis screenshot-<n>.png; path hasil join dicek tetap
+// di dalam direktori run itu sebelum disajikan.
+func runtimeVerificationScreenshotFile(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		p, ok := runtimeProject(db, c)
+		if !ok {
+			return
+		}
+		runID, err := strconv.ParseUint(c.Param("runId"), 10, 64)
+		if err != nil || runID == 0 {
+			c.Status(404)
+			return
+		}
+		var run models.AgentRun
+		if err := db.Where("id = ? AND project_id = ?", runID, p.ID).First(&run).Error; err != nil {
+			c.Status(404)
+			return
+		}
+		name := c.Param("name")
+		if !validVerificationScreenshotName(name) || name != filepath.Base(name) {
+			c.Status(404)
+			return
+		}
+		runDir := filepath.Join(projectRuntimeRoot(p.ID), fmt.Sprintf("run-%d", runID))
+		path := filepath.Join(runDir, name)
+		if filepath.Dir(path) != runDir {
+			c.Status(404)
+			return
+		}
+		if _, err := os.Stat(path); err != nil {
+			c.Status(404)
+			return
+		}
+		c.File(path)
+	}
+}
+
 func runtimeDevStart(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		p, ok := runtimeProject(db, c)
