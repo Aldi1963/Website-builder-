@@ -277,7 +277,7 @@ func TestRunAcceptanceGatingOff(t *testing.T) {
 	t.Setenv(EnvEnableTenantExec, "0")
 	_, err := RunAcceptance(context.Background(), "http://127.0.0.1:18098/healthy.html")
 	if err == nil {
-		t.Fatal("gating mati → RunAcceptance harus error (handler akan fallback ke playwright)")
+		t.Fatal("gating mati → RunAcceptance harus error (handler mengembalikan error tegas, tanpa fallback)")
 	}
 	if !errors.Is(err, ErrBrowserToolsDisabled) {
 		t.Fatalf("error harus ErrBrowserToolsDisabled, dapat: %v", err)

@@ -62,35 +62,31 @@ Fail-closed: bila flag nyala tapi Chrome/MCP tidak tersedia (mis.
 start), pipeline mencatat error jelas di log dan agent berjalan TANPA alat
 browser — bukan diam-diam.
 
-### Migrasi acceptance + screenshot ke MCP (Fase 2)
+### Migrasi acceptance + screenshot ke MCP (Fase 2 — selesai)
 
 `browserAcceptance` dan `runtimeCaptureScreenshot`
-(`server/internal/handler/runtime.go`) memakai MCP sebagai jalur UTAMA
-bila kedua flag di atas nyala — lewat helper one-shot
-`server/internal/browser/acceptance.go` (`RunAcceptance`,
+(`server/internal/handler/runtime.go`) HANYA memakai MCP — lewat helper
+one-shot `server/internal/browser/acceptance.go` (`RunAcceptance`,
 `CaptureScreenshot`: satu profil Chrome per pemanggilan, dihapus
 sesudahnya, timeout 30 dtk mengikuti ctx pemanggil). Struktur hasil
-acceptance SAMA seperti skrip playwright lama (`http`, `hasBody`,
-`consoleErrors`, `failedAppResources`, `sdk`) supaya pemakai di
-`features.go` / `repair.go` tidak berubah; verdict gagal MCP
-(`ErrAcceptanceFailed`) bersifat final dan TIDAK fallback ke playwright.
+acceptance (`http`, `hasBody`, `consoleErrors`, `failedAppResources`,
+`sdk`) dipakai pemakai di `features.go` / `repair.go`; verdict gagal MCP
+(`ErrAcceptanceFailed`) bersifat final.
 
-Bila flag mati, perilaku persis seperti sebelum Fase 2 (jalur playwright
-lama). Bila flag nyala tapi MCP gagal start, jalur playwright lama
-dipakai sebagai FALLBACK sementara dan kegagalan MCP di-log (`slog.Warn`).
+Bila flag mati, `browserAcceptance` mengembalikan
+`ErrBrowserToolsDisabled` dan `runtimeCaptureScreenshot` mengembalikan
+HTTP 503 — fail-closed, tidak ada jalur lain. Bila flag nyala tapi MCP
+gagal start, error infrastruktur dikembalikan tegas ke pemanggil.
+Jalur playwright lama (`browserAcceptancePlaywright` + skrip inline di
+`runtimeCaptureScreenshot`) sudah DIHAPUS — tidak ada lagi fallback.
 
-Perbedaan perilaku yang disengaja terhadap skrip lama: 404 `favicon.ico`
-diabaikan saat menilai (bukan console error dan bukan failed resource) —
-halaman tanpa favicon tidak boleh membuat acceptance gagal. Parser
-console dipakai ulang dari Trek A (`ParseConsoleErrors` di
+Perbedaan perilaku yang disengaja: 404 `favicon.ico` diabaikan saat
+menilai (bukan console error dan bukan failed resource) — halaman tanpa
+favicon tidak boleh membuat acceptance gagal. Parser console dipakai
+ulang dari Trek A (`ParseConsoleErrors` di
 `server/internal/browser/verify.go`): baris "Failed to load resource"
 juga dibuang dari `consoleErrors` karena tidak menyebut URL — kegagalan
 resource dinilai lewat daftar network.
-
-Jalur playwright lama (`browserAcceptancePlaywright` + skrip inline di
-`runtimeCaptureScreenshot`) berstatus **deprecated — dihapus di rilis
-berikutnya, diganti MCP**. Skrip node inline-nya dipertahankan hanya
-selama fallback itu hidup; jangan menambah pemakai baru.
 
 ### Batas hardening Fase 3 (tidak bisa diubah lewat env)
 
@@ -292,10 +288,8 @@ Dua jebakan yang ditemukan saat verifikasi (2026-11-15) — keduanya membuat
   nyala; hanya proses dev-nya yang masih jalur lama.)
 - **Screenshot** (`runtimeCaptureScreenshot`) dan **browserAcceptance**
   sudah dimigrasi ke MCP di Fase 2 (lihat "Migrasi acceptance +
-  screenshot ke MCP" di atas). Jalur playwright lamanya masih ada sebagai
-  fallback sementara dan ditandai **deprecated — dihapus di rilis
-  berikutnya, diganti MCP**; skrip node inline-nya belum dihapus karena
-  fallback masih memakainya.
+  screenshot ke MCP" di atas); jalur playwright lama sudah dihapus —
+  tidak ada lagi fallback.
 - `customdomain.go` (ssh infra) dan `payment.go` (binary clipkupay):
   bukan kode tenant.
 
@@ -310,7 +304,8 @@ Dua jebakan yang ditemukan saat verifikasi (2026-11-15) — keduanya membuat
   ketiga nanti.
 - **Dev server** masih jalur lama (lihat atas) — ini permukaan tenant yang
   belum terisolasi. Screenshot/browserAcceptance sudah lewat MCP bila flag
-  browser nyala, dengan fallback playwright lama yang ditandai deprecated.
+  browser nyala; bila flag mati, keduanya mengembalikan error tegas
+  (tidak ada fallback).
 - Tidak ada batas CPU/memori pada `ProcessExecutor` (tidak ada cgroup);
   batas yang ada baru timeout dan batas output.
 

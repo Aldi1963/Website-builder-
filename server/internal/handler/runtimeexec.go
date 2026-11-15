@@ -11,10 +11,9 @@
 //   - dev server (runtimeDevStart/Stop): proses long-running dengan restart
 //     loop + log streaming — adapter saat ini one-shot (Run) dan tidak punya
 //     Start/Stop. Memaksanya ke Run akan merusak desain adapter.
-//   - screenshot (runtimeCaptureScreenshot) + browserAcceptance: menjalankan
-//     skrip milik server (playwright-core), bukan kode tenant — tidak ada
-//     manfaat keamanan dari migrasi, dan path Chromium/playwright-nya sudah
-//     rapuh antar host.
+//   - screenshot (runtimeCaptureScreenshot) + browserAcceptance: cek browser
+//     milik server lewat MCP (server/internal/browser), bukan kode tenant —
+//     tidak ada manfaat keamanan dari migrasi ke adapter isolasi.
 //   - customdomain.go (ssh infra) + payment.go (binary clipkupay): bukan
 //     kode tenant.
 package handler

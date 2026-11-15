@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -930,32 +929,17 @@ func runtimeCaptureScreenshot(db *gorm.DB) gin.HandlerFunc {
 		}
 		name := fmt.Sprintf("capture-%d.png", time.Now().UnixNano())
 		out := filepath.Join(dir, name)
-		// Jalur UTAMA (Fase 2): screenshot lewat MCP (chrome-devtools-mcp)
-		// bila flag browser nyala. Gagal start MCP/Chrome → fallback ke
-		// skrip playwright lama di bawah (deprecated).
-		if browser.Enabled() {
-			shotCtx, shotCancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
-			shotErr := browser.CaptureScreenshot(shotCtx, fmt.Sprintf("http://127.0.0.1:%d", port), out)
-			shotCancel()
-			if shotErr == nil {
-				c.JSON(200, gin.H{"status": "ready", "path": fmt.Sprintf("/api/projects/%d/runtime/screenshots/%s", p.ID, name), "name": name})
-				return
-			}
-			slog.Warn("screenshot MCP gagal, fallback ke playwright (deprecated)", "projectId", p.ID, "error", shotErr)
+		// Screenshot hanya lewat MCP (chrome-devtools-mcp). Jalur
+		// playwright lama sudah dihapus: bila flag browser mati atau
+		// MCP gagal start, kembalikan error tegas — tidak ada fallback.
+		if !browser.Enabled() {
+			c.JSON(503, gin.H{"error": "Screenshot butuh alat browser (set WEBBUILDER_ENABLE_BROWSER_TOOLS=1 dan WEBBUILDER_ENABLE_TENANT_EXEC=1)"})
+			return
 		}
-		// DEPRECATED: skrip node playwright-core inline di bawah ini
-		// dipertahankan sementara sebagai fallback bila flag browser mati
-		// atau MCP gagal start. Dihapus di rilis berikutnya, diganti MCP
-		// (server/internal/browser/acceptance.go: CaptureScreenshot).
-		// Path Chromium/playwright-nya hardcode per host dan rapuh antar
-		// host (lihat docs/isolation.md).
-		script := `const {chromium}=require('/home/hatch/workspace/tools/waview/node_modules/playwright-core');(async()=>{const b=await chromium.launch({headless:true,executablePath:'/home/hatch/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome',args:['--no-sandbox','--ignore-certificate-errors']});const p=await b.newPage({viewport:{width:1440,height:900}});await p.goto(process.argv[1],{waitUntil:'networkidle',timeout:20000});await p.screenshot({path:process.argv[2],fullPage:true});await b.close()})().catch(e=>{console.error(e);process.exit(1)})`
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
 		defer cancel()
-		cmd := exec.CommandContext(ctx, "node", "-e", script, fmt.Sprintf("http://127.0.0.1:%d", port), out)
-		raw, err := cmd.CombinedOutput()
-		if err != nil {
-			c.JSON(502, gin.H{"error": "Screenshot gagal", "output": string(raw)})
+		if err := browser.CaptureScreenshot(ctx, fmt.Sprintf("http://127.0.0.1:%d", port), out); err != nil {
+			c.JSON(502, gin.H{"error": "Screenshot gagal", "output": err.Error()})
 			return
 		}
 		c.JSON(200, gin.H{"status": "ready", "path": fmt.Sprintf("/api/projects/%d/runtime/screenshots/%s", p.ID, name), "name": name})
@@ -1231,50 +1215,25 @@ func runtimeDevSync(db *gorm.DB) gin.HandlerFunc {
 }
 
 func browserAcceptance(port int) (map[string]interface{}, error) {
-	// Jalur UTAMA (Fase 2): acceptance lewat MCP (chrome-devtools-mcp)
-	// bila flag browser nyala (kedua flag "1" — lihat browser.Enabled).
-	// Struktur hasil SAMA dengan skrip playwright lama (http, hasBody,
-	// consoleErrors, failedAppResources, sdk) supaya pemakai di
-	// features.go:674 dan repair.go:29 tidak berubah.
+	// Acceptance hanya lewat MCP (chrome-devtools-mcp). Jalur playwright
+	// lama sudah dihapus: bila flag browser mati atau MCP/Chrome gagal
+	// start, kembalikan error tegas (fail-closed) — tidak ada fallback.
+	// Struktur hasil (http, hasBody, consoleErrors, failedAppResources,
+	// sdk) dipakai pemakai di features.go:703 dan repair.go:29.
 	pageURL := fmt.Sprintf("http://127.0.0.1:%d", port)
-	if browser.Enabled() {
-		result, err := browser.RunAcceptance(context.Background(), pageURL)
-		if err == nil {
-			return result, nil
-		}
+	if !browser.Enabled() {
+		return nil, browser.ErrBrowserToolsDisabled
+	}
+	result, err := browser.RunAcceptance(context.Background(), pageURL)
+	if err != nil {
 		if errors.Is(err, browser.ErrAcceptanceFailed) {
 			// Halaman berhasil dibuka dan dicek MCP, tapi TIDAK LOLOS —
-			// ini verdict final, BUKAN kegagalan infrastruktur: jangan
-			// fallback ke playwright (hasilnya sama, hanya membuang waktu
-			// dan menyembunyikan sumber verdict).
+			// ini verdict final, BUKAN kegagalan infrastruktur.
 			return result, err
 		}
-		slog.Warn("browser acceptance MCP gagal start, fallback ke playwright (deprecated)", "error", err)
-	}
-	return browserAcceptancePlaywright(port)
-}
-
-// browserAcceptancePlaywright adalah jalur lama (skrip node playwright-core
-// inline).
-//
-// DEPRECATED: dihapus di rilis berikutnya, diganti MCP
-// (server/internal/browser/acceptance.go: RunAcceptance). Dipertahankan
-// sementara sebagai fallback bila flag browser mati atau MCP gagal start —
-// dan sebagai satu-satunya jalur bila flag mati (perilaku persis seperti
-// sebelum Fase 2, tanpa regresi). Path Chromium/playwright-nya hardcode
-// per host dan sudah bermasalah di VM ini (lihat docs/isolation.md).
-func browserAcceptancePlaywright(port int) (map[string]interface{}, error) {
-	script := `const {chromium}=require('/opt/webbuilder/tools/waview/node_modules/playwright-core');(async()=>{const b=await chromium.launch({headless:true,executablePath:'/root/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome',args:['--no-sandbox','--ignore-certificate-errors']});const p=await b.newPage({viewport:{width:1280,height:800}});const errors=[],failedResources=[];const origin=new URL(process.argv[1]).origin;p.on('console',m=>{if(m.type()==='error')errors.push(m.text())});p.on('pageerror',e=>errors.push('PAGEERROR: '+e.message));const isAuthProbe=u=>u.indexOf('/api/app-api/')>=0;const isExpected401=(u,s)=>s===401&&isAuthProbe(u);p.on('requestfailed',r=>{if(new URL(r.url()).origin===origin&&!isAuthProbe(r.url()))failedResources.push({url:r.url(),error:r.failure()?.errorText})});p.on('response',r=>{const u=r.url();if(new URL(u).origin===origin&&r.status()>=400&&!isExpected401(u,r.status()))failedResources.push({url:u,status:r.status()})});const r=await p.goto(process.argv[1],{waitUntil:'networkidle',timeout:20000});const body=(await p.locator('body').innerText()).trim();const sdk=await p.evaluate(async()=>{const has=typeof window.cloudAuth==='object'&&typeof window.cloudDb==='object';if(!has)return{installed:false};try{await window.cloudAuth.me();return{installed:true,loggedOut:false}}catch(e){return{installed:true,loggedOut:true}}});const out={http:r&&r.status(),hasBody:body.length>0,consoleErrors:errors.slice(0,10),failedAppResources:failedResources,sdk};console.log(JSON.stringify(out));await b.close();const fatal=errors.filter(e=>e.indexOf('Failed to load resource')<0);if(!out.http||out.http>=400||!out.hasBody||failedResources.length||fatal.length)process.exit(2)})().catch(e=>{console.error(e.message);process.exit(1)})`
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "node", "-e", script, fmt.Sprintf("http://127.0.0.1:%d", port))
-	raw, err := cmd.CombinedOutput()
-	if err != nil {
-		return map[string]interface{}{"output": string(raw)}, errors.New("browser acceptance gagal")
-	}
-	var result map[string]interface{}
-	if json.Unmarshal(raw, &result) != nil {
-		return map[string]interface{}{"output": string(raw)}, errors.New("browser acceptance output invalid")
+		// Kegagalan infrastruktur (MCP/Chrome gagal start): error tegas,
+		// tanpa fallback.
+		return result, err
 	}
 	return result, nil
 }

@@ -18,7 +18,7 @@ sampai selesai, lalu agent melaporkan "sudah dicek di Chrome: 0 console error,
 0 request gagal, screenshot tersimpan" — dan laporan itu benar karena diverifikasi
 dari log, bukan klaim model.
 
-## 2. Keadaan sekarang (fakta terverifikasi)
+## 2. Keadaan saat rencana dibuat (fakta terverifikasi saat itu — Nov 2026, sebelum Fase 0–4; jalur playwright yang disebut di bawah sudah dihapus)
 
 - **Seam tool agent sudah bersih.** `streamChatWithTools` (`server/internal/handler/ai.go:332`)
   menerima `tools []AgentToolSpec` + `execute func(nama, input)`. Katalog ada di
@@ -175,9 +175,12 @@ Tujuan: membuktikan asumsi paling berisiko sebelum menulis kode produksi.
    tampilkan di chat sebagai artifact (tipe pesan baru — implementasi minimal:
    lampirkan sebagai file pada pesan selesai).
 4. Ganti pemakaian `browserAcceptance` playwright di `runtime.go:1132`:
-   jadikan MCP sebagai jalur utama bila flag nyala; jalur playwright dipertahankan
-   sebagai fallback sementara (ditandai deprecated, dihapus di rilis berikutnya).
-   Screenshot `runtime.go:928` ikut pindah ke MCP (hapus skrip node inline).
+   jadikan MCP sebagai jalur utama bila flag nyala; jalur playwright
+   dipertahankan sebagai fallback sementara (ditandai deprecated, dihapus
+   di rilis berikutnya). Screenshot `runtime.go:928` ikut pindah ke MCP
+   (hapus skrip node inline). **SELESAI — jalur playwright dihapus
+   sepenuhnya (PR remove/legacy-playwright, Nov 2026): tidak ada lagi
+   fallback; flag mati / MCP gagal start → error tegas.**
 5. Prompt: tambah instruksi ke system prompt agent — kapan memakai alat browser,
    urutan cek (snapshot → console → network → screenshot), dan larangan
    membuka URL di luar preview proyek.
@@ -201,6 +204,11 @@ Tujuan: membuktikan asumsi paling berisiko sebelum menulis kode produksi.
    `.env.example` + `docs/isolation.md`.
 5. Hapus jalur playwright lama (`runtime.go:928,1132`) bila Fase 2 stabil
    selama 1 minggu; kalau belum, tandai deprecated dan jadwalkan penghapusan.
+   **SELESAI (Nov 2026, PR remove/legacy-playwright):** Fase 2 terbukti
+   ujung-ke-ujung di server uji (run 4: status completed, verification
+   attempted=true passed=true rounds=1) dan user memutuskan maju tanpa
+   menunggu 1 minggu — jalur playwright dihapus, fail-closed tanpa
+   fallback.
    **Kriteria selesai:** `go vet/build/test` + `-race` bersih; docs lengkap;
    tidak ada proses Chrome yatim setelah 10 run berurutan.
 

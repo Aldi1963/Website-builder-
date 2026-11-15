@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -13,40 +14,47 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// Migrasi browserAcceptance ke MCP (Trek B, Fase 2)
+// browserAcceptance hanya lewat MCP (jalur playwright lama dihapus —
+// branch remove/legacy-playwright). Gagal start MCP/Chrome atau flag
+// mati → error tegas (fail-closed), tanpa fallback.
 // ---------------------------------------------------------------------------
 
-// TestBrowserAcceptanceFlagOffUsesLegacy: flag mati → jalur playwright lama
-// dipakai (perilaku persis seperti sebelum Fase 2). Di VM ini skrip lama
-// gagal di require (path /opt/webbuilder/... tidak ada) — error itu
-// sendiri buktinya jalur lama yang jalan, bukan MCP.
-func TestBrowserAcceptanceFlagOffUsesLegacy(t *testing.T) {
+// TestBrowserAcceptanceFlagOffFailsClosed: flag mati → browserAcceptance
+// mengembalikan error tegas ErrBrowserToolsDisabled dan hasil nil, tanpa
+// menjalankan jalur apa pun (jalur playwright lama sudah dihapus).
+func TestBrowserAcceptanceFlagOffFailsClosed(t *testing.T) {
 	t.Setenv(browser.EnvEnableBrowserTools, "0")
 	t.Setenv(browser.EnvEnableTenantExec, "0")
 	res, err := browserAcceptance(19998)
 	if err == nil {
-		t.Fatalf("jalur lama di VM ini harus gagal (path playwright tidak ada), dapat %+v", res)
+		t.Fatalf("flag mati harus error tegas, bukan sukses, dapat %+v", res)
 	}
-	out, _ := res["output"].(string)
-	if !strings.Contains(out, "playwright-core") && !strings.Contains(out, "Cannot find module") {
-		t.Fatalf("error jalur lama harus menyebut playwright-core, dapat %q", out)
+	if !errors.Is(err, browser.ErrBrowserToolsDisabled) {
+		t.Fatalf("error harus ErrBrowserToolsDisabled, dapat: %v", err)
+	}
+	if res != nil {
+		t.Fatalf("flag mati harus mengembalikan hasil nil, dapat %+v", res)
 	}
 }
 
-// TestBrowserAcceptanceFlagOnBadChromeFallsBack: flag nyala tapi Chrome
-// tidak ada → fallback ke playwright (deprecated), BUKAN diam-diam sukses
-// palsu. Bukti fallback: error yang sama seperti jalur lama.
-func TestBrowserAcceptanceFlagOnBadChromeFallsBack(t *testing.T) {
+// TestBrowserAcceptanceFlagOnBadChromeFailsClosed: flag nyala tapi Chrome
+// tidak ada → error infrastruktur (BUKAN ErrAcceptanceFailed, BUKAN
+// sukses diam-diam). Tidak ada lagi fallback ke playwright: output tidak
+// boleh menyebut playwright-core.
+func TestBrowserAcceptanceFlagOnBadChromeFailsClosed(t *testing.T) {
 	t.Setenv(browser.EnvEnableBrowserTools, "1")
 	t.Setenv(browser.EnvEnableTenantExec, "1")
 	t.Setenv(browser.EnvChromePath, "/tidak/ada/chrome-xyz")
 	res, err := browserAcceptance(19998)
 	if err == nil {
-		t.Fatalf("Chrome hilang + fallback playwright rusak harus error, bukan sukses, dapat %+v", res)
+		t.Fatalf("Chrome hilang harus error, bukan sukses, dapat %+v", res)
+	}
+	if errors.Is(err, browser.ErrAcceptanceFailed) {
+		t.Fatalf("Chrome hilang adalah kegagalan infrastruktur, bukan verdict halaman: %v", err)
 	}
 	out, _ := res["output"].(string)
-	if !strings.Contains(out, "playwright-core") && !strings.Contains(out, "Cannot find module") {
-		t.Fatalf("fallback harus menjalankan skrip playwright lama, dapat %q", out)
+	if strings.Contains(out, "playwright-core") || strings.Contains(out, "Cannot find module") {
+		t.Fatalf("tidak boleh lagi ada jejak playwright, dapat %q", out)
 	}
 }
 
