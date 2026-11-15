@@ -51,6 +51,31 @@ func clearPendingProposal(db *gorm.DB, pid uint) {
 
 // ── Chat ──
 
+// chatMessageResponse adalah ChatMessage untuk respons riwayat chat:
+// sama seperti model, ditambah `verification` (objek hasil verifikasi
+// browser run itu) bila ada. Pesan tanpa verifikasi tidak membawa kunci
+// itu sama sekali, supaya frontend tidak menampilkan kartu.
+type chatMessageResponse struct {
+	models.ChatMessage
+	Verification json.RawMessage `json:"verification,omitempty"`
+}
+
+// chatVerificationJSON mengubah isi kolom ChatMessage.Verification
+// (JSON mentah) menjadi RawMessage untuk respons riwayat; nil bila
+// kosong atau bukan objek JSON yang sah — pesan lama/tanpa verifikasi
+// tetap tampil seperti biasa, tanpa kartu.
+func chatVerificationJSON(raw string) json.RawMessage {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &obj); err != nil {
+		return nil
+	}
+	return json.RawMessage(raw)
+}
+
 func getChat(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		p, _, ok := requireProject(db, c, "viewer")
@@ -65,7 +90,11 @@ func getChat(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 		db.Where("session_id = ?", session.ID).Order("id ASC").Limit(30).Find(&msgs)
-		c.JSON(200, gin.H{"messages": msgs})
+		out := make([]chatMessageResponse, 0, len(msgs))
+		for _, m := range msgs {
+			out = append(out, chatMessageResponse{ChatMessage: m, Verification: chatVerificationJSON(m.Verification)})
+		}
+		c.JSON(200, gin.H{"messages": out})
 	}
 }
 
