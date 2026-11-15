@@ -1,5 +1,33 @@
 import { useEffect, useState } from "react";
-import { api, setToken, getToken } from "../lib/api";
+import { useQueryClient } from "@tanstack/react-query";
+import { setToken } from "../lib/api";
+import { useProjects, useCreateProject, projectIdFromCreateResponse } from "../lib/hooks/useProjects";
+import {
+  useMe,
+  useNotifications,
+  useReadNotifications,
+  useTemplates,
+  useUseTemplate,
+  usePublishTemplate,
+  useDeployments,
+  useRollbackDeployment,
+  useDeploymentFiles,
+  useDomains,
+  useAddDomain,
+  useDeleteDomain,
+  useVerifyDomain,
+  fetchDomainDns,
+  useDomainSsl,
+  useUsage,
+  useBilling,
+  useCheckout,
+  fetchPaymentStatus,
+  useUpdateProfile,
+  useChangePassword,
+  useAiConfig,
+  useSetAiConfig,
+} from "../lib/hooks/useDashboard";
+import { dashboardKeys } from "../lib/hooks/queryKeys";
 import { Plus, LogOut, FolderOpen, LayoutTemplate, Rocket, Globe, BarChart3, CreditCard, Settings, Trash2, ShieldCheck, Bell } from "lucide-react";
 import AdminPanel from "./AdminPanel";
 import Profile from "./Profile";
@@ -17,46 +45,11 @@ function useIsMobile() {
   return m;
 }
 
-async function req(path: string, opts: any = {}) {
-  const r = await fetch("/api" + path, {
-    ...opts,
-    headers: { "Content-Type": "application/json", Authorization: "Bearer " + getToken(), ...(opts.headers || {}) },
-  });
-  const d = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(d.message || "Gagal");
-  return d;
-}
-
-  const ext = {
-    templates: (q = "", cat = "") => req("/templates" + (q || cat ? `?q=${encodeURIComponent(q)}&category=${encodeURIComponent(cat)}` : "")),
-  useTemplate: (id: number, name: string) => req(`/templates/${id}/use`, { method: "POST", body: JSON.stringify({ name }) }),
-  publishTemplate: (projectId: number, name: string, description: string, category: string) => req("/templates", { method: "POST", body: JSON.stringify({ projectId, name, description, category }) }),
-  delTemplate: (id: number) => req(`/templates/${id}`, { method: "DELETE" }),
-  verifyDomain: (id: number) => req(`/domains/${id}/verify`, { method: "POST" }),
-  domainDns: (id: number) => req(`/domains/${id}/dns`),
-  domainSsl: (id: number) => req(`/domains/${id}/ssl`, { method: "POST" }),
-  deployments: () => req("/deployments"),
-  domains: () => req("/domains"),
-  addDomain: (domain: string) => req("/domains", { method: "POST", body: JSON.stringify({ domain }) }),
-  delDomain: (id: number) => req(`/domains/${id}`, { method: "DELETE" }),
-  usage: () => req("/usage"),
-  billing: () => req("/billing"),
-  updateProfile: (name: string) => req("/me", { method: "PUT", body: JSON.stringify({ name }) }),
-  changePassword: (oldPw: string, newPw: string) => req("/me/password", { method: "PUT", body: JSON.stringify({ old: oldPw, new: newPw }) }),
-  getAiConfig: () => req("/admin/ai-config"),
-  setAiConfig: (baseUrl: string, apiKey: string, model: string) => req("/admin/ai-config", { method: "PUT", body: JSON.stringify({ baseUrl, apiKey, model }) }),
-  notifications: () => req("/notifications"),
-  readNotifications: () => req("/notifications/read", { method: "POST" }),
-  checkout: (plan: string) => req("/billing/checkout", { method: "POST", body: JSON.stringify({ plan }) }),
-  paymentStatus: (orderId: string) => req(`/billing/status/${orderId}`),
-};
-
-
 export default function Dashboard({ onOpen }: { onOpen: (id: string) => void }) {
+  const qc = useQueryClient();
   const [projects, setProjects] = useState<any[]>([]);
   const [sharedProjects, setSharedProjects] = useState<any[]>([]);
   const [name, setName] = useState("");
-  const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("projects");
   const [data, setData] = useState<any>(null);
   const [newDomain, setNewDomain] = useState("");
@@ -85,6 +78,70 @@ export default function Dashboard({ onOpen }: { onOpen: (id: string) => void }) 
   const [previewDep, setPreviewDep] = useState<any>(null);
   const [previewPid, setPreviewPid] = useState("");
   const [quickStart, setQuickStart] = useState("");
+  // Pencarian template hanya diterapkan saat Cari/Enter (bukan tiap ketikan),
+  // sama seperti perilaku lama `loadTemplates()`.
+  const [tplApplied, setTplApplied] = useState({ q: "", cat: "" });
+
+  // TanStack Query: daftar proyek, profil, dan notifikasi dimuat saat mount;
+  // data per tab dimuat saat tab-nya aktif (enabled).
+  const projectsQuery = useProjects();
+  const meQuery = useMe();
+  const notificationsQuery = useNotifications();
+  const templatesQuery = useTemplates(tplApplied.q, tplApplied.cat, tab === "templates");
+  const deploymentsQuery = useDeployments(tab === "deploy");
+  const domainsQuery = useDomains(tab === "domains");
+  const usageQuery = useUsage(tab === "usage");
+  const billingQuery = useBilling(tab === "billing");
+  const aiConfigQuery = useAiConfig(tab === "settings");
+  const loading = projectsQuery.isPending;
+  const createProjectMut = useCreateProject();
+  const useTplMut = useUseTemplate();
+  const publishTemplateMut = usePublishTemplate();
+  const addDomainMut = useAddDomain();
+  const updateProfileMut = useUpdateProfile();
+  const changePasswordMut = useChangePassword();
+  const setAiConfigMut = useSetAiConfig();
+  const checkoutMut = useCheckout();
+  const readNotifsMut = useReadNotifications();
+  const rollbackMut = useRollbackDeployment();
+
+  useEffect(() => {
+    if (projectsQuery.data) {
+      setProjects(projectsQuery.data.projects || []);
+      setSharedProjects(projectsQuery.data.shared || []);
+    }
+  }, [projectsQuery.data]);
+  useEffect(() => {
+    if (meQuery.data) {
+      setProfileName(meQuery.data.user?.name || "");
+      setIsAdmin(!!meQuery.data.user?.isAdmin);
+    }
+  }, [meQuery.data]);
+  useEffect(() => {
+    if (notificationsQuery.data) {
+      setNotifs(notificationsQuery.data.notifications || []);
+      setUnread(notificationsQuery.data.unread || 0);
+    }
+  }, [notificationsQuery.data]);
+  // Reset tab dulu, lalu isi dari query tab aktif bila datanya sudah ada.
+  useEffect(() => {
+    setData(null);
+    setMsg("");
+  }, [tab]);
+  useEffect(() => {
+    if (tab === "templates") setData(templatesQuery.data ?? null);
+    else if (tab === "deploy") setData(deploymentsQuery.data ?? null);
+    else if (tab === "domains") setData(domainsQuery.data ?? null);
+    else if (tab === "usage") setData(usageQuery.data ?? null);
+    else if (tab === "billing") setData(billingQuery.data ?? null);
+  }, [tab, templatesQuery.data, deploymentsQuery.data, domainsQuery.data, usageQuery.data, billingQuery.data]);
+  useEffect(() => {
+    if (tab === "settings" && aiConfigQuery.data) {
+      setAiBase(aiConfigQuery.data.baseUrl || "");
+      setAiModel(aiConfigQuery.data.model || "");
+      setAiHasKey(aiConfigQuery.data.hasKey);
+    }
+  }, [tab, aiConfigQuery.data]);
 
   async function handleQuickStart(promptText?: string) {
     const text = (promptText || quickStart).trim();
@@ -92,9 +149,11 @@ export default function Dashboard({ onOpen }: { onOpen: (id: string) => void }) 
     const words = text.split(" ").slice(0, 5).join(" ");
     const projName = words ? words.charAt(0).toUpperCase() + words.slice(1) : "Proyek Baru";
     try {
-      const d = await api.createProject(projName, "react");
+      const d = await createProjectMut.mutateAsync({ name: projName, framework: "react" });
       sessionStorage.setItem("wb_initial_prompt", text);
-      onOpen(String(d.project.id));
+      const id = projectIdFromCreateResponse(d);
+      if (!id) throw new Error("Gagal membuat proyek");
+      onOpen(id);
     } catch (e: any) { alert("Gagal membuat proyek: " + e.message); }
   }
 
@@ -102,92 +161,71 @@ export default function Dashboard({ onOpen }: { onOpen: (id: string) => void }) 
     if (!confirm("Upgrade ke " + plan + "?")) return;
     setCheckingOut(plan);
     try {
-      const d = await ext.checkout(plan);
+      const d = await checkoutMut.mutateAsync(plan);
       setPayInfo(d);
     } catch (e: any) { alert(e.message); }
     setCheckingOut("");
   }
 
   async function checkPayment(orderId: string) {
-    const d = await ext.paymentStatus(orderId);
+    const d = await qc.fetchQuery({
+      queryKey: dashboardKeys.paymentStatus(orderId),
+      queryFn: () => fetchPaymentStatus(orderId),
+    });
     alert("Status: " + d.status);
     if (d.status === "paid") { setPayInfo(null); setTab("billing"); }
   }
 
-  useEffect(() => {
-    api.projects().then((d) => { setProjects(d.projects || []); setSharedProjects(d.shared || []); }).finally(() => setLoading(false));
-    api.me().then((d) => { setProfileName(d.user?.name || ""); setIsAdmin(!!d.user?.isAdmin); }).catch(() => {});
-    loadNotifs();
-  }, []);
-
-  async function loadNotifs() {
-    try {
-      const d = await ext.notifications();
-      setNotifs(d.notifications || []); setUnread(d.unread || 0);
-    } catch { }
-  }
-
   async function readNotifs() {
-    await ext.readNotifications().catch(() => {});
+    await readNotifsMut.mutateAsync().catch(() => {});
     setUnread(0);
   }
 
-  function loadTemplates() { ext.templates(tplQ, tplCat).then(setData).catch(() => {}); }
-  useEffect(() => {
-    setData(null);
-    setMsg("");
-    if (tab === "templates") loadTemplates();
-    if (tab === "deploy") ext.deployments().then(setData).catch(() => {});
-    if (tab === "domains") ext.domains().then(setData).catch(() => {});
-    if (tab === "usage") ext.usage().then(setData).catch(() => {});
-    if (tab === "billing") ext.billing().then(setData).catch(() => {});
-    if (tab === "settings") ext.getAiConfig().then((d) => {
-      setAiBase(d.baseUrl || ""); setAiModel(d.model || ""); setAiHasKey(d.hasKey);
-    }).catch(() => {});
-  }, [tab]);
+  function loadTemplates() { setTplApplied({ q: tplQ, cat: tplCat }); }
 
   async function create() {
     if (!name.trim()) return;
-    const d = await api.createProject(name, "react");
-    onOpen(String(d.project.id));
+    const d = await createProjectMut.mutateAsync({ name, framework: "react" });
+    const id = projectIdFromCreateResponse(d);
+    if (!id) throw new Error("Gagal membuat proyek");
+    onOpen(id);
   }
 
   async function useTpl(id: number, tname: string) {
-    const d = await ext.useTemplate(id, tname);
-    onOpen(String(d.project.id));
+    const d = await useTplMut.mutateAsync({ id, name: tname });
+    const pid = projectIdFromCreateResponse(d);
+    if (!pid) throw new Error("Gagal memakai template");
+    onOpen(pid);
   }
 
   async function addDom() {
     if (!newDomain.trim()) return;
     const sel = document.getElementById("dom-proj") as HTMLSelectElement | null;
     try {
-      await req("/domains", { method: "POST", body: JSON.stringify({ domain: newDomain.trim(), projectId: sel?.value ? Number(sel.value) : 0 }) });
+      await addDomainMut.mutateAsync({ domain: newDomain.trim(), projectId: sel?.value ? Number(sel.value) : 0 });
       setNewDomain("");
-      ext.domains().then(setData);
       setMsg("Domain ditambah. Atur CNAME di DNS lalu verifikasi.");
     } catch (e: any) { setMsg(e.message); }
   }
 
   async function saveProfile() {
     try {
-      await ext.updateProfile(profileName);
+      await updateProfileMut.mutateAsync(profileName);
       setMsg("Profil disimpan");
     } catch (e: any) { setMsg(e.message); }
   }
 
   async function saveAi() {
     try {
-      await ext.setAiConfig(aiBase, aiKey, aiModel);
+      await setAiConfigMut.mutateAsync({ baseUrl: aiBase, apiKey: aiKey, model: aiModel });
       setAiKey("");
       setMsg("Konfigurasi AI tersimpan");
-      const d = await ext.getAiConfig();
-      setAiHasKey(d.hasKey);
     } catch (e: any) { setMsg(e.message); }
   }
 
   async function savePw() {
     try {
-      await ext.changePassword(oldPw, newPw);
+      await changePasswordMut.mutateAsync({ oldPw, newPw });
       setOldPw(""); setNewPw("");
       setMsg("Password diubah");
     } catch (e: any) { setMsg(e.message); }
@@ -408,9 +446,9 @@ export default function Dashboard({ onOpen }: { onOpen: (id: string) => void }) 
                     style={{ flex: 1, border: "1px solid #d1d5db", borderRadius: 8, padding: 10, fontSize: 13, minWidth: 0 }} />
                   <button onClick={async () => {
                     try {
-                      await ext.publishTemplate(Number(pubTpl.projectId), pubTpl.name, pubTpl.description, pubTpl.category);
+                      await publishTemplateMut.mutateAsync({ projectId: Number(pubTpl.projectId), name: pubTpl.name, description: pubTpl.description, category: pubTpl.category });
                       setShowPubTpl(false); setPubTpl({ projectId: "", name: "", description: "", category: "" });
-                      loadTemplates(); setMsg("Template dipublish");
+                      setMsg("Template dipublish");
                     } catch (e: any) { alert(e.message); }
                   }} style={{ background: ORANGE, color: "#fff", border: "none", borderRadius: 8, padding: "10px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
                     Publish
@@ -470,7 +508,7 @@ export default function Dashboard({ onOpen }: { onOpen: (id: string) => void }) 
                     </button>
                     <button onClick={async () => {
                       if (!confirm("Rollback ke deployment #" + d.id + "? File proyek akan dikembalikan.")) return;
-                      await fetch(`/api/deployments/${d.id}/rollback`, { method: "POST", headers: { Authorization: "Bearer " + localStorage.getItem("wb-token") } });
+                      await rollbackMut.mutateAsync(d.id);
                       alert("Rollback selesai");
                     }} style={{ fontSize: 12, border: "1px solid #e5e7eb", background: "#fff", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontWeight: 600 }}>
                       Rollback
@@ -503,7 +541,7 @@ export default function Dashboard({ onOpen }: { onOpen: (id: string) => void }) 
             {!data ? <p>Memuat...</p> : (
               <div style={{ display: "grid", gap: 10 }}>
                 {data.domains?.map((d: any) => (
-                  <DomainRow key={d.id} d={d} onDone={() => ext.domains().then(setData)} ext={ext} />
+                  <DomainRow key={d.id} d={d} />
                 ))}
               </div>
             )}
@@ -628,27 +666,35 @@ export default function Dashboard({ onOpen }: { onOpen: (id: string) => void }) 
   );
 }
 
-function DomainRow({ d, onDone, ext }: any) {
+function DomainRow({ d }: any) {
+  const qc = useQueryClient();
   const [dns, setDns] = useState<any>(null);
   const [busy, setBusy] = useState("");
+  const verifyMut = useVerifyDomain();
+  const sslMut = useDomainSsl();
+  const delMut = useDeleteDomain();
   const card = { background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, padding: 16 };
   async function verify() {
     setBusy("verify");
     try {
-      const r = await ext.verifyDomain(d.id);
+      const r = await verifyMut.mutateAsync(d.id);
       alert(r.verified ? "Terverifikasi! " + r.detail : "Belum terverifikasi: " + r.detail);
-      onDone();
     } catch (e: any) { alert(e.message); }
     setBusy("");
   }
   async function showDns() {
-    try { setDns(await ext.domainDns(d.id)); } catch (e: any) { alert(e.message); }
+    try {
+      setDns(await qc.fetchQuery({
+        queryKey: dashboardKeys.domainDns(d.id),
+        queryFn: () => fetchDomainDns(d.id),
+      }));
+    } catch (e: any) { alert(e.message); }
   }
   async function ssl() {
     if (!confirm("Terbitkan SSL untuk " + d.domain + "?")) return;
     setBusy("ssl");
     try {
-      const r = await ext.domainSsl(d.id);
+      const r = await sslMut.mutateAsync(d.id);
       alert(r.message);
     } catch (e: any) { alert(e.message); }
     setBusy("");
@@ -662,7 +708,7 @@ function DomainRow({ d, onDone, ext }: any) {
           fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 10,
           background: d.verified ? "#dcfce7" : "#fef3c7", color: d.verified ? "#15803d" : "#b45309",
         }}>{d.verified ? "Terverifikasi" : "Belum verifikasi"}</span>
-        <button onClick={() => ext.delDomain(d.id).then(onDone)}
+        <button onClick={() => delMut.mutateAsync(d.id)}
           style={{ background: "none", border: "none", cursor: "pointer", color: "#dc2626" }}><Trash2 size={16} /></button>
       </div>
       <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
@@ -716,14 +762,8 @@ function QuotaCard({ label, used, limit }: any) {
 }
 
 function DeployPreviewModal({ pid, dep, onClose }: any) {
-  const [html, setHtml] = useState("");
-  useEffect(() => {
-    fetch(`/api/projects/${pid}/deployments/${dep.id}/files`, {
-      headers: { Authorization: "Bearer " + localStorage.getItem("wb-token") },
-    }).then((r) => r.json()).then((d) => {
-      setHtml(buildPreview(d.files || {}));
-    }).catch(() => setHtml("<p style='padding:40px'>Gagal memuat.</p>"));
-  }, []);
+  const filesQuery = useDeploymentFiles(pid, dep.id);
+  const html = filesQuery.data ? buildPreview(filesQuery.data.files || {}) : "";
   function buildPreview(files: any): string {
     const keys = Object.keys(files);
     const entry = keys.find((k) => k.includes("App.")) || keys[0];
@@ -748,7 +788,7 @@ function DeployPreviewModal({ pid, dep, onClose }: any) {
         </div>
         {html ? (
           <iframe title="preview" srcDoc={html} sandbox="allow-scripts" style={{ flex: 1, border: "none", width: "100%" }} />
-        ) : <p style={{ padding: 40, color: "#9ca3af" }}>Memuat...</p>}
+        ) : filesQuery.isError ? <p style={{ padding: 40 }}>Gagal memuat.</p> : <p style={{ padding: 40, color: "#9ca3af" }}>Memuat...</p>}
       </div>
     </div>
   );
