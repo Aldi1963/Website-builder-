@@ -1,22 +1,18 @@
 // Package browser — acceptance satu tembakan lewat MCP (Fase 2 rencana
 // docs/mcp-browser-integration-plan.md §6).
 //
-// RunAcceptance / CaptureScreenshot adalah jalur UTAMA browserAcceptance
-// dan runtimeCaptureScreenshot (server/internal/handler/runtime.go) bila
-// flag browser nyala: navigasi ke preview proyek, baca console + network,
-// lalu kembalikan struktur hasil yang SAMA dengan skrip playwright lama
-// (http, hasBody, consoleErrors, failedAppResources, sdk) supaya pemakai
-// di features.go / repair.go tidak berubah.
+// RunAcceptance / CaptureScreenshot adalah jalur browserAcceptance
+// dan runtimeCaptureScreenshot (server/internal/handler/runtime.go):
+// navigasi ke preview proyek, baca console + network, lalu kembalikan
+// struktur hasil (http, hasBody, consoleErrors, failedAppResources, sdk)
+// yang dipakai pemakai di features.go / repair.go.
 //
-// Perbedaan perilaku yang disengaja terhadap skrip lama (lihat
-// docs/mcp-spike-notes.md §6): 404 favicon.ico DIABAIKAN saat menilai
-// (bukan console error dan bukan failedAppResource) — halaman tanpa
-// favicon tidak boleh membuat acceptance gagal. Skrip lama memasukkan
-// favicon 404 ke failedAppResources dan consoleErrors (tapi bukan fatal);
-// perilaku itu dianggap bug, bukan kontrak. Parser console dipakai ulang
-// dari Trek A (ParseConsoleErrors di verify.go) supaya satu semantik di
-// paket ini: baris "Failed to load resource" juga dibuang dari
-// consoleErrors karena tidak menyebut URL dan menggabungkan beberapa
+// Perilaku penilaian yang disengaja: 404 favicon.ico DIABAIKAN saat
+// menilai (bukan console error dan bukan failedAppResource) — halaman
+// tanpa favicon tidak boleh membuat acceptance gagal. Parser console
+// dipakai ulang dari Trek A (ParseConsoleErrors di verify.go) supaya satu
+// semantik di paket ini: baris "Failed to load resource" juga dibuang
+// dari consoleErrors karena tidak menyebut URL dan menggabungkan beberapa
 // resource — kegagalan resource dinilai lewat daftar network.
 //
 // Jalur ini server-driven (bukan model-driven): pemanggilan tool di sini
@@ -45,18 +41,18 @@ import (
 // ErrAcceptanceFailed: halaman DIBUKA dan dicek, tapi TIDAK LOLOS
 // (console error fatal, resource gagal, HTTP >= 400, atau body kosong).
 // Berbeda dengan error infrastruktur (MCP/Chrome gagal start) — caller
-// (handler) WAJIB membedakan keduanya: ErrAcceptanceFailed berarti
-// JANGAN fallback ke playwright (hasilnya sudah pasti), sedangkan error
-// lain berarti MCP tidak jalan dan fallback boleh dicoba.
+// (handler) WAJIB membedakan keduanya: ErrAcceptanceFailed adalah verdict
+// final halaman, sedangkan error lain berarti MCP tidak jalan dan caller
+// harus mengembalikan error tegas (tidak ada fallback).
 var ErrAcceptanceFailed = errors.New("browser acceptance gagal")
 
-// AcceptanceTimeout adalah batas total satu acceptance (sama seperti
-// skrip playwright lama: 30 dtk).
+// AcceptanceTimeout adalah batas total satu acceptance: 30 dtk.
 const AcceptanceTimeout = 30 * time.Second
 
 // acceptanceResult adalah bentuk dalam yang dirakit dari tool MCP, lalu
-// diubah ke map[string]interface{} dengan kunci yang sama seperti skrip
-// playwright lama.
+// diubah ke map[string]interface{} dengan kunci (http, hasBody,
+// consoleErrors, failedAppResources, sdk) yang dipakai pemakai di
+// features.go / repair.go.
 type acceptanceResult struct {
 	HTTP               int                      `json:"http"`
 	HasBody            bool                     `json:"hasBody"`
@@ -75,7 +71,8 @@ type acceptanceResult struct {
 //   - sukses (lolos): (hasil, nil)
 //   - halaman tidak lolos: (map{"output": jsonHasil}, ErrAcceptanceFailed)
 //   - MCP/Chrome gagal (gating mati, Chrome tidak ada, start gagal):
-//     (map{"output": ...}, error infrastruktur) — caller boleh fallback.
+//     (map{"output": ...}, error infrastruktur) — caller mengembalikan
+//     error tegas (tidak ada fallback).
 func RunAcceptance(ctx context.Context, pageURL string) (map[string]interface{}, error) {
 	if err := ValidateURL(pageURL); err != nil {
 		return map[string]interface{}{"output": err.Error()}, err
@@ -115,8 +112,8 @@ func RunAcceptanceWithClient(ctx context.Context, client *Client, pageURL string
 		return map[string]interface{}{"output": err.Error()}, fmt.Errorf("browser: acceptance gagal navigasi ke %s: %w", pageURL, err)
 	}
 	// Beri halaman waktu menyelesaikan fetch/render awal (pengganti
-	// waitUntil networkidle di skrip lama; tool wait_for tidak dipakai
-	// supaya tidak ada ketergantungan pada skema argumennya).
+	// waitUntil networkidle; tool wait_for tidak dipakai supaya tidak ada
+	// ketergantungan pada skema argumennya).
 	select {
 	case <-ctx.Done():
 		return map[string]interface{}{"output": ctx.Err().Error()}, ctx.Err()
@@ -177,10 +174,10 @@ func RunAcceptanceWithClient(ctx context.Context, client *Client, pageURL string
 	return result, nil
 }
 
-// acceptanceFailures meniru verdict skrip playwright lama: gagal bila
-// HTTP kosong/>=400, body kosong, ada resource gagal, atau ada console
-// error. ParseConsoleErrors sudah membuang baris "Failed to load
-// resource" + favicon, jadi tiap console error di sini fatal.
+// acceptanceFailures menilai hasil acceptance: gagal bila HTTP
+// kosong/>=400, body kosong, ada resource gagal, atau ada console error.
+// ParseConsoleErrors sudah membuang baris "Failed to load resource" +
+// favicon, jadi tiap console error di sini fatal.
 func acceptanceFailures(res *acceptanceResult) []string {
 	reasons := []string{}
 	if res.HTTP == 0 || res.HTTP >= 400 {
@@ -200,7 +197,8 @@ func acceptanceFailures(res *acceptanceResult) []string {
 
 // CaptureScreenshot mengambil screenshot preview (satu tembakan, pola
 // lifecycle sama seperti RunAcceptance) dan menyimpannya ke outPath.
-// Gagal start MCP/Chrome → error (caller boleh fallback ke playwright).
+// Gagal start MCP/Chrome → error (caller mengembalikan error tegas,
+// tanpa fallback).
 func CaptureScreenshot(ctx context.Context, pageURL, outPath string) error {
 	if err := ValidateURL(pageURL); err != nil {
 		return err
@@ -415,8 +413,8 @@ func parseEvaluateResult(text string, v any) error {
 // consoleMsgRe: "msgid=2 [error] pesan (1 args)" —
 // cleanConsoleErrors membuang prefix msgid + level dan suffix "(N args)"
 // dari baris yang sudah disaring ParseConsoleErrors, supaya diagnostik
-// repair (repair.go) menerima pesan bersih seperti skrip playwright lama
-// (m.text() / pageerror tanpa prefix).
+// repair (repair.go) menerima pesan bersih (teks console / pageerror
+// tanpa prefix).
 var consoleMsgRe = regexp.MustCompile(`^msgid=\d+\s+\[\w+\]\s+(.*)$`)
 var consoleArgsSuffixRe = regexp.MustCompile(`\s*\(\d+ args?\)\s*$`)
 

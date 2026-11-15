@@ -20,6 +20,6 @@
 // `run_build` — BILA flag WEBBUILDER_ENABLE_TENANT_EXEC=1 nyala. Bila flag
 // mati, jalur lama (os.Environ() penuh) dipakai persis seperti sebelumnya.
 // Yang masih jalur lama: dev server (long-running + restart loop, adapter
-// saat ini one-shot) dan screenshot/browserAcceptance (skrip milik server,
-// bukan kode tenant). Lihat docs/isolation.md.
+// saat ini one-shot) dan screenshot/browserAcceptance (cek browser milik
+// server lewat MCP, bukan kode tenant). Lihat docs/isolation.md.
 package runtime

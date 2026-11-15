@@ -72,9 +72,10 @@ sebelumnya bila flag input mati.
   tidak ada di katalog, dan pemanggilan `browser_click` /
   `browser_fill` / `browser_fill_form` / `browser_press_key`
   ditolak `CallTool` dengan error jelas (alat tidak aktif).
-- Acceptance + screenshot kembali ke jalur playwright lama
-  (`browserAcceptancePlaywright`, deprecated — lihat
-  `docs/isolation.md` bagian "Migrasi acceptance + screenshot ke MCP").
+- Acceptance + screenshot mengembalikan error tegas (fail-closed):
+  `browserAcceptance` mengembalikan `ErrBrowserToolsDisabled`,
+  `runtimeCaptureScreenshot` mengembalikan HTTP 503. Tidak ada jalur
+  lain — jalur playwright lama sudah dihapus.
 
 ### Bila flag nyala tapi Chrome/MCP tidak tersedia — fail-closed
 
@@ -84,7 +85,7 @@ Tidak ada mode diam-diam. Yang terjadi, per jalur:
 | --- | --- |
 | Alat model-driven (katalog agent) | Pipeline mencatat error jelas di log (`agent pipeline: browser tools gagal start, lanjut tanpa alat browser`) dan agent jalan TANPA alat browser. Run tetap jalan; model tidak diberi alat yang tidak berfungsi. |
 | Loop verifikasi scripted | `VerifyPreview` mengembalikan error; loop mencatat `browser_verify` `failed` di `agent_tool_calls` dan run berhenti dengan ringkasan "Verifikasi browser tidak bisa dijalankan: …". |
-| Acceptance / screenshot satu tembakan (`RunAcceptance`, `CaptureScreenshot`) | Mengembalikan error infrastruktur (BUKAN `ErrAcceptanceFailed`) — caller (handler) boleh fallback ke playwright lama. Verdict halaman (`ErrAcceptanceFailed`) hanya keluar bila halaman benar-benar dibuka dan dicek tapi tidak lolos. |
+| Acceptance / screenshot satu tembakan (`RunAcceptance`, `CaptureScreenshot`) | Mengembalikan error infrastruktur (BUKAN `ErrAcceptanceFailed`) — caller (handler) mengembalikan error tegas ke pemanggil, tanpa fallback. Verdict halaman (`ErrAcceptanceFailed`) hanya keluar bila halaman benar-benar dibuka dan dicek tapi tidak lolos. |
 
 Pesan error selalu menyebut penyebabnya (mis. path Chrome yang
 salah ikut tercetak), supaya tidak perlu menebak.
@@ -138,7 +139,11 @@ dan `--user-data-dir` (profil Chrome per run, lihat bawah).
 `--no-sandbox` wajib di VM ini (tanpa display, user root) dan harus
 lewat `--chrome-arg=` — bukan flag server langsung.
 
-### Fallback Chromium Playwright
+### Fallback: Chromium Playwright sebagai biner Chrome MCP
+
+Bagian ini BUKAN tentang jalur skrip playwright lama (yang sudah
+dihapus) — melainkan tentang biner Chromium sebagai alternatif
+`CHROME_FOR_TESTING_PATH` untuk server MCP.
 
 Spike Fase 0 membuktikan Chromium Playwright 1243
 (`/home/hatch/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome`,
@@ -348,9 +353,9 @@ parser yang sama + `evaluate_script` (status HTTP dari navigation
 timing, panjang body, info SDK, resource gagal dari performance
 timing). Gagal bila HTTP 0/`>= 400`, body kosong, ada resource gagal,
 atau ada console error fatal. `ErrAcceptanceFailed` berarti halaman
-dibuka dan dicek tapi tidak lolos — final, TIDAK fallback ke
-playwright. Error lain berarti MCP/Chrome tidak jalan dan fallback
-boleh dicoba.
+dibuka dan dicek tapi tidak lolos — final, TANPA fallback. Error lain
+berarti MCP/Chrome tidak jalan dan caller mengembalikan error tegas
+(tidak ada fallback).
 
 ## Batas hardening (Fase 3)
 
