@@ -8,9 +8,7 @@ import (
 )
 
 // Allowlist alat MCP yang DIBUKA untuk agent (rencana §5, seluruh daftar
-// untuk Fase 2). Konstanta ini adalah daftar izin penuh; yang AKTIF di
-// Fase 1 hanya ActiveTools di bawah — alat lain tercantum di sini supaya
-// Fase 2 tinggal mengaktifkan, bukan menambah daftar baru.
+// untuk Fase 2). ActiveTools di bawah = seluruh daftar ini.
 var AllowlistTools = []string{
 	// Navigasi
 	"navigate_page", "new_page", "list_pages", "select_page", "close_page", "wait_for",
@@ -26,13 +24,13 @@ var AllowlistTools = []string{
 	"performance_stop_trace", "performance_analyze_insight",
 }
 
-// ActiveTools adalah alat yang DIEKSPOS ke agent di Fase 1: hanya satu,
-// browser_list_console_messages, yang diverifikasi end-to-end. Alat
-// allowlist lain BELUM aktif — sengaja tidak diekspos sampai Fase 2
-// (loop verifikasi) mengujinya satu per satu.
-var ActiveTools = []string{
-	"list_console_messages",
-}
+// ActiveTools adalah alat yang DIEKSPOS ke agent di Fase 2: SELURUH
+// allowlist §5. Filter Fase 1 (hanya list_console_messages) dihapus —
+// alat lain sudah diuji satu per satu lewat loop verifikasi (lihat
+// server/internal/browser/verify.go + test integrasi Chrome). Alat di
+// luar allowlist tetap tertutup: FilterAllowlist membuangnya sebelum
+// SpecsFromTools, dan CallTool menolak nama yang tidak aktif.
+var ActiveTools = append([]string{}, AllowlistTools...)
 
 var allowlistSet = func() map[string]bool {
 	m := make(map[string]bool, len(AllowlistTools))
@@ -53,8 +51,29 @@ var activeSet = func() map[string]bool {
 // IsAllowlisted melaporkan apakah nama tool MCP ada di allowlist §5.
 func IsAllowlisted(name string) bool { return allowlistSet[name] }
 
-// IsActiveTool melaporkan apakah nama tool MCP aktif di Fase 1.
+// IsActiveTool melaporkan apakah nama tool MCP aktif (Fase 2: seluruh
+// allowlist §5).
 func IsActiveTool(name string) bool { return activeSet[name] }
+
+// MissingActiveTools mengembalikan nama alat aktif yang TIDAK ada di
+// daftar tools/list server MCP. Dipakai pipeline supaya alat yang hilang
+// (mis. server MCP versi lama tanpa lighthouse_audit) dilaporkan
+// fail-closed dengan pesan jelas, bukan diam-diam hilang dari katalog.
+func MissingActiveTools(serverTools []*mcp.Tool) []string {
+	seen := make(map[string]bool, len(serverTools))
+	for _, t := range serverTools {
+		if t != nil {
+			seen[t.Name] = true
+		}
+	}
+	missing := []string{}
+	for _, name := range ActiveTools {
+		if !seen[name] {
+			missing = append(missing, name)
+		}
+	}
+	return missing
+}
 
 // FilterAllowlist membuang tool server yang tidak ada di allowlist §5.
 func FilterAllowlist(tools []*mcp.Tool) []*mcp.Tool {
@@ -67,7 +86,8 @@ func FilterAllowlist(tools []*mcp.Tool) []*mcp.Tool {
 	return out
 }
 
-// FilterActive membuang tool yang tidak aktif di Fase 1 (subset allowlist).
+// FilterActive membuang tool yang tidak aktif (subset allowlist; di
+// Fase 2 subset ini = seluruh allowlist §5).
 func FilterActive(tools []*mcp.Tool) []*mcp.Tool {
 	out := make([]*mcp.Tool, 0, len(tools))
 	for _, t := range tools {
@@ -88,9 +108,11 @@ type Spec struct {
 }
 
 // SpecsFromTools mengubah daftar tool MCP mentah menjadi katalog agent:
-// filter allowlist → filter aktif Fase 1 → prefix browser_ → konversi
-// skema (di-cap: skema yang hilang/rusak diganti objek kosong supaya
-// model tetap mendapat `properties`).
+// filter allowlist → filter aktif → prefix browser_ → konversi skema
+// (di-cap: skema yang hilang/rusak diganti objek kosong supaya model
+// tetap mendapat `properties`). Alat aktif yang tidak ada di daftar
+// server TIDAK muncul di sini — panggil MissingActiveTools untuk
+// melaporkannya (fail-closed), jangan mengarang speknya.
 func SpecsFromTools(tools []*mcp.Tool) []Spec {
 	out := []Spec{}
 	for _, t := range FilterActive(FilterAllowlist(tools)) {

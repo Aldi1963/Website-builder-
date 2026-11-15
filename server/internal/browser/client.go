@@ -189,6 +189,16 @@ func (c *Client) Started() bool {
 	return c.started
 }
 
+// WorkspaceDir mengembalikan direktori --workspace server MCP (tempat
+// file tool seperti screenshot boleh ditulis). Dipakai VerifyPreview
+// untuk menaruh screenshot di dalam workspace sebelum pipeline
+// memindahkannya ke runtime/<run-id>/screenshot-<n>.png.
+func (c *Client) WorkspaceDir() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.cfg.WorkspaceDir
+}
+
 // Close menutup sesi MCP (stdin server ditutup → SIGTERM → SIGKILL bila
 // membandel, oleh SDK), lalu menghapus profil Chrome run ini. Aman
 // dipanggil berkali-kali dan sesudah Start gagal. Dipakai via defer di
@@ -241,11 +251,11 @@ func (c *Client) ListTools(ctx context.Context) ([]*mcp.Tool, error) {
 
 // CallTool memanggil satu tool MCP (nama TANPA prefix browser_) dengan
 // argumen JSON. Timeout 30 dtk mengikuti deadline ctx pemanggil; hasil
-// di-cap 64 KiB (truncate + marker). Hanya tool Fase 1 yang aktif yang
-// boleh dipanggil; argumen "url" (bila ada) wajib lolos ValidateURL.
+// di-cap 64 KiB (truncate + marker). Hanya tool allowlist §5 yang boleh
+// dipanggil; argumen "url" (bila ada) wajib lolos ValidateURL.
 func (c *Client) CallTool(ctx context.Context, name string, args map[string]interface{}) (string, error) {
 	if !IsActiveTool(name) {
-		return "", fmt.Errorf("browser: tool %q belum aktif di Fase 1 (aktif: %s)", name, strings.Join(ActiveTools, ", "))
+		return "", fmt.Errorf("browser: tool %q tidak aktif (allowlist §5: %s)", name, strings.Join(ActiveTools, ", "))
 	}
 	if rawURL, ok := args["url"]; ok {
 		if s, ok := rawURL.(string); ok && strings.TrimSpace(s) != "" {
