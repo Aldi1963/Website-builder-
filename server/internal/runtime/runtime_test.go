@@ -213,3 +213,82 @@ func TestDefaultExecutorFallsBackToProcess(t *testing.T) {
 		t.Fatalf("nama executor tak dikenal: %q", ex.Name())
 	}
 }
+
+// Variabel proxy diteruskan TANPA userinfo (kredensial dibuang), supaya
+// npm/pnpm/pip bisa mencapai registry di host yang egress-nya lewat proxy
+// tanpa membocorkan kredensial proxy ke kode tenant. NO_PROXY (daftar host)
+// diteruskan apa adanya; URL proxy yang tidak bisa di-parse dibuang.
+func TestProcessExecutorProxyUserinfoStripped(t *testing.T) {
+	t.Setenv(EnableTenantExecEnv, "1")
+	t.Setenv("HTTPS_PROXY", "http://proxy-user:proxy-pass-123@127.0.0.1:3128")
+	t.Setenv("https_proxy", "http://proxy-user:proxy-pass-123@127.0.0.1:3128")
+	t.Setenv("NO_PROXY", "localhost,127.0.0.1")
+	ex := NewProcessExecutor(testConfig(t))
+	res, err := ex.Run(context.Background(), Command{Name: "env"})
+	if err != nil {
+		t.Fatalf("env gagal: %v", err)
+	}
+	if strings.Contains(res.Stdout, "proxy-user") || strings.Contains(res.Stdout, "proxy-pass-123") {
+		t.Fatalf("kredensial proxy bocor ke proses anak: %q", res.Stdout)
+	}
+	if !strings.Contains(res.Stdout, "HTTPS_PROXY=http://127.0.0.1:3128") {
+		t.Fatalf("HTTPS_PROXY harus diteruskan tanpa userinfo, output: %q", res.Stdout)
+	}
+	if !strings.Contains(res.Stdout, "NO_PROXY=localhost,127.0.0.1") {
+		t.Fatalf("NO_PROXY harus diteruskan apa adanya, output: %q", res.Stdout)
+	}
+	// npm TIDAK membaca HTTP_PROXY — ia membaca npm_config_https_proxy.
+	// Adapter wajib menurunkannya dari proxy yang sudah di-strip, kalau
+	// tidak `npm install` cache-dingin menggantung (koneksi langsung).
+	npmRes, err := ex.Run(context.Background(), Command{Name: "npm", Args: []string{"config", "list", "-l"}})
+	if err != nil {
+		t.Fatalf("npm config gagal: %v", err)
+	}
+	if strings.Contains(npmRes.Stdout, "proxy-pass-123") {
+		t.Fatalf("kredensial proxy bocor ke konfigurasi npm: %q", npmRes.Stdout)
+	}
+	if !strings.Contains(npmRes.Stdout, "http://127.0.0.1:3128") {
+		t.Fatalf("npm harus melihat proxy yang sudah di-strip, output: %q", npmRes.Stdout)
+	}
+}
+
+// Bundle CA (path, bukan secret) wajib diteruskan: proxy egress me-MITM TLS
+// dan Node tidak memakai system CA store — tanpa NODE_EXTRA_CA_CERTS,
+// `npm view` timeout 60 dtk (retry TLS gagal); dengan variabel ini selesai
+// ~4 dtk. Terverifikasi 2026-11-15 di VM ini.
+func TestProcessExecutorCABundlePassthrough(t *testing.T) {
+	t.Setenv(EnableTenantExecEnv, "1")
+	t.Setenv("NODE_EXTRA_CA_CERTS", "/run/hatch/egress-tls/ca-bundle.pem")
+	t.Setenv("SSL_CERT_FILE", "/run/hatch/egress-tls/ca-bundle.pem")
+	ex := NewProcessExecutor(testConfig(t))
+	res, err := ex.Run(context.Background(), Command{Name: "env"})
+	if err != nil {
+		t.Fatalf("env gagal: %v", err)
+	}
+	if !strings.Contains(res.Stdout, "NODE_EXTRA_CA_CERTS=/run/hatch/egress-tls/ca-bundle.pem") {
+		t.Fatalf("NODE_EXTRA_CA_CERTS harus diteruskan, output: %q", res.Stdout)
+	}
+	if !strings.Contains(res.Stdout, "SSL_CERT_FILE=/run/hatch/egress-tls/ca-bundle.pem") {
+		t.Fatalf("SSL_CERT_FILE harus diteruskan, output: %q", res.Stdout)
+	}
+}
+
+func TestStripProxyUserinfo(t *testing.T) {
+	cases := []struct {
+		in, want string
+		ok       bool
+	}{
+		{"http://user:pass@127.0.0.1:3128", "http://127.0.0.1:3128", true},
+		{"http://127.0.0.1:3128", "http://127.0.0.1:3128", true},
+		{"http://user@proxy.local:8080", "http://proxy.local:8080", true},
+		{"", "", false},
+		{"bukan-url", "", false},
+		{"http://", "", false},
+	}
+	for _, c := range cases {
+		got, ok := stripProxyUserinfo(c.in)
+		if ok != c.ok || got != c.want {
+			t.Fatalf("stripProxyUserinfo(%q) = (%q, %v), harapkan (%q, %v)", c.in, got, ok, c.want, c.ok)
+		}
+	}
+}

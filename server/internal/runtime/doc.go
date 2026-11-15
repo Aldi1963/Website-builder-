@@ -14,8 +14,12 @@
 //     directory terpisah di bawah base dir yang dikonfigurasi, dan capture
 //     stdout/stderr dengan batas ukuran.
 //
-// Catatan: runtime dev/preview yang sudah ada di internal/handler/runtime.go
-// (npm install/build/dev server) TIDAK memakai paket ini dan TIDAK diubah
-// oleh trek ini. Paket ini adalah fondasi agar eksekusi tenant di masa depan
-// bisa dipindah ke sini tanpa mengubah perilaku default live.
+// Catatan migrasi (2026-11-15): runtime preview lama di
+// internal/handler/runtime.go kini MEMAKAI paket ini untuk eksekusi tenant
+// satu-shot — install/build/verify/pipeline (runtimeRun) dan tool agent
+// `run_build` — BILA flag WEBBUILDER_ENABLE_TENANT_EXEC=1 nyala. Bila flag
+// mati, jalur lama (os.Environ() penuh) dipakai persis seperti sebelumnya.
+// Yang masih jalur lama: dev server (long-running + restart loop, adapter
+// saat ini one-shot) dan screenshot/browserAcceptance (skrip milik server,
+// bukan kode tenant). Lihat docs/isolation.md.
 package runtime

@@ -25,6 +25,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"gorm.io/gorm"
 	"webbuilder/internal/database/models"
+	tenantRuntime "webbuilder/internal/runtime"
 )
 
 // Runtime step 1: a per-project Node workspace for install/build verification.
@@ -115,6 +116,12 @@ func majorOf(spec string) int {
 }
 
 func runtimeRun(ctx context.Context, dir string, command string, args ...string) (string, int, error) {
+	// Migrasi isolasi: flag WEBBUILDER_ENABLE_TENANT_EXEC=1 -> perintah
+	// tenant satu-shot lewat adapter isolasi (lihat runtimeexec.go);
+	// flag mati -> jalur lama di bawah ini, persis seperti sebelum migrasi.
+	if tenantRuntime.Enabled() {
+		return runtimeRunIsolated(ctx, dir, command, args...)
+	}
 	cmd := exec.CommandContext(ctx, command, args...)
 	cmd.Dir = dir
 	// legacy_peer_deps: proyek hasil AI sering mencampur vite major & plugin
@@ -910,6 +917,11 @@ func runtimeCaptureScreenshot(db *gorm.DB) gin.HandlerFunc {
 		}
 		name := fmt.Sprintf("capture-%d.png", time.Now().UnixNano())
 		out := filepath.Join(dir, name)
+		// Screenshot SENGAJA tetap jalur lama (exec langsung), bukan adapter
+		// isolasi: skrip di bawah adalah milik server (playwright-core),
+		// bukan kode tenant — tidak ada manfaat keamanan dari migrasi, dan
+		// path Chromium/playwright-nya sudah rapuh antar host (lihat
+		// docs/isolation.md). Jangan pindahkan tanpa memperbaiki path itu dulu.
 		script := `const {chromium}=require('/home/hatch/workspace/tools/waview/node_modules/playwright-core');(async()=>{const b=await chromium.launch({headless:true,executablePath:'/home/hatch/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome',args:['--no-sandbox','--ignore-certificate-errors']});const p=await b.newPage({viewport:{width:1440,height:900}});await p.goto(process.argv[1],{waitUntil:'networkidle',timeout:20000});await p.screenshot({path:process.argv[2],fullPage:true});await b.close()})().catch(e=>{console.error(e);process.exit(1)})`
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
 		defer cancel()
@@ -997,6 +1009,19 @@ func runtimeDevStart(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(500, gin.H{"error": e.Error()})
 			return
 		}
+		// Dev server SENGAJA tetap jalur lama (exec langsung), bukan adapter
+		// isolasi: adapter saat ini one-shot (Run: timeout + output berbatas
+		// + exit code), sedangkan dev server adalah proses long-running yang
+		// diawasi — restart otomatis saat crash (lihat goroutine di bawah),
+		// log di-stream ke runtime-dev.log, dan dihentikan lewat kill grup
+		// proses. Memaksanya ke Run akan merusak desain adapter.
+		// KONSEKUENSI JUJUR: dengan flag tenant-exec nyala pun, proses dev
+		// server tetap berjalan dengan os.Environ() penuh (termasuk secret)
+		// — isolasi penuh BELUM tercapai selama dev server masih di sini.
+		// Tindak lanjut: tambah kemampuan Start/Stop (supervised process)
+		// ke paket runtime, lalu pindahkan dev server ke sana.
+		// Install bootstrap di atas (runtimeRun) SUDAH lewat adapter bila
+		// flag nyala; hanya proses dev-nya yang masih jalur lama.
 		devCommand, devArgs := runtimeDevCommand(dir, port)
 		cmd := exec.Command(devCommand, devArgs...)
 		cmd.Dir = dir
@@ -1095,6 +1120,12 @@ func runtimeDevSync(db *gorm.DB) gin.HandlerFunc {
 }
 
 func browserAcceptance(port int) (map[string]interface{}, error) {
+	// browserAcceptance SENGAJA tetap jalur lama (exec langsung), bukan
+	// adapter isolasi: sama seperti runtimeCaptureScreenshot, skrip ini
+	// milik server (playwright-core), bukan kode tenant. Path
+	// Chromium/playwright-nya hardcode per host dan sudah bermasalah di VM
+	// ini (lihat docs/isolation.md) — migrasi hanya menambah mode gagal
+	// baru tanpa manfaat keamanan.
 	script := `const {chromium}=require('/opt/webbuilder/tools/waview/node_modules/playwright-core');(async()=>{const b=await chromium.launch({headless:true,executablePath:'/root/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome',args:['--no-sandbox','--ignore-certificate-errors']});const p=await b.newPage({viewport:{width:1280,height:800}});const errors=[],failedResources=[];const origin=new URL(process.argv[1]).origin;p.on('console',m=>{if(m.type()==='error')errors.push(m.text())});p.on('pageerror',e=>errors.push('PAGEERROR: '+e.message));const isAuthProbe=u=>u.indexOf('/api/app-api/')>=0;const isExpected401=(u,s)=>s===401&&isAuthProbe(u);p.on('requestfailed',r=>{if(new URL(r.url()).origin===origin&&!isAuthProbe(r.url()))failedResources.push({url:r.url(),error:r.failure()?.errorText})});p.on('response',r=>{const u=r.url();if(new URL(u).origin===origin&&r.status()>=400&&!isExpected401(u,r.status()))failedResources.push({url:u,status:r.status()})});const r=await p.goto(process.argv[1],{waitUntil:'networkidle',timeout:20000});const body=(await p.locator('body').innerText()).trim();const sdk=await p.evaluate(async()=>{const has=typeof window.cloudAuth==='object'&&typeof window.cloudDb==='object';if(!has)return{installed:false};try{await window.cloudAuth.me();return{installed:true,loggedOut:false}}catch(e){return{installed:true,loggedOut:true}}});const out={http:r&&r.status(),hasBody:body.length>0,consoleErrors:errors.slice(0,10),failedAppResources:failedResources,sdk};console.log(JSON.stringify(out));await b.close();const fatal=errors.filter(e=>e.indexOf('Failed to load resource')<0);if(!out.http||out.http>=400||!out.hasBody||failedResources.length||fatal.length)process.exit(2)})().catch(e=>{console.error(e.message);process.exit(1)})`
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
