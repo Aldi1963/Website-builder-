@@ -112,6 +112,82 @@ dan tidak ada daemon. Karena itu:
    docker tersedia, dan perlu ditambah test integrasi `docker run` nyata
    (belum ada, karena belum bisa dijalankan di VM ini).
 
+## Migrasi runtime preview (2026-11-15)
+
+Runtime preview lama (`server/internal/handler/runtime.go`) kini memakai
+paket ini untuk eksekusi tenant **satu-shot** — `runtimeRun` (dipakai
+`runtimeInstall`, `runtimeBuild`, `runtimePipeline`, `runtimeVerify`, dan
+bootstrap install di `runtimeDevStart`) serta tool agent `run_build`
+(`server/internal/handler/agent.go`).
+
+### Perilaku berdasarkan flag
+
+| Flag `WEBBUILDER_ENABLE_TENANT_EXEC` | Perilaku |
+| --- | --- |
+| mati (default, nilai apa pun selain `"1"`) | Jalur lama persis seperti sebelum migrasi: `exec.CommandContext` dengan `os.Environ()` penuh + `CI=1` + `npm_config_*`, output `CombinedOutput` tanpa batas. Tidak ada perubahan hasil. |
+| `1` | Perintah lewat adapter (`runtime.DefaultExecutor`: Docker bila daemon ada, kalau tidak `ProcessExecutor`). Env di-scrub (allowlist + proxy tanpa kredensial, lihat bawah), output tiap stream dibatasi 1 MiB, timeout diambil dari deadline ctx pemanggil (install 4 mnt, build 3 mnt, pipeline/verify 7 mnt, `run_build` 5 mnt). |
+
+### Perbedaan hasil yang sengaja (flag nyala)
+
+- Output = stdout + stderr digabung (jalur lama: `CombinedOutput`
+  ter-interleave). Isi sama, urutan antar-stream bisa berbeda — diagnostik
+  (pencocokan substring, mis. `vite: not found`) dan tampilan tidak
+  terpengaruh.
+- Error non-nol membawa pesan `command "npm" keluar dengan status N: ...`
+  (jalur lama: `exit status N`). Pemanggil hanya memeriksa `err != nil`
+  dan menampilkan pesannya.
+- `BaseDir` adapter adalah `../runtime` (induk dari
+  `../runtime/project-<id>`); working directory di luar itu ditolak.
+
+### Variabel proxy (kenapa ada di scrub)
+
+`npm`/`pnpm`/`pip` butuh proxy untuk mencapai registry di host yang
+egress-nya lewat proxy (di VM ini akses langsung ke registry diblokir).
+Karena itu `scrubEnv` meneruskan `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`
+(+ huruf kecil) — TETAPI URL proxy diteruskan **tanpa userinfo**
+(kredensial dibuang). Di VM ini proxy tidak menuntut auth dari IP host
+(terverifikasi 2026-11-15: `curl` lewat proxy tanpa userinfo tetap 200),
+jadi install tetap jalan tanpa membocorkan kredensial proxy ke kode tenant.
+`NO_PROXY` diteruskan apa adanya (isinya hanya daftar host). Bila URL proxy
+tidak bisa di-parse, variabelnya dibuang (fail-closed).
+
+Dua jebakan yang ditemukan saat verifikasi (2026-11-15) — keduanya membuat
+`npm install` cache-dingin menggantung sampai timeout, BUKAN gagal cepat:
+
+1. **npm TIDAK membaca `HTTP_PROXY`.** Ia membaca konfigurasinya sendiri
+   (`npm_config_proxy` / `npm_config_https_proxy` / `npm_config_noproxy`),
+   jadi nilai proxy yang sudah di-strip juga ditulis ke ketiga variabel
+   itu. Tanpa ini, `npm config list` menunjukkan `proxy = null` dan npm
+   mencoba koneksi langsung yang diblokir sandbox.
+2. **Proxy egress me-MITM TLS dengan CA sendiri, dan Node tidak memakai
+   system CA store.** Tanpa `NODE_EXTRA_CA_CERTS`, Node/npm tidak bisa
+   memverifikasi sertifikat proxy — `npm view` timeout 60 dtk (retry TLS
+   gagal), dan dengan variabel ini selesai 3,7 dtk. Karena itu scrub juga
+   meneruskan `NODE_EXTRA_CA_CERTS`, `SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE`,
+   dan `CURL_CA_BUNDLE` — semuanya berupa *path* ke bundle CA, bukan
+   secret, jadi aman diteruskan. (Bukti akhir: `npm install` cache-dingin
+   lewat env yang di-scrub selesai 36 dtk + `vite build` 247 ms.)
+
+### Yang sengaja TIDAK dimigrasi
+
+- **Dev server** (`runtimeDevStart`/`runtimeDevStop`): proses long-running
+  dengan restart otomatis saat crash + log di-stream ke `runtime-dev.log`.
+  Adapter saat ini one-shot (`Run`) dan tidak punya `Start`/`Stop`.
+  **Konsekuensi jujur: dengan flag nyala pun, proses dev server tetap
+  berjalan dengan `os.Environ()` penuh (termasuk secret) — isolasi penuh
+  BELUM tercapai.** Tindak lanjut: tambah kemampuan supervised-process
+  (`Start`/`Stop`) ke paket runtime, lalu pindahkan dev server ke sana.
+  (Install bootstrap di `runtimeDevStart` SUDAH lewat adapter bila flag
+  nyala; hanya proses dev-nya yang masih jalur lama.)
+- **Screenshot** (`runtimeCaptureScreenshot`) dan **browserAcceptance**:
+  menjalankan skrip milik server (playwright-core), bukan kode tenant —
+  tidak ada manfaat keamanan dari migrasi, dan path Chromium/playwright
+  di dalamnya hardcode per host dan sudah rapuh di VM ini (lihat catatan
+  PR #10: playwright-core di `/opt/webbuilder/...` tidak ada,
+  Chromium di-hardcode ke `/root/.cache/...`).
+- `customdomain.go` (ssh infra) dan `payment.go` (binary clipkupay):
+  bukan kode tenant.
+
 ## Apa yang BELUM diisolasi (jujur)
 
 - `ProcessExecutor` **bukan sandbox kernel**: tidak ada namespace, cgroup,
@@ -121,12 +197,9 @@ dan tidak ada daemon. Karena itu:
   workspace) — untuk isolasi yang lebih kuat, pakai `DockerExecutor` bila
   daemon tersedia, atau tambahkan gVisor/Firecracker sebagai adapter
   ketiga nanti.
-- **Runtime dev/preview yang sudah ada** (`server/internal/handler/runtime.go`:
-  `npm install`/`build`/dev server/`runtimeRun`) **TIDAK diubah dan TIDAK
-  memakai paket ini** pada trek ini. Ia masih menjalankan perintah dengan
-  `os.Environ()` penuh dan tanpa batas output. Memigrasikannya ke paket ini
-  adalah pekerjaan lanjutan yang butuh keputusan koordinator, karena
-  mengubah perilaku preview yang sedang live.
+- **Dev server** masih jalur lama (lihat atas) — ini permukaan tenant yang
+  belum terisolasi. Screenshot/browserAcceptance sengaja tidak dimigrasi
+  (skrip server, bukan kode tenant).
 - Tidak ada batas CPU/memori pada `ProcessExecutor` (tidak ada cgroup);
   batas yang ada baru timeout dan batas output.
 

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"strings"
@@ -226,10 +225,10 @@ func executeAgentTool(db *gorm.DB, p *models.Project, name string, input map[str
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
-		cmd := exec.CommandContext(ctx, "npm", "run", "build")
-		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "CI=1", "npm_config_legacy_peer_deps=true")
-		out, err := cmd.CombinedOutput()
+		// Satu-shot lewat runtimeRun: flag tenant-exec nyala -> adapter
+		// isolasi, flag mati -> jalur lama (exec langsung, seperti dulu).
+		outStr, _, err := runtimeRun(ctx, dir, "npm", "run", "build")
+		out := []byte(outStr)
 		if len(out) > 12000 {
 			out = out[len(out)-12000:]
 		}
