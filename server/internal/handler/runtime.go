@@ -1293,10 +1293,10 @@ func runtimeDevPreview(db *gorm.DB) gin.HandlerFunc {
 				r.URL.Path = path
 				r.URL.RawPath = ""
 			}
-			r.URL.RawQuery = c.Request.URL.RawQuery
+			r.URL.RawQuery = stripPreviewTokenQuery(c.Request.URL.RawQuery)
 		}
 		proxy.ModifyResponse = func(resp *http.Response) error {
-			if strings.HasPrefix(resp.Header.Get("Content-Type"), "text/html") {
+			if shouldInjectPreviewBridge(resp.Header.Get("Content-Type")) {
 				body, readErr := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 				if readErr != nil {
 					return readErr
@@ -1309,6 +1309,10 @@ func runtimeDevPreview(db *gorm.DB) gin.HandlerFunc {
 				text = strings.ReplaceAll(text, `src="/`, `src="`+prefix+`/`)
 				text = strings.ReplaceAll(text, `href="/`, `href="`+prefix+`/`)
 				text = strings.ReplaceAll(text, `url(/`, `url(`+prefix+`/`)
+				// Visual editor klik-elemen: suntikkan bridge (mode pilih +
+				// pelaporan error) ke preview Live Runtime. Bridge tidak
+				// ditulis ke file proyek dan tidak ikut ke build production.
+				text = injectPreviewBridge(text)
 				body = []byte(text)
 				resp.Body = io.NopCloser(strings.NewReader(text))
 				resp.ContentLength = int64(len(body))
@@ -1322,6 +1326,27 @@ func runtimeDevPreview(db *gorm.DB) gin.HandlerFunc {
 		}
 		proxy.ServeHTTP(c.Writer, c.Request)
 	}
+}
+
+// stripPreviewTokenQuery membuang parameter ?token= (token preview
+// pv_...) dari query yang diteruskan ke Vite. Token hanya dipakai
+// auth middleware WebBuilder sebelum proxy; bila diteruskan, nilai
+// JWT yang mengandung '.' merusak deteksi ekstensi Vite untuk modul
+// .tsx (transform gagal "JSX syntax is disabled"). Parameter query
+// lain milik aplikasi diteruskan apa adanya.
+func stripPreviewTokenQuery(rawQuery string) string {
+	if rawQuery == "" {
+		return ""
+	}
+	q, err := url.ParseQuery(rawQuery)
+	if err != nil {
+		return rawQuery
+	}
+	if _, ok := q["token"]; !ok {
+		return rawQuery
+	}
+	q.Del("token")
+	return q.Encode()
 }
 
 func runtimeDevLogStream(db *gorm.DB) gin.HandlerFunc {
