@@ -12,7 +12,7 @@
 // Klik gambar membuka versi ukuran penuh di tab baru (bukan lightbox baru).
 import { useEffect, useState } from "react";
 import { getToken } from "../lib/api";
-import type { ChatVerification } from "../lib/store/builderStore";
+import type { ChatMessage, ChatVerification } from "../lib/store/builderStore";
 
 /** URL screenshot yang aman dipakai sebagai sumber gambar: hanya URL relatif
  *  same-origin ("/api/..."). URL absolut maupun protocol-relative ("//...")
@@ -42,6 +42,21 @@ export function parseResultVerification(chunk: any): ChatVerification | null {
     failedRequests: Array.isArray(v.failedRequests) ? v.failedRequests.map(String) : [],
     screenshotUrl,
   };
+}
+
+/** Normalisasi satu pesan riwayat chat (GET /projects/:id/chat) menjadi
+ *  ChatMessage untuk store. Field `verification` riwayat adalah objek JSON
+ *  yang SAMA dengan objek `verification` event SSE "result" (kontrak
+ *  backend), jadi diparse dengan parseResultVerification yang sama dengan
+ *  jalur live — kartu hasil reload IDENTIK dengan kartu sesi live,
+ *  termasuk guard attempted + screenshotUrl relatif. Pesan tanpa
+ *  verification (tidak ada/null/tidak dicoba/backend lama) tetap pesan
+ *  biasa tanpa kartu. */
+export function parseHistoryMessage(m: any): ChatMessage {
+  const verification = parseResultVerification(m);
+  return verification
+    ? { role: m.role, content: m.content, verification }
+    : { role: m.role, content: m.content };
 }
 
 export default function VerificationCard({ verification }: { verification: ChatVerification }) {
