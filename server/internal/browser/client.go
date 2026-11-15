@@ -69,11 +69,13 @@ const DefaultMCPCommand = "npx -y chrome-devtools-mcp@1.13.0"
 const CallTimeout = 30 * time.Second
 
 // MaxBrowserCallsPerRun adalah batas panggilan tool browser per run
-// (rencana §4: maks 10 panggilan browser / 5 menit per run). Dihitung
+// (rencana §4: maks 15 panggilan browser / 5 menit per run — awalnya 10,
+// dinaikkan jadi 15 atas keputusan user 15 Nov 2026 pasca-Fase 3 supaya
+// loop 2 putaran punya ruang untuk pemakaian model yang wajar). Dihitung
 // SEMUA pemanggilan CallTool + callAcceptanceTool dalam satu Client
 // (model-driven + scripted VerifyPreview + acceptance); ListTools TIDAK
 // dihitung (bukan panggilan tool). Ditegakkan reserveCall.
-const MaxBrowserCallsPerRun = 10
+const MaxBrowserCallsPerRun = 15
 
 // BrowserBudgetWindow adalah jendela budget per run: sejak panggilan
 // browser pertama run itu (rencana §4: 5 menit).
@@ -331,7 +333,7 @@ func (c *Client) validatePreviewURL(raw string) error {
 // reserveCall menghitung satu pemanggilan tool ke budget run ini
 // (rencana §4: maks MaxBrowserCallsPerRun panggilan / BrowserBudgetWindow
 // sejak panggilan pertama). Dipanggil SEBELUM pemanggilan MCP —
-// pemanggilan ke-11 atau sesudah jendela habis DITOLAK dengan error jelas
+// pemanggilan ke-16 atau sesudah jendela habis DITOLAK dengan error jelas
 // (bukan menggantung, bukan diam-diam). Yang dihitung adalah PERCOBAAN:
 // pemanggilan yang gagal di server pun menghabiskan jatah, supaya loop
 // retry tidak bisa membakar waktu run tanpa batas. Thread-safe (di bawah
@@ -508,7 +510,7 @@ func (c *Client) ListTools(ctx context.Context) ([]*mcp.Tool, error) {
 // (IsError). Hanya tool allowlist §5 yang boleh dipanggil; argumen "url"
 // (bila ada) wajib lolos validatePreviewURL (host localhost + port
 // preview yang sudah dikunci, fail-closed bila belum diketahui).
-// Setiap percobaan dihitung ke budget per run (reserveCall, maks 10
+// Setiap percobaan dihitung ke budget per run (reserveCall, maks 15
 // panggilan / 5 menit — ListTools tidak dihitung). Setiap percobaan
 // juga dicatat ke observer (metrik /metrics) — termasuk penolakan
 // allowlist/URL/budget — dengan status success/error.

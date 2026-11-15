@@ -155,7 +155,7 @@ func TestBrowserBudgetMaxCalls(t *testing.T) {
 		t.Fatalf("Start gagal: %v", err)
 	}
 	// ListTools TIDAK dihitung: panggil di tengah-tengah tanpa
-	// mengurangi jatah 10.
+	// mengurangi jatah 15.
 	for i := 0; i < MaxBrowserCallsPerRun; i++ {
 		if _, err := c.CallTool(ctx, "list_console_messages", map[string]interface{}{}); err != nil {
 			t.Fatalf("panggilan ke-%d harus lolos, dapat: %v", i+1, err)
@@ -169,17 +169,17 @@ func TestBrowserBudgetMaxCalls(t *testing.T) {
 	if got := c.BrowserCalls(); got != MaxBrowserCallsPerRun {
 		t.Fatalf("harus tepat %d panggilan terhitung, dapat %d", MaxBrowserCallsPerRun, got)
 	}
-	// Panggilan ke-11 DITOLAK dengan error jelas, bukan menggantung.
+	// Panggilan ke-16 DITOLAK dengan error jelas, bukan menggantung.
 	if _, err := c.CallTool(ctx, "list_console_messages", map[string]interface{}{}); err == nil {
-		t.Fatal("panggilan ke-11 harus ditolak budget")
-	} else if !strings.Contains(err.Error(), "budget") || !strings.Contains(err.Error(), "10") {
-		t.Fatalf("error budget harus menyebut budget + batas 10, dapat: %v", err)
+		t.Fatal("panggilan ke-16 harus ditolak budget")
+	} else if !strings.Contains(err.Error(), "budget") || !strings.Contains(err.Error(), "15") {
+		t.Fatalf("error budget harus menyebut budget + batas 15, dapat: %v", err)
 	}
 	if got := c.BrowserCalls(); got != MaxBrowserCallsPerRun {
 		t.Fatalf("panggilan ditolak tidak boleh menambah hitungan, dapat %d", got)
 	}
 	// Jalur acceptance internal memakai jatah yang SAMA (bukan budget
-	// terpisah): sesudah 10 panggilan model, acceptance juga ditolak.
+	// terpisah): sesudah 15 panggilan model, acceptance juga ditolak.
 	if _, err := c.callAcceptanceTool(ctx, "list_console_messages", map[string]interface{}{}); err == nil {
 		t.Fatal("callAcceptanceTool sesudah budget habis harus ditolak")
 	}
@@ -208,7 +208,7 @@ func TestBrowserBudgetWindowExpires(t *testing.T) {
 		t.Fatalf("panggilan di dalam jendela harus lolos: %v", err)
 	}
 	// Lewat jendela (150 mdtk sejak panggilan pertama): ditolak walau
-	// hitungan baru 2 dari 10 — jendela tidak me-reset hitungan.
+	// hitungan baru 2 dari 15 — jendela tidak me-reset hitungan.
 	now = now.Add(100 * time.Millisecond)
 	if _, err := c.CallTool(ctx, "list_console_messages", map[string]interface{}{}); err == nil {
 		t.Fatal("panggilan sesudah jendela budget harus ditolak")
