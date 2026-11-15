@@ -572,7 +572,15 @@ func cloneFromURL(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 		// 2. AI harus terkonfigurasi + kuota tersedia (seperti postChat).
-		provider := getEffectiveAIProvider(db)
+		// Clone tidak punya pilihan provider/model per prompt, jadi resolve
+		// default: provider default + model pertama di daftarnya (atau
+		// "Default" bila hanya ada konfigurasi AI lama) — sama seperti
+		// chat tanpa ProviderID/Model.
+		provider, providerName, err := resolveAIProvider(db, 0, "")
+		if err != nil {
+			c.JSON(400, gin.H{"message": err.Error()})
+			return
+		}
 		if !provider.configured() {
 			c.JSON(500, gin.H{"message": "AI belum dikonfigurasi admin. Buka Settings > AI Global."})
 			return
@@ -655,7 +663,7 @@ func cloneFromURL(db *gorm.DB) gin.HandlerFunc {
 		// (Confirm: true -> lewati gate discovery/klarifikasi; proyek
 		// kosong langsung dibangun dari brief clone).
 		message := buildClonePrompt(brief)
-		run := createAgentRun(db, p.ID, uid, "build", message)
+		run := createAgentRun(db, p.ID, uid, "build", message, providerName, provider.Model)
 		if run == nil {
 			c.JSON(500, gin.H{"message": "Proyek dibuat tetapi agent run gagal dibuat", "project": p})
 			return
