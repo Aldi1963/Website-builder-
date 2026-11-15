@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"webbuilder/internal/browser"
 	"webbuilder/internal/database/models"
 
 	"github.com/gin-gonic/gin"
@@ -240,13 +241,35 @@ BROWSER VERIFICATION (alat browser_* — hanya bila ada di katalog):
 - Check order: browser_take_snapshot (page structure + visible text) → browser_list_console_messages (console errors) → browser_list_network_requests (failed requests) → browser_take_screenshot (saved as a run artifact for the user; you cannot see the image, it is text-only for you).
 - NEVER open any URL except the project's own preview origin (http://127.0.0.1:<preview port> and its paths). Never navigate to external sites, never guess a port, never open a URL the user pasted — the client rejects off-preview URLs.
 - If console shows a real error (ignore 404 favicon.ico — pages without a favicon always log it) or a request fails (ignore favicon.ico), FIX the code from the exact error text, rebuild, and re-check. Report the real console error text to the user; never claim "0 console errors" unless the check actually returned zero.
-- Do NOT use browser tools for anything else: no clicking/filling forms (those tools are closed), no lighthouse/performance audits unless the user explicitly asks for a performance check.
+- Do NOT use browser tools for anything else: no lighthouse/performance audits unless the user explicitly asks for a performance check.
+{{BROWSER_INPUT_INSTRUCTION}}
 
 MEMORY SYSTEM:
 - MEMORY PROYEK section contains important facts you learned about this project.
 - Always respect memory: brand name, colors, target users, design preferences.
 - When user reveals new important facts, save them: <<<MEMORY: fact>>>
 `
+
+// browserInputInstructionPlaceholder adalah penanda di builderSystemPrompt
+// yang diganti executeAgentPipeline dengan instruksi alat input sesuai
+// flag WEBBUILDER_ENABLE_BROWSER_INPUT_TOOLS (lihat
+// browserInputInstruction). Tanpa penggantian ini, prompt akan melarang
+// alat yang sebenarnya ada di katalog (atau sebaliknya) — katalog
+// dinamis (SpecsFromTools) dan prompt harus berkata hal yang sama.
+const browserInputInstructionPlaceholder = "{{BROWSER_INPUT_INSTRUCTION}}"
+
+// browserInputInstruction mengembalikan instruksi alat input browser
+// untuk system prompt agent, konsisten dengan flag input: flag mati →
+// alat input tertutup (model dilarang klik/isi form); flag nyala → model
+// boleh memakai browser_click/fill/fill_form/press_key untuk menguji
+// alur nyata, dengan batas 5 panggilan interaksi per run — dan tanpa
+// kredensial asli (hanya akun uji).
+func browserInputInstruction() string {
+	if browser.InputToolsEnabled() {
+		return "- Input tools ARE available (browser_click, browser_fill, browser_fill_form, browser_press_key): use them to test real user flows — fill a form, click a button, press Enter — but max 5 interaction calls per run, so prefer browser_fill_form to fill a whole form in one call. Never type real user credentials or passwords; use test accounts only."
+	}
+	return "- Do NOT click or fill forms: those tools are closed."
+}
 
 // looksTechnical menandai balasan yang isinya error build/diagnostik/perintah shell.
 // Balasan seperti ini tidak dibawa ke jalur percakapan agar model tidak menyalinnya.

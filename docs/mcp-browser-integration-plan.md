@@ -66,7 +66,7 @@ postChat (SSE) → queue (DBQueue) → executeAgentPipeline
 - **Satu profil Chrome per run.** User-data-dir di bawah workspace run
   (`runtime/<run-id>/chrome-profile/`), dihapus setelah run selesai.
 - **Transport stdio.** Server MCP dijalankan sebagai subproses
-  (`npx -y chrome-devtools-mcp@latest` atau biner lokal), komunikasi JSON-RPC
+  (`npx -y chrome-devtools-mcp@1.13.0` atau biner lokal), komunikasi JSON-RPC
   lewat stdin/stdout. Tanpa HTTP, tanpa port tambahan, tanpa auth.
 - **Katalog dinamis.** Saat pipeline mulai, agent menanyakan daftar tool ke server
   MCP (`tools/list`), memfilter dengan allowlist (lihat §5), lalu menggabungkan
@@ -86,7 +86,7 @@ postChat (SSE) → queue (DBQueue) → executeAgentPipeline
 | Chrome | Chrome for Testing, install pin versi | Diunduh sekali via `@puppeteer/browsers` (`npx @puppeteer/browsers install chrome@stable`), path lewat env `CHROME_FOR_TESTING_PATH` / flag `--executablePath`. Chromium Playwright hanya fallback percobaan (Fase 0 membuktikan). |
 | Allowlist alat | Hanya §5 | Semua alat lain (heap snapshot, ekstensi, PWA, WebAuthn, mock network) ditutup — tidak relevan untuk acceptance dan memperbesar permukaan serangan. |
 | Gating | Flag baru `WEBBUILDER_ENABLE_BROWSER_TOOLS` (default `0`) | Terpisah dari `WEBBUILDER_ENABLE_TENANT_EXEC` supaya bisa dinyalakan sendiri; tapi browser TIDAK boleh nyala bila eksekusi tenant mati? Diputuskan di Fase 1: syaratkan keduanya nyala (browser menggerakkan hasil eksekusi tenant). |
-| Batas | Per panggilan 30 dtk; per run maks 15 panggilan browser / 5 menit (awal 10, diubah jadi 15 atas keputusan user 15 Nov 2026 pasca-Fase 3) | Mencegah run menggantung di page load / trace. Timeout mengikuti deadline ctx pemanggil seperti `runtimeRun`. |
+| Batas | Per panggilan 30 dtk; per run maks 15 panggilan browser / 5 menit (awal 10, diubah jadi 15 atas keputusan user 15 Nov 2026 pasca-Fase 3); interaksi (Fase 4) dibatasi tersendiri maks 5 panggilan per run — hanya `click`/`fill`/`fill_form`/`press_key` yang dihitung, `wait_for` tidak, dan panggilan interaksi tetap dihitung ke budget umum 15 | Mencegah run menggantung di page load / trace. Timeout mengikuti deadline ctx pemanggil seperti `runtimeRun`. |
 | Output | Cap 64 KiB per hasil tool, truncate + marker | Snapshot halaman bisa sangat besar; jangan biarkan satu tool menghabiskan konteks model. |
 | Privasi | `--no-usage-statistics` + `--no-performance-crux` selalu | MCP server ini mengumpulkan statistik pemakaian secara default; produk yang dipakai pelanggan wajib mati. Juga set env `CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS=1`, `CI=1`. |
 | Observabilitas | Catat tiap panggilan browser di `agent_tool_calls` seperti tool lain | Nama tool, durasi, status, ringkasan hasil. Screenshot dicatat sebagai artifact, bukan blob di DB. |
@@ -106,11 +106,12 @@ Dari 60+ tool `chrome-devtools-mcp`, yang dibuka:
   `performance_stop_trace`, `performance_analyze_insight`
 
 Sengaja ditutup: semua alat Memory/heap (14), Extensions (5), PWA (4), WebAuthn (1),
-Network mocks (2), WebMCP/Third-party, dan alat input `click`/`fill`/`fill_form`/
-`press_key`/`type_text`/`drag`/`hover`/`upload_file` di Fase 1–2. Interaksi
-(klik/isi form) baru dipertimbangkan di Fase 4 setelah loop baca-saja terbukti
-stabil — interaksi adalah tempat agent paling mudah menghabiskan langkah dan
-token tanpa hasil.
+Network mocks (2), WebMCP/Third-party, dan alat input `type_text`/`drag`/`hover`/
+`upload_file`. Alat input `click`/`fill`/`fill_form`/`press_key` dibuka di Fase 4
+(15 Nov 2026, PR #19) dengan flag terpisah + cap interaksi 5/run — lihat §6
+Fase 4 dan `docs/browser-tools.md` bagian "Alat input (Fase 4)". Interaksi
+(klik/isi form) baru dibuka setelah loop baca-saja terbukti stabil — interaksi
+adalah tempat agent paling mudah menghabiskan langkah dan token tanpa hasil.
 
 ## 6. Fase kerja
 
@@ -137,7 +138,7 @@ Tujuan: membuktikan asumsi paling berisiko sebelum menulis kode produksi.
    pin versi di `go.mod`/`go.sum`.
 2. Paket baru `server/internal/browser/`:
    - `client.go`: start/stop server MCP sebagai subproses stdio (command dari
-     env `CHROME_DEVTOOLS_MCP_CMD`, default `npx -y chrome-devtools-mcp@latest`),
+     env `CHROME_DEVTOOLS_MCP_CMD`, default `npx -y chrome-devtools-mcp@1.13.0`),
      flag wajib `--headless --isolated --no-usage-statistics --no-performance-crux`,
      `--executablePath` dari `CHROME_FOR_TESTING_PATH`.
      (Implementasi Fase 1: `--isolated` diganti `--user-data-dir` eksplisit per
@@ -203,19 +204,58 @@ Tujuan: membuktikan asumsi paling berisiko sebelum menulis kode produksi.
    **Kriteria selesai:** `go vet/build/test` + `-race` bersih; docs lengkap;
    tidak ada proses Chrome yatim setelah 10 run berurutan.
 
-### Fase 4 — Opsional: interaksi penuh (terpisah, butuh keputusan)
+### Fase 4 — Interaksi penuh (SELESAI 15 Nov 2026, PR #19)
 
-Buka alat input (`click`, `fill`, `fill_form`, `press_key`, `wait_for` lanjutan)
-supaya agent bisa menguji alur (isi form, klik tombol, login dengan akun uji).
-Syarat masuk: Fase 2–3 stabil + ada akun uji khusus (bukan akun user) + batas
-langkah interaksi per run. Tidak dikerjakan sebelum itu.
+Buka alat input (`click`, `fill`, `fill_form`, `press_key`) supaya
+agent bisa menguji alur (isi form, klik tombol, login dengan akun
+uji). `wait_for` BUKAN alat baru Fase 4 — ia sudah ada di allowlist
+§5 sejak awal sebagai alat tunggu. Syarat masuk (terpenuhi): Fase 2–3
+stabil + ada akun uji khusus (bukan akun user) + batas langkah
+interaksi per run.
+
+**Keputusan desain (Fase 4):**
+
+- **Flag terpisah.** Alat input dinyalakan flag sendiri,
+  `WEBBUILDER_ENABLE_BROWSER_INPUT_TOOLS` (default mati, hanya `"1"`
+  yang menyalakan). Ujung-ke-ujung di produksi ia hanya aktif bila
+  dua flag browser utama juga nyala (`WEBBUILDER_ENABLE_BROWSER_TOOLS=1` +
+  `WEBBUILDER_ENABLE_TENANT_EXEC=1`, karena klien browser hanya dibuat
+  bila keduanya `"1"`); di lapis paket browser, flag input sendiri
+  yang membuka/menutup alat input. Flag mati berarti keempat alat
+  input tidak ada di katalog agent dan ditolak `CallTool`.
+- **Cap interaksi 5/run.** Maks 5 panggilan interaksi per run —
+  hanya `click`/`fill`/`fill_form`/`press_key` yang dihitung,
+  `wait_for` tidak. Panggilan interaksi tetap dihitung ke budget umum
+  15 panggilan / 5 menit (tidak ada jatah terpisah).
+- **Fixture + kredensial dummy.** Pengujian alur memakai proyek
+  fixture + kredensial dummy saja — tanpa kredensial nyata, tanpa
+  upload/download file. Invariant keamanan Fase 3 tidak berubah:
+  allowlist URL terkunci ke port preview proyek, timeout 30 dtk per
+  panggilan, cap output 64 KiB.
+- **Yang tetap tertutup:** `type_text`, `drag`, `hover`,
+  `upload_file`, dan semua alat Memory/heap, Extensions, PWA,
+  WebAuthn, Network mocks, WebMCP/Third-party.
+
+**Batasan yang diketahui:** uji LLM-driven penuh (model memakai alat
+input end-to-end atas prompt bebas) tetap butuh kunci AI user — sama
+seperti batasan Fase 2–3. Verifikasi Fase 4 memakai skrip/test +
+fixture, bukan run LLM penuh.
+
+**Kriteria selesai:** agent dalam satu run bisa mengisi form login
+fixture (`fill_form` kredensial dummy) → klik submit (`click`) →
+snapshot sesudahnya membuktikan state berubah; cap 5 interaksi
+ditegakkan; flag input mati berarti alat input tidak ada di katalog
+dan ditolak `CallTool`. Detail operasional ada di
+`docs/browser-tools.md` bagian "Alat input (Fase 4)" dan
+"Cap interaksi (Fase 4)".
 
 ## 7. Konfigurasi baru
 
 | Env | Default | Keterangan |
 |---|---|---|
 | `WEBBUILDER_ENABLE_BROWSER_TOOLS` | `0` | Nyalakan alat browser untuk agent. |
-| `CHROME_DEVTOOLS_MCP_CMD` | `npx -y chrome-devtools-mcp@latest` | Command server MCP (boleh path biner lokal). |
+| `WEBBUILDER_ENABLE_BROWSER_INPUT_TOOLS` | `0` | Nyalakan alat input Fase 4 (`click`, `fill`, `fill_form`, `press_key`); hanya berlaku bila `WEBBUILDER_ENABLE_BROWSER_TOOLS` + `WEBBUILDER_ENABLE_TENANT_EXEC` juga nyala. |
+| `CHROME_DEVTOOLS_MCP_CMD` | `npx -y chrome-devtools-mcp@1.13.0` | Command server MCP (boleh path biner lokal). |
 | `CHROME_FOR_TESTING_PATH` | kosong (auto-detect) | Path biner Chrome for Testing. |
 | `CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS` | `1` | Matikan statistik pemakaian (wajib). |
 
@@ -254,7 +294,8 @@ langkah interaksi per run. Tidak dikerjakan sebelum itu.
 ## 11. Urutan yang disarankan
 
 Fase 0 (spike) → keputusan lanjut/berhenti → Fase 1 → Fase 2 → Fase 3.
-Fase 4 hanya bila Fase 2–3 stabil dan ada kebutuhan interaksi nyata.
+Fase 4 selesai 15 Nov 2026 (PR #19) setelah Fase 2–3 stabil dan ada
+kebutuhan interaksi nyata.
 Perkiraan total Fase 0–3: **4–6 hari kerja** (1 orang, termasuk verifikasi).
 Dikerjakan di branch `feature/mcp-browser-tools` dari main `3b09b04`, PR per fase,
 verifikasi independen tiap fase sebelum merge (pola PR #9/#10/#11).
