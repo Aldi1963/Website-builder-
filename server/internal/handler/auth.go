@@ -338,6 +338,19 @@ func authMiddleware(db *gorm.DB) gin.HandlerFunc {
 		if tok == "" {
 			tok = c.Query("token")
 		}
+		// Token preview juga diterima lewat cookie wb_preview (Path =
+		// prefix preview, diset saat dokumen preview dimuat). Import
+		// bersarang di dalam modul JS hasil transform Vite memakai URL
+		// absolut ber-prefix — browser tidak mewariskan query string
+		// dokumen ke import absolut — sehingga tanpa cookie, semua modul
+		// (React, App.tsx) ditolak 401 dan aplikasi tidak pernah render
+		// walau dokumennya 200. Cookie dikirim browser otomatis pada
+		// semua sub-request di bawah prefix itu, termasuk WebSocket HMR.
+		if tok == "" {
+			if ck, err := c.Cookie("wb_preview"); err == nil {
+				tok = ck
+			}
+		}
 		// Preview grants are short-lived and only valid for the preview proxy.
 		if strings.HasPrefix(tok, "pv_") && strings.Contains(c.Request.URL.Path, "/runtime/preview/") {
 			grant, ok := getRuntimePreviewGrant(tok)
@@ -365,6 +378,23 @@ func authMiddleware(db *gorm.DB) gin.HandlerFunc {
 		}
 		t, err := jwt.Parse(tok, func(t *jwt.Token) (interface{}, error) { return jwtSecret(), nil })
 		if err != nil || !t.Valid {
+			// Fallback cookie preview: WebSocket HMR Vite (@vite/client)
+			// mengirim ?token=<wsToken internal Vite> — BUKAN token
+			// preview — sehingga parse di atas gagal. Browser juga
+			// mengirim cookie wb_preview pada handshake WS yang sama;
+			// terima grant dari cookie itu supaya HMR lewat proxy tidak
+			// 401. Hanya berlaku di path preview, dan hanya untuk
+			// request yang sudah pasti gagal auth (tidak menurunkan
+			// auth yang valid).
+			if strings.Contains(c.Request.URL.Path, "/runtime/preview/") {
+				if ck, ckErr := c.Cookie("wb_preview"); ckErr == nil && ck != "" {
+					if grant, ok := getRuntimePreviewGrant(ck); ok {
+						c.Set("userID", grant.UserID)
+						c.Next()
+						return
+					}
+				}
+			}
 			c.JSON(401, gin.H{"message": "Sesi berakhir, login lagi"})
 			c.Abort()
 			return

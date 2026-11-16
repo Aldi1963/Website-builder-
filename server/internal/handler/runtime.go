@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -116,16 +117,45 @@ func apiBaseURL() string {
 var viteServerRe = regexp.MustCompile(`server\s*:\s*\{`)
 var viteProxyRe = regexp.MustCompile(`proxy\s*:\s*\{`)
 var viteDefineConfigRe = regexp.MustCompile(`defineConfig\(\s*\{`)
+var viteAPIEntryRe = regexp.MustCompile(`"/api"\s*:\s*\{[^}]*\}`)
+
+// viteAPIProxyEntry adalah entri proxy "/api" dev server Vite ke server
+// WebBuilder, DENGAN bypass untuk prefix preview Live Runtime.
+//
+// Tanpa bypass, permintaan dokumen preview (path
+// /api/projects/<id>/runtime/preview/...) yang diteruskan proxy preview
+// Go ke Vite langsung dipantulkan BALIK oleh Vite ke server Go —
+// karena path-nya berawalan /api dan entri proxy ini mencocokkannya —
+// TANPA token preview (token sudah di-strip Director proxy Go).
+// Server Go lalu menolak pantulan itu 401 "Sesi berakhir", Vite
+// mengembalikan 401 itu sebagai jawaban dokumen, dan iframe preview
+// kosong walau token preview-nya valid. Bypass membuat Vite melayani
+// sendiri semua request di bawah prefix preview (dokumen + aset hasil
+// transform), sementara panggilan /api milik aplikasi hasil generate
+// (cloudDb/cloudAuth) tetap di-proxy ke Go seperti biasa.
+//
+// HATI-HATI SEMANTIK BYPASS VITE 5 (terbukti dari source Vite 5.4.21 di
+// node_modules, proxyMiddleware): bypass yang mengembalikan STRING
+// menulis ulang req.url lalu memanggil next() — request dilayani Vite
+// sendiri; bypass yang mengembalikan FALSE justru dijawab Vite dengan
+// 404 KOSONG (bukan dilayani sendiri). Karena itu bypass di sini
+// mengembalikan req.url apa adanya (prefix base tetap utuh, supaya
+// transform middleware Vite yang mengharapkan base tidak 404), bukan
+// false.
+func viteAPIProxyEntry(port, previewPrefix string) string {
+	target := `"http://127.0.0.1:` + port + `"`
+	return `"/api": { target: ` + target + `, changeOrigin: true, bypass: (req) => (req.url || "").startsWith("` + previewPrefix + `") ? req.url : undefined }`
+}
 
 // viteDevProxyEntries adalah entri proxy dev server Vite ke server
 // WebBuilder: "/api" untuk cloudDb/cloudAuth, "/app-files" untuk file
 // upload (gambar dsb.) yang disajikan rute publik API. Target mengikuti
 // port listen server (bukan hardcode), sama seperti proxy /api yang
 // sudah ada sebelumnya.
-func viteDevProxyEntries(port string) []string {
+func viteDevProxyEntries(port, previewPrefix string) []string {
 	target := `"http://127.0.0.1:` + port + `"`
 	return []string{
-		`"/api": { target: ` + target + `, changeOrigin: true }`,
+		viteAPIProxyEntry(port, previewPrefix),
 		`"/app-files": { target: ` + target + `, changeOrigin: true }`,
 	}
 }
@@ -147,26 +177,43 @@ func viteDevProxyEntries(port string) []string {
 // objek proxy sudah ada (mis. hanya "/api"), entri yang kurang disisipkan
 // ke DALAM objek itu — menambah kunci "proxy:" kedua akan menimpa yang
 // pertama (di object literal JS kunci terakhir menang) dan "/api" hilang.
-func ensureViteDevProxy(s, port string) string {
+//
+// previewPrefix adalah prefix proxy preview proyek ini
+// (/api/projects/<id>/runtime/preview). Entri "/api" yang sudah ada
+// TANPA bypass — atau dengan bypass lama yang mengembalikan false
+// (di Vite 5 dijawab 404 kosong) — diganti dengan entri baru yang
+// memuat bypass benar (lihat viteAPIProxyEntry): tanpa bypass, Vite
+// memantulkan permintaan preview balik ke server Go tanpa token dan
+// preview 401.
+func ensureViteDevProxy(s, port, previewPrefix string) string {
 	missing := []string{}
-	for _, e := range viteDevProxyEntries(port) {
+	for _, e := range viteDevProxyEntries(port, previewPrefix) {
 		name := strings.SplitN(e, ":", 2)[0]
 		if !strings.Contains(s, name) {
 			missing = append(missing, e)
 		}
 	}
-	if len(missing) == 0 {
-		return s
+	if len(missing) > 0 {
+		joined := strings.Join(missing, ", ")
+		if loc := viteProxyRe.FindStringIndex(s); loc != nil {
+			s = s[:loc[1]] + " " + joined + "," + s[loc[1]:]
+		} else if loc := viteServerRe.FindStringIndex(s); loc != nil {
+			s = s[:loc[1]] + " proxy: { " + joined + " }, " + s[loc[1]:]
+		} else if loc := viteDefineConfigRe.FindStringIndex(s); loc != nil {
+			s = s[:loc[1]] + "\n  server: { proxy: { " + joined + " } }," + s[loc[1]:]
+		}
 	}
-	joined := strings.Join(missing, ", ")
-	if loc := viteProxyRe.FindStringIndex(s); loc != nil {
-		return s[:loc[1]] + " " + joined + "," + s[loc[1]:]
-	}
-	if loc := viteServerRe.FindStringIndex(s); loc != nil {
-		return s[:loc[1]] + " proxy: { " + joined + " }, " + s[loc[1]:]
-	}
-	if loc := viteDefineConfigRe.FindStringIndex(s); loc != nil {
-		return s[:loc[1]] + "\n  server: { proxy: { " + joined + " } }," + s[loc[1]:]
+	// Entri "/api" lama (tanpa bypass, atau bypass lama yang mengembalikan
+	// false — di Vite 5 itu dijawab 404 kosong, bukan dilayani sendiri):
+	// ganti dengan entri baru (target port terbaru + bypass prefix
+	// preview). Deteksi memakai entri segar persis, bukan sekadar
+	// keberadaan previewPrefix, supaya bypass lama ikut diperbarui.
+	if previewPrefix != "" {
+		if fresh := viteAPIProxyEntry(port, previewPrefix); !strings.Contains(s, fresh) {
+			if loc := viteAPIEntryRe.FindStringIndex(s); loc != nil {
+				s = s[:loc[0]] + fresh + s[loc[1]:]
+			}
+		}
 	}
 	return s
 }
@@ -234,6 +281,40 @@ func runtimeToolchain(dir string) (string, []string, []string) {
 	return "npm", []string{"install", "--ignore-scripts", "--no-audit", "--no-fund"}, []string{"run", "build"}
 }
 
+// normalizeViteConfig menerapkan SEMUA patch workspace-runtime pada
+// vite.config.ts: allowedHosts + proxy dev (ensureViteDevProxy).
+// Dipakai di dua tempat (loop file DB dan blok vite.config.ts di bawah)
+// supaya keduanya menghitung isi "yang diinginkan" yang SAMA — bila
+// hanya satu tempat yang menormalisasi, sync() berulang menulis ulang
+// file (sekali tanpa allowedHosts, sekali dengan) dan Vite restart
+// tanpa ada perubahan, membuat request iframe gagal 502.
+func normalizeViteConfig(s, port, previewPrefix string) string {
+	if !strings.Contains(s, "allowedHosts") {
+		if strings.Contains(s, "server: {") {
+			s = strings.Replace(s, "server: {", "server: { allowedHosts: true,", 1)
+		} else {
+			s = strings.Replace(s, "defineConfig({", "defineConfig({\n  server: { allowedHosts: true },", 1)
+		}
+	}
+	return ensureViteDevProxy(s, port, previewPrefix)
+}
+
+// writeFileIfChanged menulis file hanya bila isinya berbeda (atau file
+// belum ada). prepareRuntimeWorkspace dipanggil setiap sync() — tanpa
+// ini, sync() kedua dan seterusnya menulis ulang vite.config.ts dan
+// .env.local dengan isi YANG SAMA, dan Vite me-restart dev server pada
+// setiap penulisan itu. Restart yang datang sesudah poll preview
+// mendapat 200 (tetapi sebelum iframe selesai memuat) membuat request
+// iframe gagal 502 "preview runtime tidak tersedia" dan preview tetap
+// kosong. Dengan helper ini, sync() tanpa perubahan adalah no-op dan
+// Vite tidak restart.
+func writeFileIfChanged(path string, content []byte, perm os.FileMode) error {
+	if existing, err := os.ReadFile(path); err == nil && bytes.Equal(existing, content) {
+		return nil
+	}
+	return os.WriteFile(path, content, perm)
+}
+
 func runtimePnpmWebFilter(dir string) string {
 	content, err := os.ReadFile(filepath.Join(dir, "apps", "web", "package.json"))
 	if err == nil {
@@ -243,11 +324,27 @@ func runtimePnpmWebFilter(dir string) string {
 	return "web"
 }
 
-func runtimeDevCommand(dir string, port int) (string, []string) {
+// runtimePreviewBasePath adalah prefix URL proxy preview Live Runtime
+// untuk satu proyek. Dipakai sebagai --base dev server Vite (supaya semua
+// URL modul hasil transform Vite berada di bawah prefix proxy — tanpa ini
+// import absolut /src/... dan /node_modules/... lolos dari proxy, dijawab
+// SPA-fallback HTML oleh server WebBuilder, dan aplikasi tidak pernah
+// dirender) dan sebagai prefix rewrite di runtimeDevPreview.
+func runtimePreviewBasePath(pid uint) string {
+	return fmt.Sprintf("/api/projects/%d/runtime/preview", pid)
+}
+
+func runtimeDevCommand(dir string, port int, projectID uint) (string, []string) {
 	command, _, _ := runtimeToolchain(dir)
+	// Dev server Vite: --base mengunci semua URL aset/modul di bawah
+	// prefix proxy preview. HANYA untuk dev server — `npm run build`
+	// (verifikasi/publish) tidak memakai flag ini sehingga hasil build
+	// production tetap ber-base "/" seperti semula.
+	baseArgs := []string{"--base", runtimePreviewBasePath(projectID) + "/"}
 	if command == "pnpm" {
 		filter := runtimePnpmWebFilter(dir)
 		args := []string{"--filter", filter, "dev", "--host", "127.0.0.1", "--port", fmt.Sprint(port)}
+		args = append(args, baseArgs...)
 		if _, err := exec.LookPath("pnpm"); err == nil { return "pnpm", args }
 		return "npx", append([]string{"--yes", "pnpm@9.15.0"}, args...)
 	}
@@ -257,7 +354,9 @@ func runtimeDevCommand(dir string, port int) (string, []string) {
 	if command == "composer" {
 		return "php", []string{"artisan", "serve", "--host", "127.0.0.1", "--port", fmt.Sprint(port)}
 	}
-	return "npm", []string{"run", "dev", "--", "--host", "127.0.0.1", "--port", fmt.Sprint(port)}
+	args := []string{"run", "dev", "--", "--host", "127.0.0.1", "--port", fmt.Sprint(port)}
+	args = append(args, baseArgs...)
+	return "npm", args
 }
 
 func runtimeWaitReady(port int, timeout time.Duration) bool {
@@ -473,7 +572,7 @@ Environment variable lokal disimpan di file .env.local; jangan commit secret ata
 	// tidak pernah berisi credential. Vite membaca nilai ini saat dev server
 	// dimulai sehingga preview memakai konfigurasi project yang nyata.
 	activeEnv := fmt.Sprintf("VITE_APP_NAME=%s\nVITE_API_BASE_URL=\nVITE_PROJECT_ID=%d\nVITE_RUNTIME=preview\n", envSafeValue(p.Name), p.ID)
-	if err := os.WriteFile(filepath.Join(dir, ".env.local"), []byte(activeEnv), 0600); err != nil {
+	if err := writeFileIfChanged(filepath.Join(dir, ".env.local"), []byte(activeEnv), 0600); err != nil {
 		return "", err
 	}
 	for name, content := range files {
@@ -485,7 +584,17 @@ Environment variable lokal disimpan di file .env.local; jangan commit secret ata
 		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
 			return "", err
 		}
-		if err := os.WriteFile(target, []byte(content), 0644); err != nil {
+		// vite.config.ts: salinan workspace selalu membawa patch
+		// normalisasi (normalizeViteConfig) yang tidak ada di file DB.
+		// Bandingkan dengan versi TER-NORMALISASI — bukan isi DB mentah
+		// — supaya sync() berulang tidak menulis ulang dan me-restart
+		// Vite tanpa ada perubahan (restart itu membuat request iframe
+		// gagal 502).
+		desired := content
+		if clean == "vite.config.ts" {
+			desired = normalizeViteConfig(content, serverPort(), runtimePreviewBasePath(p.ID))
+		}
+		if err := writeFileIfChanged(target, []byte(desired), 0644); err != nil {
 			return "", err
 		}
 	}
@@ -568,7 +677,7 @@ Environment variable lokal disimpan di file .env.local; jangan commit secret ata
 			}
 			manifest["dependencies"] = deps
 			if encoded, marshalErr := json.MarshalIndent(manifest, "", "  "); marshalErr == nil {
-				_ = os.WriteFile(pkg, encoded, 0644)
+				_ = writeFileIfChanged(pkg, encoded, 0644)
 			}
 		}
 	}
@@ -601,7 +710,7 @@ Environment variable lokal disimpan di file .env.local; jangan commit secret ata
 	if _, err := os.Stat(viteCfg); os.IsNotExist(err) {
 		content := `import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-export default defineConfig({ plugins: [react()], server: { allowedHosts: true, proxy: { "/api": { target: "http://127.0.0.1:` + serverPort() + `", changeOrigin: true }, "/app-files": { target: "http://127.0.0.1:` + serverPort() + `", changeOrigin: true } } } });
+export default defineConfig({ plugins: [react()], server: { allowedHosts: true, proxy: { ` + viteAPIProxyEntry(serverPort(), runtimePreviewBasePath(p.ID)) + `, "/app-files": { target: "http://127.0.0.1:` + serverPort() + `", changeOrigin: true } } } });
 `
 		if err := os.WriteFile(viteCfg, []byte(content), 0644); err != nil {
 			return "", err
@@ -615,14 +724,7 @@ export default defineConfig({ plugins: [react()], server: { allowedHosts: true, 
 		// ensureViteDevProxy). Patch hanya di workspace runtime.
 		s := string(b)
 		orig := s
-		if !strings.Contains(s, "allowedHosts") {
-			if strings.Contains(s, "server: {") {
-				s = strings.Replace(s, "server: {", "server: { allowedHosts: true,", 1)
-			} else {
-				s = strings.Replace(s, "defineConfig({", "defineConfig({\n  server: { allowedHosts: true },", 1)
-			}
-		}
-		s = ensureViteDevProxy(s, serverPort())
+		s = normalizeViteConfig(s, serverPort(), runtimePreviewBasePath(p.ID))
 		if s != orig {
 			os.WriteFile(viteCfg, []byte(s), 0644)
 		}
@@ -1293,7 +1395,7 @@ func runtimeDevStart(db *gorm.DB) gin.HandlerFunc {
 		// ke paket runtime, lalu pindahkan dev server ke sana.
 		// Install bootstrap di atas (runtimeRun) SUDAH lewat adapter bila
 		// flag nyala; hanya proses dev-nya yang masih jalur lama.
-		devCommand, devArgs := runtimeDevCommand(dir, port)
+		devCommand, devArgs := runtimeDevCommand(dir, port, p.ID)
 		cmd := exec.Command(devCommand, devArgs...)
 		cmd.Dir = dir
 		cmd.Stdout = logFile
@@ -1327,7 +1429,7 @@ func runtimeDevStart(db *gorm.DB) gin.HandlerFunc {
 				if openErr != nil {
 					continue
 				}
-				devCommand, devArgs := runtimeDevCommand(runtimeDir, runtimePort)
+				devCommand, devArgs := runtimeDevCommand(runtimeDir, runtimePort, projectID)
 				next := exec.Command(devCommand, devArgs...)
 				next.Dir = runtimeDir
 				next.Stdout = logFile
@@ -1437,11 +1539,31 @@ func runtimeDevPreview(db *gorm.DB) gin.HandlerFunc {
 		}
 		// The iframe cannot attach the app Authorization header. Require the
 		// short-lived, project/user-bound preview grant instead.
-		grant, valid := getRuntimePreviewGrant(c.Query("token"))
+		previewToken := c.Query("token")
+		grant, valid := getRuntimePreviewGrant(previewToken)
+		if !valid || grant.ProjectID != p.ID || grant.UserID != c.GetUint("userID") {
+			// Fallback cookie wb_preview: WebSocket HMR Vite mengirim
+			// ?token=<wsToken internal Vite> di query — bukan token
+			// preview — sehingga grant query gagal. Coba grant dari
+			// cookie (sama seperti fallback di authMiddleware).
+			if ck, err := c.Cookie("wb_preview"); err == nil && ck != "" {
+				previewToken = ck
+				grant, valid = getRuntimePreviewGrant(previewToken)
+			}
+		}
 		if !valid || grant.ProjectID != p.ID || grant.UserID != c.GetUint("userID") {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "preview token tidak valid atau sudah kedaluwarsa"})
 			return
 		}
+		// Set cookie preview (HttpOnly, Path = prefix preview): browser
+		// mengirimkannya otomatis pada semua sub-request di bawah prefix
+		// itu — import bersarang modul JS, CSS, gambar, fetch aplikasi,
+		// WebSocket HMR — yang tidak membawa ?token= (lihat authMiddleware).
+		// Tanpa ini, modul-modul itu ditolak 401 dan aplikasi tidak render.
+		// Cookie hanya berlaku 24 jam (sama dengan masa grant) dan tidak
+		// dibaca JavaScript (HttpOnly). Header diset sebelum proxy: header
+		// yang sudah ada di ResponseWriter dipertahankan ReverseProxy.
+		c.Header("Set-Cookie", "wb_preview="+previewToken+"; Path="+runtimePreviewBasePath(p.ID)+"/; Max-Age=86400; HttpOnly; SameSite=Lax")
 		runtimeDev.Lock()
 		port := runtimeDev.ports[p.ID]
 		running := runtimeDev.items[p.ID] != nil
@@ -1452,24 +1574,27 @@ func runtimeDevPreview(db *gorm.DB) gin.HandlerFunc {
 		}
 		target, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", port))
 		proxy := httputil.NewSingleHostReverseProxy(target)
-		// Vite mengeluarkan asset absolute (/src/main.tsx, /@vite/client,
-		// /assets/*). Lepas prefix API WebBuilder sebelum meneruskan request,
-		// jika tidak Vite menganggapnya sebagai route SPA dan mengembalikan HTML
-		// untuk file JavaScript sehingga preview terlihat "tidak merespons".
-		basePath := fmt.Sprintf("/api/projects/%d/runtime/preview", p.ID)
+		// Dev server Vite dijalankan dengan --base = prefix proxy ini
+		// (runtimeDevCommand), jadi path diteruskan APA ADANYA ke Vite —
+		// JANGAN strip prefix seperti dulu: Vite membalas request "/" yang
+		// di-strip dengan 302 ke base path, dan browser mengikuti redirect
+		// itu TANPA token sehingga authMiddleware menolaknya 401 dan
+		// iframe preview kosong.
 		originalDirector := proxy.Director
 		proxy.Director = func(r *http.Request) {
 			originalDirector(r)
-			path := r.URL.Path
-			if strings.HasPrefix(path, basePath) {
-				path = strings.TrimPrefix(path, basePath)
-				if path == "" {
-					path = "/"
-				}
-				r.URL.Path = path
-				r.URL.RawPath = ""
+			// JANGAN strip ?token= pada upgrade WebSocket HMR: Vite
+			// memvalidasi token itu pada handshake (hasValidToken di
+			// createWebSocketServer — token harus sama dengan wsToken
+			// internal Vite) dan menolak tanpa token dengan 400. Token
+			// di sini adalah wsToken Vite, bukan token preview — auth
+			// Go sudah lolos lewat cookie wb_preview sebelum proxy
+			// (fallback authMiddleware). Untuk request HTTP biasa token
+			// tetap di-strip (JWT mengandung '.' yang merusak deteksi
+			// ekstensi Vite untuk modul .tsx).
+			if !strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+				r.URL.RawQuery = stripPreviewTokenQuery(c.Request.URL.RawQuery)
 			}
-			r.URL.RawQuery = stripPreviewTokenQuery(c.Request.URL.RawQuery)
 		}
 		proxy.ModifyResponse = func(resp *http.Response) error {
 			if shouldInjectPreviewBridge(resp.Header.Get("Content-Type")) {
@@ -1478,13 +1603,17 @@ func runtimeDevPreview(db *gorm.DB) gin.HandlerFunc {
 					return readErr
 				}
 				_ = resp.Body.Close()
-				prefix := basePath
+				prefix := runtimePreviewBasePath(p.ID)
 				// Vite emits root-relative module and stylesheet URLs. Prefix them
 				// so the browser requests them through this authenticated proxy.
 				text := string(body)
-				text = strings.ReplaceAll(text, `src="/`, `src="`+prefix+`/`)
-				text = strings.ReplaceAll(text, `href="/`, `href="`+prefix+`/`)
-				text = strings.ReplaceAll(text, `url(/`, `url(`+prefix+`/`)
+				// URL aset: tempeli prefix proxy bila belum ada (Vite dengan
+				// --base sudah mengeluarkannya berprefix) + tempeli token
+				// supaya sub-request top-level lolos authMiddleware.
+				// Import bersarang di DALAM modul memakai URL absolut dan
+				// tidak mewarisi query ini — ditanggung cookie wb_preview
+				// (lihat atas dan authMiddleware).
+				text = rewritePreviewAssetURLs(text, prefix, previewToken)
 				// Visual editor klik-elemen: suntikkan bridge (mode pilih +
 				// pelaporan error) ke preview Live Runtime. Bridge tidak
 				// ditulis ke file proyek dan tidak ikut ke build production.
@@ -1523,6 +1652,43 @@ func stripPreviewTokenQuery(rawQuery string) string {
 	}
 	q.Del("token")
 	return q.Encode()
+}
+
+// rewritePreviewAssetURLs menulis ulang URL aset root-relative di dokumen
+// HTML preview:
+//   - URL yang belum berprefix ditempeli prefix proxy. Dev server Vite
+//     dijalankan dengan --base prefix yang sama, jadi URL hasil transform
+//     Vite sudah berprefix dan TIDAK digandakan.
+//   - Semua URL aset ditempeli ?token= (atau &token= bila sudah punya
+//     query) supaya sub-request browser lolos authMiddleware. Tanpa ini
+//     iframe preview hanya memuat kerangka HTML sementara semua JS/CSS
+//     ditolak 401 dan aplikasi tidak pernah dirender. Import relatif di
+//     dalam modul mewarisi query string ini secara otomatis, jadi satu
+//     tempelan di dokumen utama cukup.
+func rewritePreviewAssetURLs(text, prefix, token string) string {
+	rewriteOne := func(attr, u, closer string) string {
+		if !strings.HasPrefix(u, prefix+"/") {
+			u = prefix + u
+		}
+		if token == "" {
+			return attr + u + closer
+		}
+		if strings.Contains(u, "?") {
+			return attr + u + "&token=" + url.QueryEscape(token) + closer
+		}
+		return attr + u + "?token=" + url.QueryEscape(token) + closer
+	}
+	attrRe := regexp.MustCompile(`((?:src|href)=")(/[^"]*)(")`)
+	text = attrRe.ReplaceAllStringFunc(text, func(m string) string {
+		p := attrRe.FindStringSubmatch(m)
+		return rewriteOne(p[1], p[2], p[3])
+	})
+	cssRe := regexp.MustCompile(`(url\()(/[^)]*)(\))`)
+	text = cssRe.ReplaceAllStringFunc(text, func(m string) string {
+		p := cssRe.FindStringSubmatch(m)
+		return rewriteOne(p[1], p[2], p[3])
+	})
+	return text
 }
 
 func runtimeDevLogStream(db *gorm.DB) gin.HandlerFunc {
