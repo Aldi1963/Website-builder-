@@ -1893,12 +1893,12 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
       return (
         <div key={n.path}>
           <div
-            style={{ display: "flex", alignItems: "center", gap: 0, borderRadius: 6, background: activeTab === n.path ? "#fff7ed" : "transparent" }}
+            style={{ display: "flex", alignItems: "center", gap: 0, borderRadius: 8, background: activeTab === n.path ? "#fff7ed" : "transparent" }}
             onMouseLeave={() => { if (fileMenuPath === n.path) setFileMenuPath(null); }}
           >
             <div
               onClick={() => isDir ? setExpanded((e) => ({ ...e, [n.path]: !e[n.path] })) : openFile(n.path)}
-              style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 8px", paddingLeft: 8 + depth * 14, cursor: "pointer", fontSize: 13, flex: 1, minWidth: 0 }}
+              style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 8px", paddingLeft: 8 + depth * 14, cursor: "pointer", fontSize: 13, flex: 1, minWidth: 0 }}
             >
               {isDir ? (exp ? <ChevronDown size={14} /> : <ChevronRight size={14} />) : <File size={14} style={{ color: "#9ca3af" }} />}
               {isDir && (exp ? <FolderOpen size={14} style={{ color: ORANGE }} /> : <Folder size={14} style={{ color: ORANGE }} />)}
@@ -1954,8 +1954,8 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
 
   const fileTreePanel = (
     <div style={{ width: isMobile ? 200 : 230, borderRight: "1px solid #e5e7eb", background: "#fafafa", display: "flex", flexDirection: "column", ...(isMobile ? { position: "absolute", left: 0, top: 0, bottom: 0, zIndex: 20, boxShadow: "4px 0 10px rgba(0,0,0,0.1)" } : {}) }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px" }}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: "#6b7280" }}>FILES</span>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 14px 8px" }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: ".08em" }}>FILES</span>
         <div style={{ display: "flex", gap: 4 }}>
           {canEdit && (
             <button onClick={() => { setCreatingFile(true); setNewFilePath(""); }} style={{ border: "none", background: "none", cursor: "pointer", color: ORANGE, padding: 2 }} title="File baru">
@@ -1991,14 +1991,14 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, background: "#fff" }}>
       {view === "code" && (
         <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-          <div style={{ display: "flex", borderBottom: "1px solid #e5e7eb", overflowX: "auto", background: "#fafafa", alignItems: "center" }}>
+          <div style={{ display: "flex", borderBottom: "1px solid #eef0f2", overflowX: "auto", background: "#fff", alignItems: "center" }}>
             {isMobile && !mobileTreeOpen && (
-              <button onClick={() => setMobileTreeOpen(true)} style={{ padding: "10px 12px", background: "none", border: "none", borderRight: "1px solid #e5e7eb", cursor: "pointer" }}>
+              <button onClick={() => setMobileTreeOpen(true)} style={{ padding: "10px 12px", background: "none", border: "none", borderRight: "1px solid #eef0f2", cursor: "pointer" }}>
                 <FolderOpen size={16} style={{ color: ORANGE }} />
               </button>
             )}
             {openTabs.map((t) => (
-              <div key={t} onClick={() => setActiveTab(t)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", fontSize: 13, cursor: "pointer", borderRight: "1px solid #e5e7eb", background: activeTab === t ? "#fff" : "transparent", whiteSpace: "nowrap" }}>
+              <div key={t} onClick={() => setActiveTab(t)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", fontSize: 13, fontWeight: activeTab === t ? 600 : 400, color: activeTab === t ? "#17211b" : "#64748b", cursor: "pointer", borderRight: "1px solid #eef0f2", background: activeTab === t ? "#fff" : "transparent", whiteSpace: "nowrap", boxShadow: activeTab === t ? "inset 0 -2px 0 " + ORANGE : "none" }}>
                 {t.split("/").pop()}
                 <X size={13} style={{ color: "#9ca3af" }} onClick={(e) => { e.stopPropagation(); closeTab(t); }} />
               </div>
@@ -2018,36 +2018,38 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
       )}
       {view === "preview" && (
         <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-          <div style={{ display: "flex", gap: 8, rowGap: isMobile ? 8 : 0, flexWrap: isMobile ? "wrap" : "nowrap", padding: 8, borderBottom: "1px solid #e5e7eb", background: "#fafafa", alignItems: "center" }}>
-            <div title={pipelineError || pipelineLabel} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 9px", borderRadius: 6, background: pipelinePhase === "failed" ? "#fef2f2" : pipelinePhase === "success" ? "#dcfce7" : pipelinePhase === "idle" ? "#f3f4f6" : "#fff7ed", color: pipelinePhase === "failed" ? "#b91c1c" : pipelinePhase === "success" ? "#166534" : pipelinePhase === "idle" ? "#6b7280" : "#9a3412", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>
-              <span style={{ width: 7, height: 7, borderRadius: "50%", background: "currentColor" }} /> {pipelineLabel}
+          <div style={{ display: "flex", gap: 6, rowGap: isMobile ? 6 : 0, flexWrap: isMobile ? "wrap" : "nowrap", padding: "6px 10px", borderBottom: "1px solid #e8eaed", background: "#fff", alignItems: "center" }}>
+            <div title={pipelineError || pipelineLabel} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 11px", borderRadius: 999, background: pipelinePhase === "failed" ? "#fef2f2" : pipelinePhase === "success" ? "#dcfce7" : pipelinePhase === "idle" ? "#f3f4f6" : "#fff7ed", color: pipelinePhase === "failed" ? "#b91c1c" : pipelinePhase === "success" ? "#166534" : pipelinePhase === "idle" ? "#6b7280" : "#9a3412", fontSize: 11.5, fontWeight: 700, whiteSpace: "nowrap" }}>
+              <span className={pipelinePhase !== "idle" && pipelinePhase !== "success" && pipelinePhase !== "failed" ? "wb-pulse-dot" : undefined} style={{ width: 7, height: 7, borderRadius: "50%", background: "currentColor" }} /> {pipelineLabel}
             </div>
-            <button onClick={() => setDevice("desktop")} style={{ padding: 6, border: "none", background: device === "desktop" ? "#e5e7eb" : "transparent", borderRadius: 6, cursor: "pointer" }}><Monitor size={15} /></button>
-            <button onClick={() => setDevice("tablet")} style={{ padding: 6, border: "none", background: device === "tablet" ? "#e5e7eb" : "transparent", borderRadius: 6, cursor: "pointer" }}><Tablet size={15} /></button>
-            <button onClick={() => setDevice("mobile")} style={{ padding: 6, border: "none", background: device === "mobile" ? "#e5e7eb" : "transparent", borderRadius: 6, cursor: "pointer" }}><Smartphone size={15} /></button>
+            <div style={{ display: "flex", background: "#f1f5f9", borderRadius: 999, padding: 2, gap: 2 }}>
+              <button onClick={() => setDevice("desktop")} title="Tampilan desktop" style={{ padding: 6, border: "none", background: device === "desktop" ? "#fff" : "transparent", boxShadow: device === "desktop" ? "0 1px 3px rgba(15,23,42,.14)" : "none", borderRadius: 999, cursor: "pointer", display: "flex", color: device === "desktop" ? "#17211b" : "#64748b" }}><Monitor size={15} /></button>
+              <button onClick={() => setDevice("tablet")} title="Tampilan tablet" style={{ padding: 6, border: "none", background: device === "tablet" ? "#fff" : "transparent", boxShadow: device === "tablet" ? "0 1px 3px rgba(15,23,42,.14)" : "none", borderRadius: 999, cursor: "pointer", display: "flex", color: device === "tablet" ? "#17211b" : "#64748b" }}><Tablet size={15} /></button>
+              <button onClick={() => setDevice("mobile")} title="Tampilan ponsel" style={{ padding: 6, border: "none", background: device === "mobile" ? "#fff" : "transparent", boxShadow: device === "mobile" ? "0 1px 3px rgba(15,23,42,.14)" : "none", borderRadius: 999, cursor: "pointer", display: "flex", color: device === "mobile" ? "#17211b" : "#64748b" }}><Smartphone size={15} /></button>
+            </div>
             <button onClick={() => { send("Percantik desain aplikasi ini: perbaiki spacing, tipografi, warna, tambahkan micro-interactions dan animasi halus, buat terlihat modern dan premium. Jangan ubah struktur/fitur, hanya visual."); }}
               title="Percantik desain otomatis"
-              style={{ padding: 6, border: "1px solid #e5e7eb", background: "#fff", color: "#374151", borderRadius: 6, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 }}>
+              style={{ padding: "6px 11px", border: "1px solid #e5e7eb", background: "#fff", color: "#374151", borderRadius: 999, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 }}>
               <Sparkles size={14} style={{ color: ORANGE }} /> {!isMobile && "Percantik"}
             </button>
             <button onClick={() => { setSelectMode(!selectMode); setPreviewKey((k) => k + 1); }}
               title="Klik elemen untuk edit"
-              style={{ padding: 6, border: "1px solid #e5e7eb", background: selectMode ? ORANGE : "#fff", color: selectMode ? "#fff" : "#374151", borderRadius: 6, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 }}>
+              style={{ padding: "6px 11px", border: "1px solid #e5e7eb", background: selectMode ? ORANGE : "#fff", color: selectMode ? "#fff" : "#374151", borderRadius: 999, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 }}>
               <MousePointerClick size={14} /> {selectMode ? "Klik elemen..." : "Pilih"}
             </button>
             {diagnosticsOpen && <button onClick={() => setTermOpen(!termOpen)}
               title="Tampilkan Console"
-              style={{ padding: 6, border: "1px solid #e5e7eb", background: termOpen ? ORANGE : "#fff", color: termOpen ? "#fff" : "#374151", borderRadius: 6, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 }}>
+              style={{ padding: "6px 11px", border: "1px solid #e5e7eb", background: termOpen ? ORANGE : "#fff", color: termOpen ? "#fff" : "#374151", borderRadius: 999, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 }}>
               <TerminalIcon size={14} /> Console
             </button>}
             <button onClick={() => setDiagnosticsOpen(!diagnosticsOpen)}
               title="Tools diagnostik dan log"
-              style={{ padding: 6, border: "1px solid #e5e7eb", background: diagnosticsOpen ? ORANGE : "#fff", color: diagnosticsOpen ? "#fff" : "#374151", borderRadius: 6, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 }}>
+              style={{ padding: "6px 11px", border: "1px solid #e5e7eb", background: diagnosticsOpen ? ORANGE : "#fff", color: diagnosticsOpen ? "#fff" : "#374151", borderRadius: 999, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 }}>
               <Settings size={14} /> {!isMobile && "Diagnostics"}
             </button>
             {diagnosticsOpen && <button onClick={async () => { setTermOpen(true); setTermLines((l) => [...l, "⏳ Database verification dimulai..."]); try { const d = await runtimeActions.dbVerify(); setTermLines((l) => [...l, d.status === "success" ? "✅ Database CRUD berhasil" : "❌ Database verification gagal", d.message || d.error || "", `steps: ${(d.steps || []).join(" → ")}`]); if (d.status !== "success" && d.error) setPreviewErrors((p) => [...p.slice(-4), d.error]); } catch (e: any) { setTermLines((l) => [...l, "Database error: " + (e?.message || e)]); } }}
               title="Validasi database"
-              style={{ padding: 6, border: "1px solid #e5e7eb", background: "#fff", color: "#374151", borderRadius: 6, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 }}>
+              style={{ padding: "6px 11px", border: "1px solid #e5e7eb", background: "#fff", color: "#374151", borderRadius: 999, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 }}>
               <Database size={14} /> Verify DB
             </button>}
             <button onClick={async () => {
@@ -2062,16 +2064,16 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
                 }
               } catch (e: any) { setTermOpen(true); setTermLines((l) => [...l, "❌ Runtime: " + (e?.message || e)]); }
             }} title="Jalankan preview dari runtime Node project"
-              style={{ padding: 6, border: "1px solid #e5e7eb", background: runtimeRunning ? "#dcfce7" : "#fff", color: "#374151", borderRadius: 6, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 }}>
+              style={{ padding: "6px 11px", border: "1px solid #e5e7eb", background: runtimeRunning ? "#dcfce7" : "#fff", color: "#374151", borderRadius: 999, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 }}>
               {runtimeRunning ? "Stop Runtime" : "Live Runtime"}
             </button>
             <button onClick={verifyRuntime}
               title="Install dependency dan validasi build project"
-              style={{ padding: 6, border: "1px solid #e5e7eb", background: "#fff", color: "#374151", borderRadius: 6, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 }}>
+              style={{ padding: "6px 11px", border: "1px solid #e5e7eb", background: "#fff", color: "#374151", borderRadius: 999, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 }}>
               <Check size={14} /> Verify Build
             </button>
             <div style={{ flex: 1 }} />
-            <button onClick={() => setPreviewKey((k) => k + 1)} style={{ padding: 6, border: "1px solid #e5e7eb", background: "#fff", borderRadius: 6, cursor: "pointer" }}><RefreshCw size={14} /></button>
+            <button onClick={() => setPreviewKey((k) => k + 1)} style={{ padding: 7, border: "1px solid #e5e7eb", background: "#fff", borderRadius: 10, cursor: "pointer", display: "flex", flexShrink: 0 }}><RefreshCw size={14} /></button>
           </div>
           {previewErrors.length > 0 && (
             <div style={{ background: "#fef2f2", borderBottom: "1px solid #fecaca", padding: "8px 12px" }}>
@@ -2230,13 +2232,13 @@ if (App) {
         </div>
       )}
       {view === "db" && (
-        <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 16px" }}>Database</h3>
+        <div style={{ flex: 1, overflowY: "auto", padding: 24 }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: "#17211b", margin: "0 0 16px" }}>Database</h3>
           {canEdit && (
           <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
             <input value={newTable} onChange={(e) => setNewTable(e.target.value)} placeholder="Nama tabel"
-              style={{ flex: 1, minWidth: 0, border: "1px solid #d1d5db", borderRadius: 8, padding: "8px 12px", fontSize: 13 }} />
-            <button onClick={createTable} style={{ background: ORANGE, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13, flexShrink: 0 }}>Buat</button>
+              style={{ flex: 1, minWidth: 0, border: "1px solid #d1d5db", borderRadius: 999, padding: "8px 14px", fontSize: 13 }} />
+            <button onClick={createTable} style={{ background: ORANGE, color: "#fff", border: "none", borderRadius: 999, padding: "8px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13, flexShrink: 0 }}>Buat</button>
           </div>
           )}
           {tables.map((t) => (
@@ -2280,27 +2282,27 @@ if (App) {
   // Tombol aksi input chat — di mobile tampil di baris sendiri (wrap), di desktop sebaris
   const chatActionButtons = (
     <>
-      <label title="Upload file/gambar" style={{ padding: 10, borderRadius: 8, border: "1px solid #e5e7eb", cursor: "pointer", display: "flex", background: "#fff", flexShrink: 0 }}>
-        <Plus size={15} style={{ color: "#6b7280" }} />
+      <label title="Upload file/gambar" style={{ padding: 9, borderRadius: 10, border: "1px solid transparent", cursor: "pointer", display: "flex", background: "transparent", flexShrink: 0 }}>
+        <Plus size={16} style={{ color: "#6b7280" }} />
         <input type="file" hidden accept="image/*,.txt,.md,.json,.js,.ts,.tsx,.jsx,.css,.html" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile(f); e.target.value = ""; }} />
       </label>
       {!isMobile && <>
       <button onClick={() => setGenImgOpen(true)} title="Generate gambar AI"
-        style={{ padding: 10, borderRadius: 8, border: "1px solid #e5e7eb", cursor: "pointer", background: "#fff", display: "flex", flexShrink: 0 }}>
-        <ImageIcon size={15} style={{ color: "#6b7280" }} />
+        style={{ padding: 9, borderRadius: 10, border: "1px solid transparent", cursor: "pointer", background: "transparent", display: "flex", flexShrink: 0 }}>
+        <ImageIcon size={16} style={{ color: "#6b7280" }} />
       </button>
       </>}
       {!isMobile && <button onClick={toggleListening} title={listening ? "Sedang mendengarkan..." : "Bicara prompt (Voice Input)"} 
-        style={{ padding: 10, borderRadius: 8, border: listening ? "1px solid #ef4444" : "1px solid #e5e7eb", cursor: "pointer", background: listening ? "#fef2f2" : "#fff", display: "flex", flexShrink: 0 }}>
-        {listening ? <MicOff size={15} style={{ color: "#ef4444" }} /> : <Mic size={15} style={{ color: "#6b7280" }} />}
+        style={{ padding: 9, borderRadius: 10, border: listening ? "1px solid #ef4444" : "1px solid transparent", cursor: "pointer", background: listening ? "#fef2f2" : "transparent", display: "flex", flexShrink: 0 }}>
+        {listening ? <MicOff size={16} style={{ color: "#ef4444" }} /> : <Mic size={16} style={{ color: "#6b7280" }} />}
       </button>}
       {isMobile && <button onClick={toggleListening} title={listening ? "Sedang mendengarkan..." : "Bicara prompt"}
-        style={{ padding: 10, borderRadius: 8, border: listening ? "1px solid #ef4444" : "1px solid #e5e7eb", cursor: "pointer", background: listening ? "#fef2f2" : "#fff", display: "flex", flexShrink: 0 }}>
-        {listening ? <MicOff size={15} style={{ color: "#ef4444" }} /> : <Mic size={15} style={{ color: "#6b7280" }} />}
+        style={{ padding: 9, borderRadius: 10, border: listening ? "1px solid #ef4444" : "1px solid transparent", cursor: "pointer", background: listening ? "#fef2f2" : "transparent", display: "flex", flexShrink: 0 }}>
+        {listening ? <MicOff size={16} style={{ color: "#ef4444" }} /> : <Mic size={16} style={{ color: "#6b7280" }} />}
       </button>}
       {!isMobile && <button onClick={enhance} disabled={enhancing || !input.trim()} title="Enhance prompt"
-        style={{ padding: 10, borderRadius: 8, border: "1px solid #e5e7eb", cursor: "pointer", background: "#fff", fontSize: 13, flexShrink: 0 }}>
-        {enhancing ? "..." : <Sparkles size={15} style={{ color: "#6b7280" }} />}
+        style={{ padding: 9, borderRadius: 10, border: "1px solid transparent", cursor: "pointer", background: "transparent", fontSize: 13, flexShrink: 0 }}>
+        {enhancing ? "..." : <Sparkles size={16} style={{ color: "#6b7280" }} />}
       </button>}
     </>
   );
@@ -2338,18 +2340,18 @@ if (App) {
   );
 
   const chatPanel = (
-    <div className="wb-chat-panel" style={{ width: isMobile ? "100%" : 390, height: "100%", minHeight: 0, borderRight: isMobile ? "none" : "1px solid #e5e7eb", display: "flex", flexDirection: "column", background: "#fff", overflow: "hidden", flexShrink: 0 }}>
-      <div style={{ padding: "10px 12px", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", gap: 8 }}>
-        <div style={{ width: 26, height: 26, borderRadius: 8, background: "#fff7ed", border: "1px solid #fed7aa", display: "flex", alignItems: "center", justifyContent: "center" }}>
+    <div className="wb-chat-panel" style={{ width: isMobile ? "100%" : 400, height: "100%", minHeight: 0, borderRight: isMobile ? "none" : "1px solid #e8eaed", display: "flex", flexDirection: "column", background: "#fff", overflow: "hidden", flexShrink: 0 }}>
+      <div style={{ padding: isMobile ? "8px 10px" : "10px 14px", minHeight: 52, borderBottom: "1px solid #eef0f2", display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ width: 28, height: 28, borderRadius: 9, background: "#fff7ed", border: "1px solid #fed7aa", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
           <Sparkles size={14} style={{ color: ORANGE }} />
         </div>
-        <div style={{ minWidth: 0 }}>
-          <strong style={{ display: "block", fontSize: 14 }}>AI Builder</strong>
-          <span style={{ display: "block", fontSize: 10, color: "#64748b" }}>Bangun dan perbaiki aplikasi lewat chat</span>
+        <div style={{ minWidth: 0, flexShrink: 0 }}>
+          <strong style={{ display: "block", fontSize: 14, fontWeight: 700, color: "#17211b" }}>AI Builder</strong>
+          {!isMobile && <span style={{ display: "block", fontSize: 10, color: "#64748b" }}>Bangun dan perbaiki aplikasi lewat chat</span>}
         </div>
-        <span style={{ fontSize: 10, fontWeight: 700, color: pipelinePhase === "success" ? "#15803d" : pipelinePhase === "failed" ? "#b91c1c" : "#64748b", background: pipelinePhase === "success" ? "#dcfce7" : pipelinePhase === "failed" ? "#fee2e2" : "#f1f5f9", borderRadius: 12, padding: "4px 8px", whiteSpace: "nowrap" }}>{pipelineLabel}</span>
+        <span style={{ fontSize: 11, fontWeight: 700, color: pipelinePhase === "success" ? "#15803d" : pipelinePhase === "failed" ? "#b91c1c" : "#64748b", background: pipelinePhase === "success" ? "#dcfce7" : pipelinePhase === "failed" ? "#fee2e2" : "#f1f5f9", borderRadius: 999, padding: "4px 9px", whiteSpace: "nowrap", flexShrink: 0 }}>{pipelineLabel}</span>
         <div style={{ flex: 1 }} />
-        <select value={mode} onChange={(e) => setMode(e.target.value)} style={{ fontSize: 12, border: "1px solid #e5e7eb", borderRadius: 6, padding: "4px 8px" }}>
+        <select value={mode} onChange={(e) => setMode(e.target.value)} style={{ fontSize: 12, fontWeight: 600, color: "#374151", border: "1px solid #e5e7eb", borderRadius: 999, padding: "5px 8px", background: "#f8fafc", flexShrink: 0 }}>
           <option value="build">Build</option>
           <option value="ask">Ask</option>
           <option value="plan">Plan</option>
@@ -2359,12 +2361,12 @@ if (App) {
         </select>
       </div>
       {(pipelinePhase !== "idle" || agentRun) && (
-        <div style={{ padding: "9px 12px", borderBottom: "1px solid #f1f5f9", background: agentRun?.status === "failed" || pipelinePhase === "failed" ? "#fff7f7" : "#fffdf9" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 7 }}>
-            <span style={{ fontSize: 10, fontWeight: 800, color: pipelinePhase === "failed" ? "#b91c1c" : pipelinePhase === "success" ? "#166534" : ORANGE, textTransform: "uppercase", letterSpacing: ".04em" }}>Progress aplikasi</span>
+        <div style={{ padding: "10px 14px", borderBottom: "1px solid #eef0f2", background: agentRun?.status === "failed" || pipelinePhase === "failed" ? "#fff7f7" : "#fffdf9" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+            <span style={{ fontSize: 10, fontWeight: 800, color: pipelinePhase === "failed" ? "#b91c1c" : pipelinePhase === "success" ? "#166534" : ORANGE, textTransform: "uppercase", letterSpacing: ".06em" }}>Progress aplikasi</span>
             <span style={{ fontSize: 10, color: "#64748b" }}>{pipelinePhase === "success" ? "Selesai" : pipelinePhase === "failed" ? "Terhenti" : "Sedang berjalan"}</span>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 4 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
             {[["sync", "File"], ["install-build", "Aplikasi"], ["database", "Data"], ["runtime", "Siap"]].map(([phase, label]) => {
               const order = ["sync", "install-build", "migration", "database", "runtime", "success"];
               const current = order.indexOf(pipelinePhase);
@@ -2372,8 +2374,8 @@ if (App) {
               const done = pipelinePhase === "success" || (current >= 0 && target >= 0 && current > target);
               const active = pipelinePhase === phase || (phase === "database" && pipelinePhase === "migration");
               return <div key={phase} style={{ minWidth: 0 }}>
-                <div style={{ height: 4, borderRadius: 4, background: done ? "#22c55e" : active ? ORANGE : "#e2e8f0" }} />
-                <div style={{ marginTop: 4, fontSize: 9, color: done ? "#15803d" : active ? "#c2410c" : "#94a3b8", fontWeight: active || done ? 700 : 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{done ? "✓ " : active ? "● " : "○ "}{label}</div>
+                <div style={{ height: 5, borderRadius: 999, background: done ? "#22c55e" : active ? ORANGE : "#e2e8f0" }} />
+                <div style={{ marginTop: 5, fontSize: 10, color: done ? "#15803d" : active ? "#c2410c" : "#94a3b8", fontWeight: active || done ? 700 : 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{done ? "✓ " : active ? "● " : "○ "}{label}</div>
               </div>;
             })}
           </div>
@@ -2385,16 +2387,16 @@ if (App) {
           {diagnosticsOpen && agentTools.length > 0 && <div style={{ marginTop: 7, maxHeight: 100, overflowY: "auto", borderTop: "1px solid #f1f5f9", paddingTop: 5 }}>{agentTools.map((tool) => <div key={tool.id} style={{ display: "flex", gap: 6, fontSize: 10, lineHeight: 1.5, color: tool.status === "failed" ? "#b91c1c" : "#475569" }}><span>{tool.status === "success" ? "✓" : tool.status === "failed" ? "!" : "●"}</span><span>{tool.tool}</span><span style={{ color: "#94a3b8" }}>{tool.phase}</span></div>)}</div>}
         </div>
       )}
-      <div ref={msgsRef} style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", overscrollBehavior: "contain", padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
+      <div ref={msgsRef} style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", overscrollBehavior: "contain", padding: "16px 14px", display: "flex", flexDirection: "column", gap: 16 }}>
         {msgs.length === 0 && (
           <div style={{ margin: "auto 0", padding: "20px 8px", textAlign: "center" }}>
-            <div style={{ width: 48, height: 48, margin: "0 auto 12px", borderRadius: 14, background: "#fff7ed", border: "1px solid #fed7aa", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <Sparkles size={24} style={{ color: ORANGE }} />
+            <div style={{ width: 44, height: 44, margin: "0 auto 12px", borderRadius: 12, background: "#fff7ed", border: "1px solid #fed7aa", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Sparkles size={22} style={{ color: ORANGE }} />
             </div>
-            <strong style={{ display: "block", fontSize: 16, color: "#0f172a", marginBottom: 6 }}>Apa yang ingin kamu bangun?</strong>
-            <p style={{ margin: "0 auto", maxWidth: 280, color: "#64748b", fontSize: 12, lineHeight: 1.5 }}>Jelaskan ide, pengguna, dan fitur utama. AI akan menyusun rencana, menulis kode, menjalankan build, dan menyiapkan preview.</p>
-            <div style={{ marginTop: 14, textAlign: "left" }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", marginBottom: 8 }}>Mulai dengan contoh:</div>
+            <strong style={{ display: "block", fontSize: 16, fontWeight: 700, color: "#17211b", marginBottom: 6 }}>Apa yang ingin kamu bangun?</strong>
+            <p style={{ margin: "0 auto", maxWidth: 280, color: "#64748b", fontSize: 12, lineHeight: 1.6 }}>Jelaskan ide, pengguna, dan fitur utama. AI akan menyusun rencana, menulis kode, menjalankan build, dan menyiapkan preview.</p>
+            <div style={{ marginTop: 16, textAlign: "left" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 8 }}>Mulai dengan contoh:</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
                 {[
                   "Buatkan aplikasi kasir (POS) dengan login, produk, transaksi, dan laporan",
@@ -2402,7 +2404,7 @@ if (App) {
                   "Buatkan dashboard admin dengan data pengguna dan statistik",
                   "Buatkan aplikasi booking jadwal dengan kalender",
                 ].map((text) => (
-                  <button key={text} onClick={() => send(text)} style={{ border: "1px solid #F6821F", background: "#fff7ed", borderRadius: 999, padding: "7px 12px", textAlign: "left", color: "#9a3412", fontSize: 11, cursor: "pointer" }}>{text}</button>
+                  <button key={text} onClick={() => send(text)} style={{ border: "1px solid #fed7aa", background: "#fff7ed", borderRadius: 999, padding: "8px 12px", textAlign: "left", color: "#9a3412", fontSize: 12, lineHeight: 1.4, cursor: "pointer" }}>{text}</button>
                 ))}
               </div>
             </div>
@@ -2411,7 +2413,7 @@ if (App) {
         {msgs.map((m, i) => {
           const badges = m.role === "assistant" ? parseFileBadges(m.content) : [];
           return (
-            <div key={i} style={{ alignSelf: m.role === "user" ? "flex-end" : "flex-start", background: m.role === "user" ? ORANGE : "#ffffff", color: m.role === "user" ? "#fff" : "#1e293b", border: m.role === "assistant" ? "1px solid #e2e8f0" : "none", borderRadius: 14, padding: 14, maxWidth: "94%", fontSize: 13, wordBreak: "break-word", lineHeight: "1.5", boxShadow: m.role === "assistant" ? "0 2px 12px rgba(0,0,0,0.03)" : "none" }}>
+            <div key={i} style={{ alignSelf: m.role === "user" ? "flex-end" : "flex-start", background: m.role === "user" ? ORANGE : "#ffffff", color: m.role === "user" ? "#fff" : "#1e293b", border: m.role === "assistant" ? "1px solid #e9edf0" : "none", borderRadius: m.role === "user" ? "16px 16px 6px 16px" : "16px 16px 16px 6px", padding: m.role === "user" ? "10px 14px" : 14, maxWidth: m.role === "user" ? "88%" : "96%", fontSize: 13, wordBreak: "break-word", lineHeight: "1.55", boxShadow: m.role === "assistant" ? "0 1px 2px rgba(15,23,42,.04)" : "0 1px 3px rgba(246,130,31,.25)" }}>
               {m.role === "user" ? (
                 <>
                   <div style={{ whiteSpace: "pre-wrap" }}>{m.content}</div>
@@ -2464,7 +2466,7 @@ if (App) {
           );
         })}
         {streaming && (
-          <div style={{ alignSelf: "flex-start", width: "95%", background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 14, padding: 14, boxShadow: "0 4px 16px rgba(0,0,0,0.04)" }}>
+          <div style={{ alignSelf: "flex-start", width: "96%", background: "#ffffff", border: "1px solid #e9edf0", borderRadius: "16px 16px 16px 6px", padding: 14, boxShadow: "0 1px 2px rgba(15,23,42,.04)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, paddingBottom: 10, borderBottom: "1px solid #f1f5f9" }}>
               <div style={{ width: 28, height: 28, borderRadius: 8, background: "#fff7ed", border: "1px solid #fed7aa", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <Sparkles size={16} style={{ color: ORANGE }} />
@@ -2472,7 +2474,7 @@ if (App) {
               <div>
                 <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", display: "flex", alignItems: "center", gap: 6 }}>
                   <span>{aiActivity}</span>
-                  <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: ORANGE }} />
+                  <span className="wb-pulse-dot" style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: ORANGE }} />
                 </div>
                 <div style={{ fontSize: 11, color: "#64748b" }}>{pipelinePhase === "idle" ? "Membaca instruksi dan menyiapkan rencana" : pipelinePhase === "sync" ? "Menyinkronkan file project ke runtime" : pipelinePhase === "install-build" ? "Menjalankan npm install dan npm run build" : pipelinePhase === "migration" ? "Menerapkan schema database project" : pipelinePhase === "database" ? "Memeriksa koneksi dan kesiapan database" : pipelinePhase === "runtime" ? "Menunggu Vite Live Runtime siap" : pipelinePhase === "success" ? "Project siap dilihat di Preview" : "Menganalisa error untuk auto-fix"}</div>
               </div>
@@ -2499,8 +2501,8 @@ if (App) {
           </div>
         )}
         {selfTestStatus === "testing" && (
-          <div style={{ alignSelf: "flex-start", display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#9a3412", background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 16, padding: "6px 12px", fontWeight: 600 }}>
-            <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: ORANGE }} />
+          <div style={{ alignSelf: "flex-start", display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#9a3412", background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 999, padding: "7px 12px", fontWeight: 600 }}>
+            <span className="wb-pulse-dot" style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: ORANGE }} />
             AI mengetes hasil...
           </div>
         )}
@@ -2512,13 +2514,13 @@ if (App) {
         )}
       </div>
       {quota && quotaRemaining !== null && (
-        <div style={{ padding: "6px 12px", borderTop: "1px solid #e5e7eb", background: quotaExhausted ? "#fef2f2" : "#fff", fontSize: 12, color: quotaExhausted ? "#b91c1c" : "#64748b", display: "flex", alignItems: "center", gap: 8 }}>
-          <span>✦ Kredit tersisa: {quotaRemaining.toLocaleString("id-ID")}</span>
-          <small>{quota.plan || "free"}</small>
-          {quotaExhausted && <span style={{ marginLeft: "auto", fontWeight: 700 }}>Kredit habis — upgrade paket untuk lanjut</span>}
+        <div style={{ padding: "8px 14px", borderTop: "1px solid #eef0f2", background: quotaExhausted ? "#fef2f2" : "#fbfcf9", fontSize: 12, color: quotaExhausted ? "#b91c1c" : "#64748b", display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+          <span style={{ whiteSpace: "nowrap", color: "#17211b", fontWeight: 600 }}><span style={{ color: ORANGE }}>✦</span> <b>{quotaRemaining.toLocaleString("id-ID")}</b> kredit tersisa</span>
+          <span style={{ fontSize: 10, fontWeight: 700, color: "#64748b", background: "#fff", border: "1px solid #e5e7eb", borderRadius: 999, padding: "2px 8px", whiteSpace: "nowrap", textTransform: "uppercase", letterSpacing: ".04em", flexShrink: 0 }}>{quota.plan || "free"}</span>
+          {quotaExhausted && <span title="Kredit habis — upgrade paket untuk lanjut" style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, color: "#b91c1c", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Kredit habis — upgrade untuk lanjut</span>}
         </div>
       )}
-      <div style={{ padding: isMobile ? "7px 8px calc(7px + env(safe-area-inset-bottom))" : 10, borderTop: "1px solid #e5e7eb", background: "#fff", position: "relative", flexShrink: 0 }}>
+      <div style={{ padding: isMobile ? "8px 10px calc(8px + env(safe-area-inset-bottom))" : 12, borderTop: "1px solid #eef0f2", background: "#fff", position: "relative", flexShrink: 0 }}>
         {/* Slash Command Menu Popup */}
         {input.startsWith("/") && (
           <div style={{ position: "absolute", bottom: "100%", left: 10, right: 10, marginBottom: 6, background: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, boxShadow: "0 4px 20px rgba(0,0,0,0.12)", maxHeight: 200, overflowY: "auto", zIndex: 50, padding: 4 }}>
@@ -2575,11 +2577,11 @@ if (App) {
             <X size={13} style={{ cursor: "pointer" }} onClick={() => setAttachedFile(null)} />
           </div>
         )}
-        <div style={{ border: "1px solid #dbe3ee", borderRadius: 14, padding: isMobile ? 6 : 8, background: "#fff", boxShadow: "0 4px 18px rgba(15,23,42,0.06)" }}>
+        <div className="wb-composer" style={{ border: "1px solid #e2e8f0", borderRadius: 16, padding: isMobile ? 6 : 8, background: "#fff", boxShadow: "0 1px 3px rgba(15,23,42,.05)" }}>
           {aiProviders.length > 0 && (
             <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
               <select aria-label="Provider AI" value={selectedProviderId} onChange={(e) => applyAISelection(Number(e.target.value), "")} title="Provider AI untuk prompt ini"
-                style={{ fontSize: 12, border: "1px solid #e5e7eb", borderRadius: 6, padding: "4px 6px", maxWidth: "42%", background: "#fff", color: "#0f172a" }}>
+                style={{ fontSize: 12, fontWeight: 600, border: "1px solid #e5e7eb", borderRadius: 8, padding: "5px 8px", maxWidth: "42%", background: "#f8fafc", color: "#0f172a" }}>
                 {aiProviders.map((p) => <option key={p.id} value={p.id}>{p.name}{p.isDefault ? " (default)" : ""}</option>)}
               </select>
               {(() => {
@@ -2587,14 +2589,14 @@ if (App) {
                 if (p && p.models.length > 0) {
                   return (
                     <select aria-label="Model AI" value={p.models.includes(selectedModel) ? selectedModel : p.models[0]} onChange={(e) => applyAISelection(selectedProviderId, e.target.value)} title="Model AI untuk prompt ini"
-                      style={{ flex: 1, minWidth: 0, fontSize: 12, border: "1px solid #e5e7eb", borderRadius: 6, padding: "4px 6px", background: "#fff", color: "#0f172a" }}>
+                      style={{ flex: 1, minWidth: 0, fontSize: 12, border: "1px solid #e5e7eb", borderRadius: 8, padding: "5px 8px", background: "#f8fafc", color: "#0f172a" }}>
                       {p.models.map((m) => <option key={m} value={m}>{m}</option>)}
                     </select>
                   );
                 }
                 return (
                   <input aria-label="Model AI" value={selectedModel} onChange={(e) => applyAISelection(selectedProviderId, e.target.value)} placeholder="Nama model (mis. cx/gpt-5.6-luna)"
-                    style={{ flex: 1, minWidth: 0, fontSize: 12, border: "1px solid #e5e7eb", borderRadius: 6, padding: "4px 8px", outline: "none" }} />
+                    style={{ flex: 1, minWidth: 0, fontSize: 12, border: "1px solid #e5e7eb", borderRadius: 8, padding: "5px 8px", outline: "none" }} />
                 );
               })()}
             </div>
@@ -2619,26 +2621,27 @@ if (App) {
             style={{
               flex: 1,
               minWidth: 0,
-              border: listening ? "2px solid #ef4444" : "1px solid #d1d5db",
+              border: "none",
               borderRadius: 8,
-              padding: "8px 10px",
-              fontSize: 13,
+              padding: "6px 8px",
+              fontSize: 14,
               fontFamily: "inherit",
               resize: "none",
               maxHeight: 120,
               outline: "none",
               boxSizing: "border-box",
-              lineHeight: "1.4",
+              lineHeight: "1.5",
+              background: "transparent",
             }}
           />
-          <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 6 }}>
             {!isMobile && chatActionButtons}
-            {isMobile && <div style={{ display: "flex", gap: 4 }}>{chatActionButtons}</div>}
-            {!isMobile && <span style={{ flex: 1, fontSize: 10, color: "#94a3b8" }}>Enter untuk mengirim · Shift+Enter untuk baris baru</span>}
+            {isMobile && <div style={{ display: "flex", gap: 2 }}>{chatActionButtons}</div>}
+            {!isMobile && <span style={{ flex: 1, fontSize: 11, color: "#94a3b8" }}>Enter untuk mengirim · Shift+Enter untuk baris baru</span>}
             {isMobile && <span style={{ flex: 1 }} />}
             <button id="wb-send-btn" onClick={() => send()} disabled={streaming || !input.trim() || !canEdit || quotaExhausted}
-            style={{ background: ORANGE, color: "#fff", border: "none", borderRadius: 8, padding: 10, cursor: "pointer", display: "flex", flexShrink: 0 }}>
-            <Send size={15} />
+            style={{ background: ORANGE, color: "#fff", border: "none", borderRadius: "50%", width: 38, height: 38, padding: 0, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: "0 2px 6px rgba(246,130,31,.35)" }}>
+            <Send size={16} />
           </button>
           </div>
         </div>
@@ -2647,31 +2650,35 @@ if (App) {
   );
 
   return (
-    <div className="wb-shell" style={{ display: "flex", flexDirection: "column", height: "100vh", background: "#f8fafc", fontFamily: "system-ui", overflowX: "clip", maxWidth: "100vw" }}>
+    <div className="wb-shell" style={{ display: "flex", flexDirection: "column", height: "100vh", background: "#f7f8f4", fontFamily: "system-ui", overflowX: "clip", maxWidth: "100vw" }}>
       <style>{`
         .wb-shell { color: #0f172a; }
-        .wb-shell button { transition: background .15s ease, border-color .15s ease, transform .15s ease; }
+        .wb-shell button { transition: background .15s ease, border-color .15s ease, transform .15s ease, box-shadow .15s ease; }
         .wb-shell button:hover:not(:disabled) { border-color: #cbd5e1 !important; }
         .wb-shell button:active:not(:disabled) { transform: translateY(1px); }
+        .wb-shell button:focus-visible { outline: 2px solid rgba(246,130,31,.55); outline-offset: 1px; }
         .wb-chat-panel { box-shadow: 8px 0 28px rgba(15,23,42,.04); }
         .wb-shell textarea:focus { border-color: #f6821f !important; box-shadow: 0 0 0 3px rgba(246,130,31,.12); }
         .wb-shell ::-webkit-scrollbar { width: 7px; height: 7px; }
         .wb-shell ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 99px; }
         .wb-shell ::-webkit-scrollbar-track { background: transparent; }
+        .wb-composer:focus-within { border-color: #f6821f !important; box-shadow: 0 0 0 3px rgba(246,130,31,.12); }
+        @keyframes wb-pulse-dot { 0%, 100% { opacity: .3; transform: scale(.8); } 50% { opacity: 1; transform: scale(1); } }
+        .wb-pulse-dot { animation: wb-pulse-dot 1.1s ease-in-out infinite; }
         @media (max-width: 767px) {
           .wb-shell { background: #fff; }
           .wb-chat-panel { box-shadow: none; }
           .wb-shell textarea { min-height: 58px; font-size: 15px !important; }
         }
       `}</style>
-      <div style={{ position: "sticky", top: 0, zIndex: 40, background: "#fff", display: "flex", alignItems: "center", gap: 8, rowGap: isMobile ? 8 : 0, flexWrap: isMobile ? "wrap" : "nowrap", padding: "10px 12px", borderBottom: "1px solid #e5e7eb", overflowX: "clip" }}>
-        <button onClick={onBack} style={{ background: "none", border: "1px solid #e5e7eb", borderRadius: 8, padding: 8, cursor: "pointer", display: "flex", flexShrink: 0 }}>
-          <ArrowLeft size={16} />
+      <div style={{ position: "sticky", top: 0, zIndex: 40, background: "#fff", display: "flex", alignItems: "center", gap: 10, height: 56, flexShrink: 0, padding: "0 12px 0 10px", borderBottom: "1px solid #e8eaed", overflowX: "clip" }}>
+        <button onClick={onBack} aria-label="Kembali" style={{ background: "none", border: "1px solid transparent", borderRadius: 10, padding: 8, cursor: "pointer", display: "flex", flexShrink: 0, color: "#374151" }}>
+          <ArrowLeft size={17} />
         </button>
-        <strong style={{ fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{project.name}</strong>
-        {!isMobile && <span style={{ fontSize: 11, color: "#6b7280", background: "#f3f4f6", padding: "2px 8px", borderRadius: 12, flexShrink: 0 }}>{project.framework}</span>}
+        <strong style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-0.01em", color: "#17211b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{project.name}</strong>
+        {!isMobile && <span style={{ fontSize: 11, fontWeight: 600, color: "#4b5563", background: "#f3f4f6", padding: "3px 9px", borderRadius: 999, flexShrink: 0 }}>{project.framework}</span>}
         {myRole !== "owner" && (
-          <span style={{ fontSize: 10, fontWeight: 700, color: ORANGE, background: "#fff7ed", padding: "3px 8px", borderRadius: 12, flexShrink: 0, textTransform: "uppercase" }}>{myRole}</span>
+          <span style={{ fontSize: 10, fontWeight: 700, color: ORANGE, background: "#fff7ed", padding: "3px 8px", borderRadius: 999, flexShrink: 0, textTransform: "uppercase" }}>{myRole}</span>
         )}
         <div style={{ flex: 1, minWidth: 4 }} />
         {canEdit && (
@@ -2683,13 +2690,13 @@ if (App) {
               void send();
             }
           }} title="Kirim instruksi dan jalankan pipeline aplikasi"
-            style={{ background: ORANGE, color: "#fff", border: "none", borderRadius: 8, padding: "8px 11px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+            style={{ background: ORANGE, color: "#fff", border: "none", borderRadius: 999, padding: isMobile ? 9 : "9px 16px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 13, fontWeight: 700, flexShrink: 0, boxShadow: "0 1px 3px rgba(246,130,31,.35)" }}>
             <Sparkles size={15} /> {!isMobile && (input.trim() ? "Buat / Perbaiki" : "Mulai Buat")}
           </button>
         )}
         {!isMobile && <button onClick={() => setShowComments(!showComments)} title="Komentar"
-          style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8, padding: 8, cursor: "pointer", display: "flex", flexShrink: 0, position: "relative" }}>
-          <MessageSquare size={16} style={{ color: "#6b7280" }} />
+          style={{ background: "none", border: "1px solid transparent", borderRadius: 10, padding: 8, cursor: "pointer", display: "flex", flexShrink: 0, position: "relative" }}>
+          <MessageSquare size={17} style={{ color: "#6b7280" }} />
           {comments.filter((c) => !c.resolved).length > 0 && (
             <span style={{ position: "absolute", top: -4, right: -4, background: "#dc2626", color: "#fff", fontSize: 9, fontWeight: 700, borderRadius: 10, padding: "1px 5px" }}>
               {comments.filter((c) => !c.resolved).length}
@@ -2698,29 +2705,29 @@ if (App) {
         </button>}
         {myRole === "owner" && (
           <>
-          <button onClick={doSecurityScan} title="Jalankan security scan (tanpa publish)" style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8, padding: 8, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, flexShrink: 0, color: "#374151" }}>
+          <button onClick={doSecurityScan} title="Jalankan security scan (tanpa publish)" style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 999, padding: isMobile ? 8 : "8px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, flexShrink: 0, color: "#374151" }}>
             <ShieldCheck size={16} />
             {!isMobile && (runScanMut.isPending ? "Memindai..." : "Scan")}
           </button>
-          <button onClick={doPublish} title="Publish" style={{ background: ORANGE, color: "#fff", border: "none", borderRadius: 8, padding: 8, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, flexShrink: 0 }}>
+          <button onClick={doPublish} title="Publish" style={{ background: ORANGE, color: "#fff", border: "none", borderRadius: 999, padding: isMobile ? 8 : "8px 14px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, flexShrink: 0, boxShadow: "0 1px 3px rgba(246,130,31,.35)" }}>
             <Rocket size={16} />
             {!isMobile && (publishing ? "Publishing..." : "Publish")}
           </button>
           </>
         )}
-        <button onClick={() => setWorkspaceMenuOpen(!workspaceMenuOpen)} title="Tools proyek" style={{ background: workspaceMenuOpen ? "#fff7ed" : "#fff", border: "1px solid #e5e7eb", borderRadius: 8, padding: 8, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "#374151", flexShrink: 0 }}>
+        <button onClick={() => setWorkspaceMenuOpen(!workspaceMenuOpen)} title="Tools proyek" style={{ background: workspaceMenuOpen ? "#fff7ed" : "#fff", border: "1px solid #e5e7eb", borderRadius: 999, padding: isMobile ? 8 : "8px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 600, color: "#374151", flexShrink: 0 }}>
           <Settings size={16} /> {!isMobile && "Lainnya"}
         </button>
         {workspaceMenuOpen && canEdit && (
         <>
-        <button onClick={loadVersions} title="Riwayat versi / Undo" style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8, padding: 8, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#374151", flexShrink: 0 }}>
+        <button onClick={loadVersions} title="Riwayat versi / Undo" style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 999, padding: isMobile ? 8 : "8px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#374151", flexShrink: 0 }}>
           <History size={16} />
           {!isMobile && "Riwayat"}
         </button>
-        <button onClick={loadBlueprint} title="Blueprint / Rencana AI" style={{ background: "#fff7ed", border: "1px solid #fed7aa", color: "#c2410c", borderRadius: 8, padding: 8, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+        <button onClick={loadBlueprint} title="Blueprint / Rencana AI" style={{ background: "#fff7ed", border: "1px solid #fed7aa", color: "#c2410c", borderRadius: 999, padding: isMobile ? 8 : "8px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
           <Sparkles size={15} /> {!isMobile && "Blueprint"}
         </button>
-        <button onClick={loadProjectSettings} title="Pengaturan proyek" style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8, padding: 8, cursor: "pointer", display: "flex", flexShrink: 0 }}>
+        <button onClick={loadProjectSettings} title="Pengaturan proyek" style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: 8, cursor: "pointer", display: "flex", flexShrink: 0 }}>
           <Settings size={16} style={{ color: "#6b7280" }} />
         </button>
         <button
@@ -2730,24 +2737,24 @@ if (App) {
             } catch (e: any) { alert("Gagal download ZIP: " + e.message); }
           }}
           title="Export Project ZIP (Download Source Code)"
-          style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8, padding: 8, cursor: "pointer", display: "flex", flexShrink: 0 }}
+          style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: 8, cursor: "pointer", display: "flex", flexShrink: 0 }}
         >
           <Download size={16} style={{ color: "#6b7280" }} />
         </button>
-        <button onClick={loadGitHub} title="GitHub Sync" style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8, padding: 8, cursor: "pointer", display: "flex", flexShrink: 0 }}>
+        <button onClick={loadGitHub} title="GitHub Sync" style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: 8, cursor: "pointer", display: "flex", flexShrink: 0 }}>
           <Github size={16} style={{ color: "#6b7280" }} />
         </button>
         </>
         )}
         {!isMobile && (
-          <div style={{ display: "flex", border: "1px solid #e5e7eb", borderRadius: 8, overflow: "hidden" }}>
-            <button onClick={() => setView("code")} style={{ padding: "8px 14px", border: "none", cursor: "pointer", background: view === "code" ? ORANGE : "#fff", color: view === "code" ? "#fff" : "#374151", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+          <div style={{ display: "flex", background: "#f1f5f9", borderRadius: 999, padding: 3, gap: 2 }}>
+            <button onClick={() => setView("code")} style={{ padding: "7px 14px", border: "none", cursor: "pointer", borderRadius: 999, background: view === "code" ? "#fff" : "transparent", color: view === "code" ? "#17211b" : "#64748b", boxShadow: view === "code" ? "0 1px 3px rgba(15,23,42,.14)" : "none", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
               <Code2 size={14} /> Kode
             </button>
-            <button onClick={() => { setView("preview"); setPreviewKey((k) => k + 1); }} style={{ padding: "8px 14px", border: "none", cursor: "pointer", background: view === "preview" ? ORANGE : "#fff", color: view === "preview" ? "#fff" : "#374151", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+            <button onClick={() => { setView("preview"); setPreviewKey((k) => k + 1); }} style={{ padding: "7px 14px", border: "none", cursor: "pointer", borderRadius: 999, background: view === "preview" ? "#fff" : "transparent", color: view === "preview" ? "#17211b" : "#64748b", boxShadow: view === "preview" ? "0 1px 3px rgba(15,23,42,.14)" : "none", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
               <Play size={14} /> Preview
             </button>
-            <button onClick={() => setView("db")} style={{ padding: "8px 14px", border: "none", cursor: "pointer", background: view === "db" ? ORANGE : "#fff", color: view === "db" ? "#fff" : "#374151", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+            <button onClick={() => setView("db")} style={{ padding: "7px 14px", border: "none", cursor: "pointer", borderRadius: 999, background: view === "db" ? "#fff" : "transparent", color: view === "db" ? "#17211b" : "#64748b", boxShadow: view === "db" ? "0 1px 3px rgba(15,23,42,.14)" : "none", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
               <Database size={14} /> Database
             </button>
           </div>
@@ -2761,19 +2768,19 @@ if (App) {
       </div>
 
       {isMobile && (
-        <div ref={navRef} style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 50, display: "flex", borderTop: "1px solid #e5e7eb", background: "#fff", paddingBottom: "env(safe-area-inset-bottom)", boxSizing: "border-box", maxWidth: "100vw" }}>
+        <div ref={navRef} style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 50, display: "flex", borderTop: "1px solid #eef0f2", background: "#fff", paddingBottom: "env(safe-area-inset-bottom)", boxSizing: "border-box", maxWidth: "100vw", boxShadow: "0 -1px 8px rgba(15,23,42,.04)" }}>
           {[["chat", "Chat", MessageSquare], ["code", "Build", Code2], ["preview", "Preview", Play], ["db", "Data", Database]].map(([id, label, Icon]: any) => (
             <button key={id} onClick={() => { setMobileTab(id); if (id === "preview") { setView("preview"); setPreviewKey((k) => k + 1); } else if (id === "db") { setView("db"); } else if (id === "code") setView("code"); }}
-              style={{ flex: "1 1 0", minWidth: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 2, padding: "8px 0", border: "none", background: "none", cursor: "pointer", color: mobileTab === id ? ORANGE : "#6b7280", fontSize: 11, fontWeight: mobileTab === id ? 700 : 400 }}>
-              <Icon size={18} />{label}
+              style={{ flex: "1 1 0", minWidth: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "7px 0 8px", border: "none", background: "none", cursor: "pointer", color: mobileTab === id ? ORANGE : "#94a3b8", fontSize: 10.5, fontWeight: mobileTab === id ? 700 : 500 }}>
+              <Icon size={20} />{label}
             </button>
           ))}
         </div>
       )}
 
       {!isMobile && (
-        <div style={{ display: "flex", alignItems: "center", padding: "6px 12px", borderTop: "1px solid #e5e7eb", background: "#fafafa" }}>
-          <button onClick={() => setTermOpen(!termOpen)} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, padding: "6px 10px", borderRadius: 6, border: "none", cursor: "pointer", background: termOpen ? "#e5e7eb" : "transparent" }}>
+        <div style={{ display: "flex", alignItems: "center", padding: "5px 12px", borderTop: "1px solid #eef0f2", background: "#fff" }}>
+          <button onClick={() => setTermOpen(!termOpen)} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, padding: "6px 10px", borderRadius: 8, border: "none", cursor: "pointer", background: termOpen ? "#f1f5f9" : "transparent" }}>
             <TerminalIcon size={13} /> Terminal
           </button>
           <span style={{ fontSize: 12, color: "#9ca3af", marginLeft: 8 }}>{Object.keys(files).length} file</span>
