@@ -414,7 +414,7 @@ export default function Dashboard({ onOpen }: { onOpen: (id: string) => void }) 
               <div className="wb-dash-head-actions">
                 <span className="wb-project-count">{projects.length} project</span>
                 <button className="wb-dash-new-btn" onClick={focusCreate}
-                  style={{ background: ORANGE, color: "#fff", border: "none", borderRadius: 8, padding: "10px 18px", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
+                  style={{ background: ORANGE, color: "#fff", border: "none", padding: "10px 18px", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
                   <Plus size={16} /> Proyek baru
                 </button>
               </div>
@@ -438,7 +438,7 @@ export default function Dashboard({ onOpen }: { onOpen: (id: string) => void }) 
               </p>
             )}
             <div className="wb-create-grid">
-            <div style={{ ...card }}>
+            <div className="wb-create-card" style={{ ...card }}>
               <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 12px" }}>Buat proyek baru</h3>
               <div style={{ display: "flex", gap: 8, maxWidth: "100%" }}>
                 <input id="wb-new-project-name" ref={nameInputRef} placeholder="Nama proyek" value={name} onChange={(e) => setName(e.target.value)}
@@ -449,7 +449,7 @@ export default function Dashboard({ onOpen }: { onOpen: (id: string) => void }) 
                 </button>
               </div>
             </div>
-            <div style={{ ...card }}>
+            <div className="wb-create-card" style={{ ...card }}>
               <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 4px" }}>Clone dari URL</h3>
               <p style={{ margin: "0 0 12px", color: "#69736b", fontSize: 13 }}>
                 Tempel URL website publik — AI membangun ulang struktur &amp; tampilannya sebagai proyek React yang bisa diedit lewat chat. Konten ditulis ulang, bukan disalin mentah-mentah; robots.txt dihormati.
@@ -467,35 +467,35 @@ export default function Dashboard({ onOpen }: { onOpen: (id: string) => void }) 
             </div>
             </div>
             {loading ? <p>Memuat...</p> : projects.length === 0 && sharedProjects.length === 0 ? (
-              <div style={{ ...card, borderStyle: "dashed", textAlign: "center", padding: "48px 24px" }}>
+              <div className="wb-empty" style={{ ...card, borderStyle: "dashed", textAlign: "center", padding: "48px 24px" }}>
                 <div className="wb-empty-icon"><Rocket size={28} /></div>
                 <h3 style={{ fontSize: 20, fontWeight: 800, color: "#111827", margin: "0 0 6px" }}>Mulai bangun aplikasimu</h3>
                 <p style={{ color: "#6b7280", fontSize: 14, margin: "0 0 24px", lineHeight: 1.5 }}>
                   Deskripsikan aplikasi yang kamu inginkan, dan AI akan membangunnya untukmu dalam hitungan detik.
                 </p>
-                <div style={{ display: "flex", gap: 8, maxWidth: 500, margin: "0 auto 20px" }}>
+                <div className="wb-empty-quick">
                   <input
                     value={quickStart}
                     onChange={(e) => setQuickStart(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && handleQuickStart()}
                     placeholder="Contoh: buat aplikasi todo list yang keren..."
-                    style={{ flex: 1, border: "2px solid #e5e7eb", borderRadius: 10, padding: "11px 14px", fontSize: 14, outline: "none" }}
-                    onFocus={(e) => (e.target.style.borderColor = ORANGE)}
-                    onBlur={(e) => (e.target.style.borderColor = "#e5e7eb")}
+                    aria-label="Deskripsi aplikasi yang ingin dibuat"
+                    style={{ flex: 1, border: "none", borderRadius: 8, padding: "10px 12px", fontSize: 14, outline: "none", minWidth: 0 }}
                   />
                   <button
                     onClick={() => handleQuickStart()}
-                    style={{ background: ORANGE, color: "#fff", border: "none", borderRadius: 10, padding: "11px 20px", fontWeight: 700, cursor: "pointer", fontSize: 14, whiteSpace: "nowrap" }}
+                    style={{ background: ORANGE, color: "#fff", border: "none", borderRadius: 999, padding: "11px 20px", fontWeight: 700, cursor: "pointer", fontSize: 14, whiteSpace: "nowrap" }}
                   >
                     Buat →
                   </button>
                 </div>
+                <p className="wb-empty-label">Mulai dengan contoh:</p>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center" }}>
                   {["Landing page startup", "Aplikasi manajemen tugas", "Dashboard analytics", "Toko online sederhana", "Blog personal", "Form registrasi"].map((t) => (
                     <button
                       key={t}
                       onClick={() => handleQuickStart(t)}
-                      style={{ border: "1px solid #e5e7eb", background: "#f9fafb", borderRadius: 20, padding: "6px 14px", fontSize: 13, cursor: "pointer", color: "#374151" }}
+                      style={{ border: "1px solid #F6821F", background: "#fff7ed", borderRadius: 999, padding: "7px 12px", fontSize: 11, fontWeight: 600, cursor: "pointer", color: "#9a3412" }}
                     >
                       {t}
                     </button>
