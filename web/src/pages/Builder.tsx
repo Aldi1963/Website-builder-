@@ -1953,7 +1953,7 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
   const showTree = view === "code" && (!isMobile || (mobileTab === "code" && mobileTreeOpen));
 
   const fileTreePanel = (
-    <div style={{ width: isMobile ? 200 : 230, borderRight: "1px solid #e5e7eb", background: "#fafafa", display: "flex", flexDirection: "column", ...(isMobile ? { position: "absolute", left: 0, top: 0, bottom: 0, zIndex: 20, boxShadow: "4px 0 10px rgba(0,0,0,0.1)" } : {}) }}>
+    <div style={{ width: isMobile ? 200 : 230, borderRight: "1px solid #eef0f2", background: "#fbfcf9", display: "flex", flexDirection: "column", ...(isMobile ? { position: "absolute", left: 0, top: 0, bottom: 0, zIndex: 20, boxShadow: "4px 0 10px rgba(0,0,0,0.1)" } : {}) }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 14px 8px" }}>
         <span style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: ".08em" }}>FILES</span>
         <div style={{ display: "flex", gap: 4 }}>
@@ -1998,7 +1998,7 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
               </button>
             )}
             {openTabs.map((t) => (
-              <div key={t} onClick={() => setActiveTab(t)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", fontSize: 13, fontWeight: activeTab === t ? 600 : 400, color: activeTab === t ? "#17211b" : "#64748b", cursor: "pointer", borderRight: "1px solid #eef0f2", background: activeTab === t ? "#fff" : "transparent", whiteSpace: "nowrap", boxShadow: activeTab === t ? "inset 0 -2px 0 " + ORANGE : "none" }}>
+              <div key={t} onClick={() => setActiveTab(t)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", fontSize: 13, fontWeight: activeTab === t ? 600 : 400, color: activeTab === t ? "#17211b" : "#64748b", cursor: "pointer", borderRight: "1px solid #eef0f2", background: activeTab === t ? "#fffdf9" : "transparent", whiteSpace: "nowrap", boxShadow: activeTab === t ? "inset 0 -2px 0 " + ORANGE : "none" }}>
                 {t.split("/").pop()}
                 <X size={13} style={{ color: "#9ca3af" }} onClick={(e) => { e.stopPropagation(); closeTab(t); }} />
               </div>
@@ -2023,13 +2023,13 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
               <span className={pipelinePhase !== "idle" && pipelinePhase !== "success" && pipelinePhase !== "failed" ? "wb-pulse-dot" : undefined} style={{ width: 7, height: 7, borderRadius: "50%", background: "currentColor" }} /> {pipelineLabel}
             </div>
             <div style={{ display: "flex", background: "#f1f5f9", borderRadius: 999, padding: 2, gap: 2 }}>
-              <button onClick={() => setDevice("desktop")} title="Tampilan desktop" style={{ padding: 6, border: "none", background: device === "desktop" ? "#fff" : "transparent", boxShadow: device === "desktop" ? "0 1px 3px rgba(15,23,42,.14)" : "none", borderRadius: 999, cursor: "pointer", display: "flex", color: device === "desktop" ? "#17211b" : "#64748b" }}><Monitor size={15} /></button>
-              <button onClick={() => setDevice("tablet")} title="Tampilan tablet" style={{ padding: 6, border: "none", background: device === "tablet" ? "#fff" : "transparent", boxShadow: device === "tablet" ? "0 1px 3px rgba(15,23,42,.14)" : "none", borderRadius: 999, cursor: "pointer", display: "flex", color: device === "tablet" ? "#17211b" : "#64748b" }}><Tablet size={15} /></button>
-              <button onClick={() => setDevice("mobile")} title="Tampilan ponsel" style={{ padding: 6, border: "none", background: device === "mobile" ? "#fff" : "transparent", boxShadow: device === "mobile" ? "0 1px 3px rgba(15,23,42,.14)" : "none", borderRadius: 999, cursor: "pointer", display: "flex", color: device === "mobile" ? "#17211b" : "#64748b" }}><Smartphone size={15} /></button>
+              <button onClick={() => setDevice("desktop")} title="Tampilan desktop" style={{ padding: 6, border: "none", background: device === "desktop" ? "#fff" : "transparent", boxShadow: device === "desktop" ? "0 1px 3px rgba(15,23,42,.14)" : "none", borderRadius: 999, cursor: "pointer", display: "flex", color: device === "desktop" ? "#17211b" : "#64748b" }}><Monitor size={15} style={{ color: device === "desktop" ? ORANGE : undefined }} /></button>
+              <button onClick={() => setDevice("tablet")} title="Tampilan tablet" style={{ padding: 6, border: "none", background: device === "tablet" ? "#fff" : "transparent", boxShadow: device === "tablet" ? "0 1px 3px rgba(15,23,42,.14)" : "none", borderRadius: 999, cursor: "pointer", display: "flex", color: device === "tablet" ? "#17211b" : "#64748b" }}><Tablet size={15} style={{ color: device === "tablet" ? ORANGE : undefined }} /></button>
+              <button onClick={() => setDevice("mobile")} title="Tampilan ponsel" style={{ padding: 6, border: "none", background: device === "mobile" ? "#fff" : "transparent", boxShadow: device === "mobile" ? "0 1px 3px rgba(15,23,42,.14)" : "none", borderRadius: 999, cursor: "pointer", display: "flex", color: device === "mobile" ? "#17211b" : "#64748b" }}><Smartphone size={15} style={{ color: device === "mobile" ? ORANGE : undefined }} /></button>
             </div>
             <button onClick={() => { send("Percantik desain aplikasi ini: perbaiki spacing, tipografi, warna, tambahkan micro-interactions dan animasi halus, buat terlihat modern dan premium. Jangan ubah struktur/fitur, hanya visual."); }}
-              title="Percantik desain otomatis"
-              style={{ padding: "6px 11px", border: "1px solid #e5e7eb", background: "#fff", color: "#374151", borderRadius: 999, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 }}>
+              title="Percantik desain otomatis" className="wb-chip-btn"
+              style={{ padding: "6px 11px", border: "1px solid #fed7aa", background: "#fff7ed", color: "#c2410c", borderRadius: 999, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 }}>
               <Sparkles size={14} style={{ color: ORANGE }} /> {!isMobile && "Percantik"}
             </button>
             <button onClick={() => { setSelectMode(!selectMode); setPreviewKey((k) => k + 1); }}
@@ -2048,7 +2048,7 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
               <Settings size={14} /> {!isMobile && "Diagnostics"}
             </button>
             {diagnosticsOpen && <button onClick={async () => { setTermOpen(true); setTermLines((l) => [...l, "⏳ Database verification dimulai..."]); try { const d = await runtimeActions.dbVerify(); setTermLines((l) => [...l, d.status === "success" ? "✅ Database CRUD berhasil" : "❌ Database verification gagal", d.message || d.error || "", `steps: ${(d.steps || []).join(" → ")}`]); if (d.status !== "success" && d.error) setPreviewErrors((p) => [...p.slice(-4), d.error]); } catch (e: any) { setTermLines((l) => [...l, "Database error: " + (e?.message || e)]); } }}
-              title="Validasi database"
+              title="Validasi database" className="wb-pill-btn"
               style={{ padding: "6px 11px", border: "1px solid #e5e7eb", background: "#fff", color: "#374151", borderRadius: 999, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 }}>
               <Database size={14} /> Verify DB
             </button>}
@@ -2068,12 +2068,12 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
               {runtimeRunning ? "Stop Runtime" : "Live Runtime"}
             </button>
             <button onClick={verifyRuntime}
-              title="Install dependency dan validasi build project"
+              title="Install dependency dan validasi build project" className="wb-pill-btn"
               style={{ padding: "6px 11px", border: "1px solid #e5e7eb", background: "#fff", color: "#374151", borderRadius: 999, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 }}>
               <Check size={14} /> Verify Build
             </button>
             <div style={{ flex: 1 }} />
-            <button onClick={() => setPreviewKey((k) => k + 1)} style={{ padding: 7, border: "1px solid #e5e7eb", background: "#fff", borderRadius: 10, cursor: "pointer", display: "flex", flexShrink: 0 }}><RefreshCw size={14} /></button>
+            <button onClick={() => setPreviewKey((k) => k + 1)} className="wb-icon-btn" style={{ padding: 7, border: "1px solid #e5e7eb", background: "#fff", borderRadius: 999, cursor: "pointer", display: "flex", flexShrink: 0 }}><RefreshCw size={14} /></button>
           </div>
           {previewErrors.length > 0 && (
             <div style={{ background: "#fef2f2", borderBottom: "1px solid #fecaca", padding: "8px 12px" }}>
@@ -2237,7 +2237,7 @@ if (App) {
           {canEdit && (
           <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
             <input value={newTable} onChange={(e) => setNewTable(e.target.value)} placeholder="Nama tabel"
-              style={{ flex: 1, minWidth: 0, border: "1px solid #d1d5db", borderRadius: 999, padding: "8px 14px", fontSize: 13 }} />
+              style={{ flex: 1, minWidth: 0, border: "1px solid #e2e8f0", borderRadius: 999, padding: "8px 14px", fontSize: 13 }} />
             <button onClick={createTable} style={{ background: ORANGE, color: "#fff", border: "none", borderRadius: 999, padding: "8px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13, flexShrink: 0 }}>Buat</button>
           </div>
           )}
@@ -2514,10 +2514,10 @@ if (App) {
         )}
       </div>
       {quota && quotaRemaining !== null && (
-        <div style={{ padding: "8px 14px", borderTop: "1px solid #eef0f2", background: quotaExhausted ? "#fef2f2" : "#fbfcf9", fontSize: 12, color: quotaExhausted ? "#b91c1c" : "#64748b", display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-          <span style={{ whiteSpace: "nowrap", color: "#17211b", fontWeight: 600 }}><span style={{ color: ORANGE }}>✦</span> <b>{quotaRemaining.toLocaleString("id-ID")}</b> kredit tersisa</span>
-          <span style={{ fontSize: 10, fontWeight: 700, color: "#64748b", background: "#fff", border: "1px solid #e5e7eb", borderRadius: 999, padding: "2px 8px", whiteSpace: "nowrap", textTransform: "uppercase", letterSpacing: ".04em", flexShrink: 0 }}>{quota.plan || "free"}</span>
-          {quotaExhausted && <span title="Kredit habis — upgrade paket untuk lanjut" style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, color: "#b91c1c", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Kredit habis — upgrade untuk lanjut</span>}
+        <div style={{ padding: "8px 14px", borderTop: "1px solid #eef0f2", background: quotaExhausted ? "#fef2f2" : "#fbfcf9", fontSize: 12, color: quotaExhausted ? "#b91c1c" : "#64748b", display: "flex", alignItems: "center", gap: 8, minWidth: 0, overflow: "hidden" }}>
+          <span style={{ whiteSpace: "nowrap", color: "#17211b", fontWeight: 600, flexShrink: 0 }}><span style={{ color: ORANGE }}>✦</span> <b>{quotaRemaining.toLocaleString("id-ID")}</b> kredit tersisa</span>
+          <span style={{ fontSize: 10, fontWeight: 700, color: "#1d4530", background: "#e9f2ea", border: "1px solid #d5e4d6", borderRadius: 999, padding: "2px 8px", whiteSpace: "nowrap", textTransform: "uppercase", letterSpacing: ".04em", flexShrink: 0 }}>{quota.plan || "free"}</span>
+          {quotaExhausted && <span title="Kredit habis — upgrade paket untuk lanjut" style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, color: "#b91c1c", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, flex: "1 1 auto" }}>Kredit habis — upgrade untuk lanjut</span>}
         </div>
       )}
       <div style={{ padding: isMobile ? "8px 10px calc(8px + env(safe-area-inset-bottom))" : 12, borderTop: "1px solid #eef0f2", background: "#fff", position: "relative", flexShrink: 0 }}>
@@ -2657,6 +2657,10 @@ if (App) {
         .wb-shell button:hover:not(:disabled) { border-color: #cbd5e1 !important; }
         .wb-shell button:active:not(:disabled) { transform: translateY(1px); }
         .wb-shell button:focus-visible { outline: 2px solid rgba(246,130,31,.55); outline-offset: 1px; }
+        .wb-shell .wb-pill-btn:hover:not(:disabled) { background: #fff7ed !important; border-color: #fed7aa !important; color: #c2410c !important; }
+        .wb-shell .wb-icon-btn:hover:not(:disabled) { background: #fff7ed !important; border-color: #fed7aa !important; }
+        .wb-shell .wb-chip-btn:hover:not(:disabled) { background: #ffedd5 !important; border-color: #fdba74 !important; }
+        .wb-shell input:focus, .wb-shell select:focus { border-color: #f6821f !important; box-shadow: 0 0 0 3px rgba(246,130,31,.12); outline: none; }
         .wb-chat-panel { box-shadow: 8px 0 28px rgba(15,23,42,.04); }
         .wb-shell textarea:focus { border-color: #f6821f !important; box-shadow: 0 0 0 3px rgba(246,130,31,.12); }
         .wb-shell ::-webkit-scrollbar { width: 7px; height: 7px; }
@@ -2672,11 +2676,16 @@ if (App) {
         }
       `}</style>
       <div style={{ position: "sticky", top: 0, zIndex: 40, background: "#fff", display: "flex", alignItems: "center", gap: 10, height: 56, flexShrink: 0, padding: "0 12px 0 10px", borderBottom: "1px solid #e8eaed", overflowX: "clip" }}>
-        <button onClick={onBack} aria-label="Kembali" style={{ background: "none", border: "1px solid transparent", borderRadius: 10, padding: 8, cursor: "pointer", display: "flex", flexShrink: 0, color: "#374151" }}>
+        <button onClick={onBack} aria-label="Kembali" className="wb-icon-btn" style={{ background: "none", border: "1px solid transparent", borderRadius: 10, padding: 8, cursor: "pointer", display: "flex", flexShrink: 0, color: "#374151" }}>
           <ArrowLeft size={17} />
         </button>
+        {!isMobile && (
+          <span style={{ width: 28, height: 28, borderRadius: 9, background: "#fff7ed", border: "1px solid #fed7aa", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <Sparkles size={14} style={{ color: ORANGE }} />
+          </span>
+        )}
         <strong style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-0.01em", color: "#17211b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{project.name}</strong>
-        {!isMobile && <span style={{ fontSize: 11, fontWeight: 600, color: "#4b5563", background: "#f3f4f6", padding: "3px 9px", borderRadius: 999, flexShrink: 0 }}>{project.framework}</span>}
+        {!isMobile && <span style={{ fontSize: 11, fontWeight: 600, color: "#1d4530", background: "#e9f2ea", border: "1px solid #d5e4d6", padding: "3px 9px", borderRadius: 999, flexShrink: 0 }}>{project.framework}</span>}
         {myRole !== "owner" && (
           <span style={{ fontSize: 10, fontWeight: 700, color: ORANGE, background: "#fff7ed", padding: "3px 8px", borderRadius: 999, flexShrink: 0, textTransform: "uppercase" }}>{myRole}</span>
         )}
@@ -2690,11 +2699,11 @@ if (App) {
               void send();
             }
           }} title="Kirim instruksi dan jalankan pipeline aplikasi"
-            style={{ background: ORANGE, color: "#fff", border: "none", borderRadius: 999, padding: isMobile ? 9 : "9px 16px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 13, fontWeight: 700, flexShrink: 0, boxShadow: "0 1px 3px rgba(246,130,31,.35)" }}>
+            style={{ background: ORANGE, color: "#fff", border: "none", borderRadius: 999, padding: isMobile ? 0 : "9px 16px", width: isMobile ? 38 : undefined, height: isMobile ? 38 : undefined, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 13, fontWeight: 700, flexShrink: 0, boxShadow: "0 2px 6px rgba(246,130,31,.35)" }}>
             <Sparkles size={15} /> {!isMobile && (input.trim() ? "Buat / Perbaiki" : "Mulai Buat")}
           </button>
         )}
-        {!isMobile && <button onClick={() => setShowComments(!showComments)} title="Komentar"
+        {!isMobile && <button onClick={() => setShowComments(!showComments)} title="Komentar" className="wb-icon-btn"
           style={{ background: "none", border: "1px solid transparent", borderRadius: 10, padding: 8, cursor: "pointer", display: "flex", flexShrink: 0, position: "relative" }}>
           <MessageSquare size={17} style={{ color: "#6b7280" }} />
           {comments.filter((c) => !c.resolved).length > 0 && (
@@ -2705,7 +2714,7 @@ if (App) {
         </button>}
         {myRole === "owner" && (
           <>
-          <button onClick={doSecurityScan} title="Jalankan security scan (tanpa publish)" style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 999, padding: isMobile ? 8 : "8px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, flexShrink: 0, color: "#374151" }}>
+          <button onClick={doSecurityScan} title="Jalankan security scan (tanpa publish)" className="wb-pill-btn" style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 999, padding: isMobile ? 8 : "8px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, flexShrink: 0, color: "#374151" }}>
             <ShieldCheck size={16} />
             {!isMobile && (runScanMut.isPending ? "Memindai..." : "Scan")}
           </button>
@@ -2715,19 +2724,19 @@ if (App) {
           </button>
           </>
         )}
-        <button onClick={() => setWorkspaceMenuOpen(!workspaceMenuOpen)} title="Tools proyek" style={{ background: workspaceMenuOpen ? "#fff7ed" : "#fff", border: "1px solid #e5e7eb", borderRadius: 999, padding: isMobile ? 8 : "8px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 600, color: "#374151", flexShrink: 0 }}>
+        <button onClick={() => setWorkspaceMenuOpen(!workspaceMenuOpen)} title="Tools proyek" className="wb-pill-btn" style={{ background: workspaceMenuOpen ? "#fff7ed" : "#fff", border: "1px solid #e5e7eb", borderRadius: 999, padding: isMobile ? 8 : "8px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 600, color: "#374151", flexShrink: 0 }}>
           <Settings size={16} /> {!isMobile && "Lainnya"}
         </button>
         {workspaceMenuOpen && canEdit && (
         <>
-        <button onClick={loadVersions} title="Riwayat versi / Undo" style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 999, padding: isMobile ? 8 : "8px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#374151", flexShrink: 0 }}>
+        <button onClick={loadVersions} title="Riwayat versi / Undo" className="wb-pill-btn" style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 999, padding: isMobile ? 8 : "8px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#374151", flexShrink: 0 }}>
           <History size={16} />
           {!isMobile && "Riwayat"}
         </button>
-        <button onClick={loadBlueprint} title="Blueprint / Rencana AI" style={{ background: "#fff7ed", border: "1px solid #fed7aa", color: "#c2410c", borderRadius: 999, padding: isMobile ? 8 : "8px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+        <button onClick={loadBlueprint} title="Blueprint / Rencana AI" className="wb-chip-btn" style={{ background: "#fff7ed", border: "1px solid #fed7aa", color: "#c2410c", borderRadius: 999, padding: isMobile ? 8 : "8px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
           <Sparkles size={15} /> {!isMobile && "Blueprint"}
         </button>
-        <button onClick={loadProjectSettings} title="Pengaturan proyek" style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: 8, cursor: "pointer", display: "flex", flexShrink: 0 }}>
+        <button onClick={loadProjectSettings} title="Pengaturan proyek" className="wb-icon-btn" style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: 8, cursor: "pointer", display: "flex", flexShrink: 0 }}>
           <Settings size={16} style={{ color: "#6b7280" }} />
         </button>
         <button
@@ -2736,12 +2745,12 @@ if (App) {
               await downloadProjectExport(pid, project.slug || "project");
             } catch (e: any) { alert("Gagal download ZIP: " + e.message); }
           }}
-          title="Export Project ZIP (Download Source Code)"
+          title="Export Project ZIP (Download Source Code)" className="wb-icon-btn"
           style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: 8, cursor: "pointer", display: "flex", flexShrink: 0 }}
         >
           <Download size={16} style={{ color: "#6b7280" }} />
         </button>
-        <button onClick={loadGitHub} title="GitHub Sync" style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: 8, cursor: "pointer", display: "flex", flexShrink: 0 }}>
+        <button onClick={loadGitHub} title="GitHub Sync" className="wb-icon-btn" style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: 8, cursor: "pointer", display: "flex", flexShrink: 0 }}>
           <Github size={16} style={{ color: "#6b7280" }} />
         </button>
         </>
@@ -2749,13 +2758,13 @@ if (App) {
         {!isMobile && (
           <div style={{ display: "flex", background: "#f1f5f9", borderRadius: 999, padding: 3, gap: 2 }}>
             <button onClick={() => setView("code")} style={{ padding: "7px 14px", border: "none", cursor: "pointer", borderRadius: 999, background: view === "code" ? "#fff" : "transparent", color: view === "code" ? "#17211b" : "#64748b", boxShadow: view === "code" ? "0 1px 3px rgba(15,23,42,.14)" : "none", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
-              <Code2 size={14} /> Kode
+              <Code2 size={14} style={{ color: view === "code" ? ORANGE : undefined }} /> Kode
             </button>
             <button onClick={() => { setView("preview"); setPreviewKey((k) => k + 1); }} style={{ padding: "7px 14px", border: "none", cursor: "pointer", borderRadius: 999, background: view === "preview" ? "#fff" : "transparent", color: view === "preview" ? "#17211b" : "#64748b", boxShadow: view === "preview" ? "0 1px 3px rgba(15,23,42,.14)" : "none", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
-              <Play size={14} /> Preview
+              <Play size={14} style={{ color: view === "preview" ? ORANGE : undefined }} /> Preview
             </button>
             <button onClick={() => setView("db")} style={{ padding: "7px 14px", border: "none", cursor: "pointer", borderRadius: 999, background: view === "db" ? "#fff" : "transparent", color: view === "db" ? "#17211b" : "#64748b", boxShadow: view === "db" ? "0 1px 3px rgba(15,23,42,.14)" : "none", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
-              <Database size={14} /> Database
+              <Database size={14} style={{ color: view === "db" ? ORANGE : undefined }} /> Database
             </button>
           </div>
         )}
@@ -2771,7 +2780,7 @@ if (App) {
         <div ref={navRef} style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 50, display: "flex", borderTop: "1px solid #eef0f2", background: "#fff", paddingBottom: "env(safe-area-inset-bottom)", boxSizing: "border-box", maxWidth: "100vw", boxShadow: "0 -1px 8px rgba(15,23,42,.04)" }}>
           {[["chat", "Chat", MessageSquare], ["code", "Build", Code2], ["preview", "Preview", Play], ["db", "Data", Database]].map(([id, label, Icon]: any) => (
             <button key={id} onClick={() => { setMobileTab(id); if (id === "preview") { setView("preview"); setPreviewKey((k) => k + 1); } else if (id === "db") { setView("db"); } else if (id === "code") setView("code"); }}
-              style={{ flex: "1 1 0", minWidth: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "7px 0 8px", border: "none", background: "none", cursor: "pointer", color: mobileTab === id ? ORANGE : "#94a3b8", fontSize: 10.5, fontWeight: mobileTab === id ? 700 : 500 }}>
+              style={{ flex: "1 1 0", minWidth: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "7px 0 8px", border: "none", background: "none", cursor: "pointer", color: mobileTab === id ? ORANGE : "#94a3b8", fontSize: 10.5, fontWeight: mobileTab === id ? 700 : 500, boxShadow: mobileTab === id ? "inset 0 2px 0 " + ORANGE : "none" }}>
               <Icon size={20} />{label}
             </button>
           ))}
@@ -2780,7 +2789,7 @@ if (App) {
 
       {!isMobile && (
         <div style={{ display: "flex", alignItems: "center", padding: "5px 12px", borderTop: "1px solid #eef0f2", background: "#fff" }}>
-          <button onClick={() => setTermOpen(!termOpen)} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, padding: "6px 10px", borderRadius: 8, border: "none", cursor: "pointer", background: termOpen ? "#f1f5f9" : "transparent" }}>
+          <button onClick={() => setTermOpen(!termOpen)} className="wb-pill-btn" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, padding: "6px 10px", borderRadius: 999, border: "none", cursor: "pointer", background: termOpen ? "#f1f5f9" : "transparent" }}>
             <TerminalIcon size={13} /> Terminal
           </button>
           <span style={{ fontSize: 12, color: "#9ca3af", marginLeft: 8 }}>{Object.keys(files).length} file</span>

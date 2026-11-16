@@ -6,3 +6,6 @@
 @keyframes wb-pulse-dot{0%,100%{opacity:.3;transform:scale(.8)}50%{opacity:1;transform:scale(1)}}
 .wb-pulse-dot{animation:wb-pulse-dot 1.1s ease-in-out infinite}
 @media (max-width:767px){.wb-shell{background:#fff}}
+
+/* ---- wb268 (Rina): Builder chrome selaras bahasa chat ---- */
+.wb-shell{--wb-orange:#f6821f;--wb-orange-soft:#fff7ed;--wb-orange-line:#fed7aa;--wb-orange-ink:#c2410c;--wb-green-soft:#e9f2ea;--wb-green-line:#d5e4d6;--wb-warm:#fbfcf9}
