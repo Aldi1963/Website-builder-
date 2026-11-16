@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -110,6 +111,64 @@ func serverPort() string {
 // port lain (mis. 18086 di server uji) maupun di produksi.
 func apiBaseURL() string {
 	return "http://localhost:" + serverPort()
+}
+
+var viteServerRe = regexp.MustCompile(`server\s*:\s*\{`)
+var viteProxyRe = regexp.MustCompile(`proxy\s*:\s*\{`)
+var viteDefineConfigRe = regexp.MustCompile(`defineConfig\(\s*\{`)
+
+// viteDevProxyEntries adalah entri proxy dev server Vite ke server
+// WebBuilder: "/api" untuk cloudDb/cloudAuth, "/app-files" untuk file
+// upload (gambar dsb.) yang disajikan rute publik API. Target mengikuti
+// port listen server (bukan hardcode), sama seperti proxy /api yang
+// sudah ada sebelumnya.
+func viteDevProxyEntries(port string) []string {
+	target := `"http://127.0.0.1:` + port + `"`
+	return []string{
+		`"/api": { target: ` + target + `, changeOrigin: true }`,
+		`"/app-files": { target: ` + target + `, changeOrigin: true }`,
+	}
+}
+
+// ensureViteDevProxy memastikan vite.config.ts hasil generate mem-proxy
+// "/api" dan "/app-files" ke server WebBuilder.
+//
+// Tanpa proxy, aplikasi yang dibuka di port Vite dev memanggil /api dan
+// /app-files relatif ke dirinya sendiri: /api menerima 404
+// (cloudDb/cloudAuth gagal total), dan /app-files dijawab SPA-fallback
+// HTML (HTTP 200 text/html) sehingga <img> tampil rusak di screenshot
+// verifikasi MCP — padahal lewat origin API URL yang sama mengembalikan
+// 200 image/png. Jalur verifikasi browser memang membuka Vite dev
+// langsung (bukan lewat proxy preview API), jadi proxy inilah lapisan
+// yang benar; penyajian lewat origin API tidak diubah.
+//
+// Patch hanya diterapkan di workspace runtime (file proyek di DB tidak
+// diubah) dan idempotent: entri yang sudah ada tidak diduplikasi. Bila
+// objek proxy sudah ada (mis. hanya "/api"), entri yang kurang disisipkan
+// ke DALAM objek itu — menambah kunci "proxy:" kedua akan menimpa yang
+// pertama (di object literal JS kunci terakhir menang) dan "/api" hilang.
+func ensureViteDevProxy(s, port string) string {
+	missing := []string{}
+	for _, e := range viteDevProxyEntries(port) {
+		name := strings.SplitN(e, ":", 2)[0]
+		if !strings.Contains(s, name) {
+			missing = append(missing, e)
+		}
+	}
+	if len(missing) == 0 {
+		return s
+	}
+	joined := strings.Join(missing, ", ")
+	if loc := viteProxyRe.FindStringIndex(s); loc != nil {
+		return s[:loc[1]] + " " + joined + "," + s[loc[1]:]
+	}
+	if loc := viteServerRe.FindStringIndex(s); loc != nil {
+		return s[:loc[1]] + " proxy: { " + joined + " }, " + s[loc[1]:]
+	}
+	if loc := viteDefineConfigRe.FindStringIndex(s); loc != nil {
+		return s[:loc[1]] + "\n  server: { proxy: { " + joined + " } }," + s[loc[1]:]
+	}
+	return s
 }
 
 func envSafeValue(value string) string {
@@ -542,31 +601,29 @@ Environment variable lokal disimpan di file .env.local; jangan commit secret ata
 	if _, err := os.Stat(viteCfg); os.IsNotExist(err) {
 		content := `import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-export default defineConfig({ plugins: [react()], server: { allowedHosts: true, proxy: { "/api": { target: "http://127.0.0.1:` + serverPort() + `", changeOrigin: true } } } });
+export default defineConfig({ plugins: [react()], server: { allowedHosts: true, proxy: { "/api": { target: "http://127.0.0.1:` + serverPort() + `", changeOrigin: true }, "/app-files": { target: "http://127.0.0.1:` + serverPort() + `", changeOrigin: true } } } });
 `
 		if err := os.WriteFile(viteCfg, []byte(content), 0644); err != nil {
 			return "", err
 		}
 	} else if b, err := os.ReadFile(viteCfg); err == nil {
 		// Dev server harus bisa memanggil backend WebBuilder. Tanpa proxy,
-		// aplikasi yang dibuka di port Vite memanggil /api relatif ke dirinya
-		// sendiri dan menerima 404 (cloudDb/cloudAuth gagal total).
+		// aplikasi yang dibuka di port Vite memanggil /api dan /app-files
+		// relatif ke dirinya sendiri: /api menerima 404 (cloudDb/cloudAuth
+		// gagal total), dan /app-files dijawab SPA-fallback HTML sehingga
+		// <img> tampil rusak di screenshot verifikasi MCP (lihat
+		// ensureViteDevProxy). Patch hanya di workspace runtime.
 		s := string(b)
-		needsHosts := !strings.Contains(s, "allowedHosts")
-		needsProxy := !strings.Contains(s, `"/api"`) && !strings.Contains(s, `'/api'`)
-		if needsHosts || needsProxy {
-			extra := ""
-			if needsHosts {
-				extra += " allowedHosts: true,"
-			}
-			if needsProxy {
-				extra += ` proxy: { "/api": { target: "http://127.0.0.1:` + serverPort() + `", changeOrigin: true } },`
-			}
+		orig := s
+		if !strings.Contains(s, "allowedHosts") {
 			if strings.Contains(s, "server: {") {
-				s = strings.Replace(s, "server: {", "server: {"+extra, 1)
+				s = strings.Replace(s, "server: {", "server: { allowedHosts: true,", 1)
 			} else {
-				s = strings.Replace(s, "defineConfig({", "defineConfig({\n  server: {"+extra+" },", 1)
+				s = strings.Replace(s, "defineConfig({", "defineConfig({\n  server: { allowedHosts: true },", 1)
 			}
+		}
+		s = ensureViteDevProxy(s, serverPort())
+		if s != orig {
 			os.WriteFile(viteCfg, []byte(s), 0644)
 		}
 	}

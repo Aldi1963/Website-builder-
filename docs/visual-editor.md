@@ -142,18 +142,31 @@ literal, sehingga pencocokan ini menutup kasus umum.
 4. Bila teks yang sama muncul berkali-kali, pemakai harus memilih
    kemunculan yang benar (file:baris + konteks ditampilkan). Pilihan
    default: kemunculan pertama.
-5. Gambar hasil upload (`/app-files/…`) tampil di preview Live Runtime
-   dan hasil publish, tapi TIDAK tampil di preview Sandpack (fallback)
-   karena origin iframe-nya berbeda.
-   - Catatan E2E 15 Nov 2026: di jaluran verifikasi browser MCP, gambar
-     JUGA tampil rusak — browser verifikasi membuka server Vite dev
-     langsung, dan di sana `/app-files/…` dijawab SPA-fallback HTML
-     (HTTP 200 `text/html`), bukan PNG, sehingga `<img>` rusak meski
-     tidak ada request yang gagal. Lewat origin API (yang dipakai
-     iframe preview Live Runtime) URL yang sama mengembalikan
-     `200 image/png` dengan benar. Jadi ini keterbatasan jalur
-     verifikasi/preview langsung, bukan kegagalan upload — file
-     tersimpan dan terbaca-balik dengan benar (lihat "Uji" di bawah).
+5. Gambar hasil upload (`/app-files/…`) tampil di preview Live Runtime,
+   hasil publish, DAN di jalur verifikasi browser MCP — sejak perbaikan
+   16 Nov 2026 (trek A, PR fix/app-files-dev-proxy). Akar masalah lama:
+   browser verifikasi membuka server Vite dev langsung, dan di sana
+   `/app-files/…` dijawab SPA-fallback HTML (HTTP 200 `text/html`),
+   bukan PNG, sehingga `<img>` rusak meski tidak ada request yang
+   gagal. Perbaikan: `prepareRuntimeWorkspace`
+   (`server/internal/handler/runtime.go`, `ensureViteDevProxy`) kini
+   mem-proxy `/app-files` — di samping `/api` yang sudah ada — ke
+   server API di `vite.config.ts` workspace runtime (file proyek di DB
+   tidak diubah; target mengikuti port listen server, bukan hardcode).
+   Preview Sandpack (fallback) tetap TIDAK menampilkan gambar karena
+   origin iframe-nya berbeda.
+   - Bukti E2E 16 Nov 2026 (server uji sendiri port 18093, proyek id 2):
+     upload `hero.png` → 201, URL
+     `/app-files/2/63a9f7ebe24d1dfc_hero.png`; `GET` URL itu lewat
+     origin Vite dev (port 19002) → `200 image/png`, md5 identik
+     dengan file yang diunggah; lewat origin API → `200 image/png`,
+     md5 identik; screenshot MCP (jalur verifikasi, Vite langsung)
+     menampilkan gambar hero utuh (oranye/biru "HERO-A"), bukan rusak.
+   - Batasan sisa: proxy hanya ditambahkan saat workspace runtime
+     disiapkan (`prepareRuntimeWorkspace` — dev start/sync, pipeline,
+     verify). Bila seseorang menjalankan `vite` manual dari file proyek
+     tanpa patch itu, `/app-files/…` tetap jatuh ke SPA fallback.
+     Gambar di preview Sandpack tetap tidak tampil (lihat atas).
 6. Edit visual hanya untuk teks, gambar, dan tiga properti gaya dasar
    (warna teks, ukuran font, warna latar). Perubahan struktur/layout
    tetap lewat chat AI atau editor kode.
@@ -173,6 +186,40 @@ literal, sehingga pencocokan ini menutup kasus umum.
   (`go test ./internal/handler/ -run TestInjectPreviewBridge`) —
   injeksi sebelum `</body>`, fallback tanpa `</body>`, idempotent,
   hanya untuk `text/html`.
+- E2E perbaikan proxy `/app-files` (server uji sendiri port 18093,
+  worktree trek A, 16 Nov 2026 — proyek uji id 2 "Uji AppFiles Trek A",
+  user uji baru sehingga kuota free utuh):
+  - Upload `hero.png` (800×400, md5 `cd3c6c54…`) via
+    `POST /api/projects/2/app/files` → 201, URL
+    `/app-files/2/63a9f7ebe24d1dfc_hero.png`.
+  - `vite.config.ts` hasil model SENGAJA minimal (tanpa proxy) —
+    sesudah `prepareRuntimeWorkspace`, workspace runtime berisi
+    `proxy: { "/api": { target: "http://127.0.0.1:18093", … },
+    "/app-files": { target: "http://127.0.0.1:18093", … } }`.
+  - `GET /app-files/2/…` lewat origin Vite dev (port 19002) →
+    `200 image/png`, md5 identik dengan file yang diunggah; lewat
+    origin API (18093) → `200 image/png`, md5 identik.
+  - Screenshot MCP (`POST /runtime/screenshot`, membuka Vite langsung
+    seperti jalur verifikasi) menampilkan gambar hero utuh, bukan
+    rusak.
+  - Loop verifikasi MCP penuh lewat chat (run 5, model hanya mengubah
+    satu baris teks): `status: completed`,
+    `verification: {attempted: true, passed: true, rounds: 1,
+    consoleErrors: [], failedRequests: []}` — "0 console error,
+    0 request gagal"; screenshot run-5 menampilkan hero utuh dengan
+    status "berhasil dimuat". (Dua chat sebelumnya gagal di tahap
+    lain yang tidak terkait perbaikan ini: pipeline DB butuh
+    `../.pg-password` — server uji harus di-restart sesudah file itu
+    disalin karena koneksi PG di-cache `sync.Once` — dan acceptance
+    sempat gagal oleh warning React `fetchPriority` dari kode hasil
+    model, yang sudah dibersihkan dari proyek uji.)
+  - Kuota: user uji BARU (uji-trek-a-20261116@clipku.test), 5 chat,
+    tidak ada 402 — trik plan pro sementara TIDAK diperlukan.
+  - Unit Go baru: `TestEnsureViteDevProxy` (5 bentuk config: tanpa
+    server, server tanpa proxy, proxy hanya `/api`, proxy hanya
+    `/app-files`, sudah lengkap — semua idempotent, tepat 1 kunci
+    `proxy:`) + `TestPrepareRuntimeWorkspaceProxiesAppFiles`
+    (default scaffold + config model hanya `/api`).
 - E2E (server uji port 18086, 15 Nov 2026, trek A — proyek uji id 1
   "Uji API 15 Nov", karena kuota proyek free user uji habis sehingga
   proyek baru tidak bisa dibuat):
