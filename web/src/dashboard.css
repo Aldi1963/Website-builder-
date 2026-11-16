@@ -1,1 +1,97 @@
-.wb-dashboard{--db-ink:#17211b;--db-muted:#69736b;--db-line:#dfe5dc;--db-green:#1d4530;--db-lime:#c9f36b;color:var(--db-ink)!important}.wb-dashboard-logo{letter-spacing:-.06em;color:var(--db-ink)}.wb-dashboard-logo span{font-weight:500}.wb-dashboard-logo i{color:#9ccb3b;font-style:normal}.wb-dashboard-sidebar{background:#fbfcf9!important;border-color:var(--db-line)!important}.wb-dashboard-sidebar button{font-family:Manrope,system-ui,sans-serif!important;color:var(--db-muted)!important;border-radius:5px!important}.wb-dashboard-sidebar button[style*="fff7ed"]{background:#edf4df!important;color:var(--db-green)!important}.wb-dashboard>div:last-child{background:#f7f8f4!important}.wb-page-intro{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:28px}.wb-kicker{font:10px 'DM Mono',monospace;letter-spacing:.12em;color:#6b843e}.wb-project-count{font:11px 'DM Mono',monospace;color:#879189;border:1px solid var(--db-line);padding:7px 9px;border-radius:4px}.wb-dashboard [style*="border-radius: 12px"]{border-color:var(--db-line)!important;box-shadow:0 8px 30px #18351b08}.wb-dashboard input,.wb-dashboard select{border-color:var(--db-line)!important;border-radius:5px!important;background:#fff}.wb-dashboard input:focus{outline:0;border-color:#9ccb3b!important;box-shadow:0 0 0 3px #c9f36b55}.wb-dashboard button[style*="background: rgb(246, 130, 31)"],.wb-dashboard button[style*="background: #F6821F"]{background:var(--db-green)!important;border-radius:5px!important}.wb-dashboard button[style*="border-style: dashed"]{background:#fbfcf9!important;border-color:#b8c7af!important}.wb-dashboard button:hover{transform:translateY(-1px)}@media(max-width:700px){.wb-page-intro{align-items:flex-start;gap:12px}.wb-page-intro h2{font-size:25px!important}.wb-dashboard>div:last-child{padding-top:78px!important}.wb-dashboard-sidebar{background:#fbfcf9!important}}
+.wb-dashboard{--db-ink:#17211b;--db-muted:#69736b;--db-line:#dfe5dc;--db-green:#1d4530;--db-lime:#c9f36b;--db-orange:#f6821f;--db-orange-deep:#c2410c;--db-orange-ink:#9a3412;--db-orange-soft:#fff7ed;--db-orange-line:#fed7aa;--db-chat-line:#e2e8f0;--db-composer-line:#dbe3ee;color:var(--db-ink)!important}
+.wb-dashboard-logo{letter-spacing:-.06em;color:var(--db-ink)}
+.wb-dashboard-logo span{font-weight:500}
+.wb-dashboard-logo i{color:#9ccb3b;font-style:normal}
+.wb-dashboard-sidebar{background:#fbfcf9!important;border-color:var(--db-line)!important}
+.wb-dashboard-sidebar button{font-family:Manrope,system-ui,sans-serif!important;color:var(--db-muted)!important;border-radius:5px!important}
+/* Menu aktif: tint oranye ala pill aktif di chat, bukan hijau. Selektor rgb
+   karena React menyerikan style inline jadi rgb(...) di atribut style. */
+.wb-dashboard-sidebar button[style*="fff7ed"],.wb-dashboard-sidebar button[style*="rgb(255, 247, 237)"]{background:#fff7ed!important;color:var(--db-orange-deep)!important}
+.wb-dashboard>div:last-child{background:#f7f8f4!important}
+.wb-page-intro{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:28px}
+/* Kicker ala label seksi chat: 10px, uppercase, oranye tua. */
+.wb-dashboard .wb-kicker{font:800 10px system-ui,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--db-orange-deep)}
+/* Chip jumlah: pill oranye ala chip status chat; tetap satu baris. */
+.wb-project-count{font:700 11px system-ui,sans-serif;color:var(--db-orange-ink);background:var(--db-orange-soft);border:1px solid var(--db-orange-line);padding:7px 10px;border-radius:999px;white-space:nowrap;flex-shrink:0}
+/* Kartu generik: bayangan lembut ala bubble asisten chat. */
+.wb-dashboard [style*="border-radius: 12px"]{border-color:var(--db-line)!important;box-shadow:0 2px 12px rgba(0,0,0,.03)}
+.wb-dashboard input,.wb-dashboard select{border-color:var(--db-line)!important;border-radius:5px!important;background:#fff}
+/* Focus ring oranye ala composer chat (dulu hijau lime). */
+.wb-dashboard input:focus{outline:0;border-color:#f6821f!important;box-shadow:0 0 0 3px rgba(246,130,31,.12)}
+.wb-dashboard button:hover{transform:translateY(-1px)}
+
+/* --- Dashboard #267-B: header + toolbar + kartu proyek ala Lovable --- */
+/* --- Dashboard #268-B: samakan dengan bahasa visual tab Chat Builder ---
+   Dasar tetap hijau gelap (latar, tinta, brand); oranye jadi aksen utama
+   seperti di chat: tombol primer oranye (dulu dipaksa hijau oleh aturan
+   override di bawah ini — aturan itu DIHAPUS), pill oranye, focus ring
+   oranye, kartu putih radius 14 ala bubble asisten. */
+.wb-dash-head-actions{display:flex;align-items:center;gap:10px}
+/* CTA utama: pill oranye ala tombol pill chat + bayangan oranye lembut. */
+.wb-dash-new-btn{flex-shrink:0;border-radius:999px;box-shadow:0 4px 14px rgba(246,130,31,.35)}
+.wb-dash-toolbar{display:flex;gap:10px;margin-bottom:20px}
+/* Kolom cari: komposer chat — radius 16, garis lembut, bayangan komposer. */
+.wb-dash-search{flex:1;display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--db-composer-line);border-radius:16px;padding:0 12px;min-width:0;box-shadow:0 4px 18px rgba(15,23,42,.06)}
+.wb-dash-search svg{color:#879189;flex-shrink:0}
+.wb-dash-search input{flex:1;min-width:0;border:0!important;padding:11px 0;font-size:14px;background:transparent}
+.wb-dash-search input:focus{box-shadow:none!important}
+.wb-dash-search:focus-within{border-color:#f6821f;box-shadow:0 0 0 3px rgba(246,130,31,.12)}
+.wb-dashboard .wb-dash-toolbar select{padding:10px 12px;font-size:14px;color:var(--db-ink);cursor:pointer;flex-shrink:0;border-radius:16px!important;border-color:var(--db-composer-line)!important}
+.wb-dashboard .wb-dash-toolbar select:focus{border-color:#f6821f!important;box-shadow:0 0 0 3px rgba(246,130,31,.12)}
+.wb-dash-filter-note{font-size:12px;color:var(--db-muted);margin:-8px 0 16px}
+.wb-dash-filter-note button{background:none;border:0;color:var(--db-orange-deep);font-weight:700;cursor:pointer;padding:0;text-decoration:underline}
+.wb-create-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px}
+/* Kartu buat/clone: kartu komposer chat — radius 16 + bayangan komposer. */
+.wb-dashboard .wb-create-card{border-radius:16px!important;border-color:var(--db-composer-line)!important;box-shadow:0 4px 18px rgba(15,23,42,.06)}
+.wb-dashboard .wb-create-card input{border-radius:8px!important}
+.wb-dashboard .wb-create-card input:focus{border-color:#f6821f!important;box-shadow:0 0 0 3px rgba(246,130,31,.12)}
+.wb-proj-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:16px}
+/* Kartu proyek: bubble asisten chat — putih, radius 14 dengan satu sudut
+   runcing (gema bubble chat), bayangan lembut; hover: garis oranye. */
+.wb-proj-card{display:flex;flex-direction:column;text-align:left;cursor:pointer;background:#fff;border:1px solid var(--db-chat-line);border-radius:14px 14px 14px 4px;padding:0;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.03);font:inherit;color:inherit;transition:border-color .15s,transform .15s,box-shadow .15s}
+.wb-proj-card:hover{border-color:var(--db-orange-line);box-shadow:0 4px 16px rgba(0,0,0,.04)}
+/* Thumb: tile ikon oranye ala tile Sparkles di header bubble asisten. */
+.wb-proj-thumb{position:relative;display:flex;align-items:center;justify-content:center;aspect-ratio:16/9;background:var(--db-orange-soft);border-bottom:1px solid var(--db-orange-line)}
+.wb-proj-initial{font-size:52px;font-weight:800;letter-spacing:-.05em;color:var(--db-orange)}
+.wb-proj-fw{position:absolute;left:10px;bottom:10px;background:#fff;border:1px solid var(--db-orange-line);border-radius:99px;padding:3px 9px;font:11px 'DM Mono',monospace;color:var(--db-orange-deep)}
+.wb-proj-body{display:flex;flex-direction:column;gap:2px;padding:14px 16px 16px;min-width:0}
+.wb-proj-name{font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wb-proj-slug{font-size:12px;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wb-proj-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px}
+.wb-proj-date{font-size:12px;color:#9ca3af;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wb-badge{font-size:11px;font-weight:700;padding:3px 9px;border-radius:99px;white-space:nowrap;flex-shrink:0;display:inline-flex;align-items:center}
+/* Badge status: set badge chat — Live hijau sukses, Siap preview biru,
+   Draft abu, Build gagal merah, Dibagikan pill oranye. */
+.wb-badge--live{background:#dcfce7;color:#15803d}
+.wb-badge--live::before{content:"";width:6px;height:6px;border-radius:50%;background:#22c55e;margin-right:5px;animation:wb-pulse 1.6s ease-in-out infinite}
+@keyframes wb-pulse{0%,100%{box-shadow:0 0 0 0 rgba(34,197,94,.45)}50%{box-shadow:0 0 0 4px rgba(34,197,94,0)}}
+@media (prefers-reduced-motion:reduce){.wb-badge--live::before{animation:none}}
+.wb-badge--ready{background:#dbeafe;color:#1d4ed8}
+.wb-badge--draft{background:#f3f4f6;color:#6b7280}
+.wb-badge--danger{background:#fee2e2;color:#b91c1c}
+.wb-badge--shared{background:var(--db-orange-soft);color:var(--db-orange-ink)}
+/* Empty state: blok tengah ala empty state chat (tile ikon oranye,
+   komposer radius 16, pill contoh oranye). */
+.wb-dashboard .wb-empty{border-radius:16px!important;border-color:var(--db-orange-line)!important;background:#fffdf9}
+.wb-empty-icon{width:48px;height:48px;margin:0 auto 12px;display:flex;align-items:center;justify-content:center;border-radius:14px;background:var(--db-orange-soft);border:1px solid var(--db-orange-line);color:var(--db-orange)}
+.wb-empty-quick{display:flex;gap:8px;max-width:500px;margin:0 auto 20px;border:1px solid var(--db-composer-line);border-radius:16px;padding:6px;background:#fff;box-shadow:0 4px 18px rgba(15,23,42,.06)}
+.wb-dashboard .wb-empty-quick input{flex:1;min-width:0;border:0!important;border-radius:8px!important;padding:10px 12px;font-size:14px;outline:none;background:transparent}
+.wb-dashboard .wb-empty-quick input:focus{box-shadow:none!important}
+.wb-empty-quick:focus-within{border-color:#f6821f;box-shadow:0 0 0 3px rgba(246,130,31,.12)}
+.wb-empty-label{font-size:12px;font-weight:700;color:#0f172a;margin:0 0 8px}
+
+@media(max-width:700px){
+  .wb-page-intro{align-items:flex-start;gap:12px}
+  .wb-page-intro h2{font-size:25px!important}
+  /* Perbaikan PR #31-33 (wb265-pages-mobile): badge "4 project" tetap satu baris. */
+  .wb-project-count{white-space:nowrap;flex-shrink:0}
+  .wb-dashboard>div:last-child{padding-top:78px!important}
+  .wb-dashboard-sidebar{background:#fbfcf9!important}
+  .wb-dash-head-actions{width:100%}
+  .wb-dash-new-btn{flex:1;justify-content:center;padding:12px 18px}
+  .wb-dash-toolbar{flex-wrap:wrap}
+  .wb-dash-search{flex:1 1 100%}
+  .wb-dash-toolbar select{flex:1}
+  .wb-create-grid{grid-template-columns:1fr}
+  .wb-proj-grid{grid-template-columns:1fr}
+}
