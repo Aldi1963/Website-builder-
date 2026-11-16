@@ -2339,17 +2339,17 @@ if (App) {
 
   const chatPanel = (
     <div className="wb-chat-panel" style={{ width: isMobile ? "100%" : 390, height: "100%", minHeight: 0, borderRight: isMobile ? "none" : "1px solid #e5e7eb", display: "flex", flexDirection: "column", background: "#fff", overflow: "hidden", flexShrink: 0 }}>
-      <div style={{ padding: "10px 12px", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", gap: 8 }}>
-        <div style={{ width: 26, height: 26, borderRadius: 8, background: "#fff7ed", border: "1px solid #fed7aa", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ padding: isMobile ? "8px 10px" : "10px 12px", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", gap: isMobile ? 6 : 8 }}>
+        <div style={{ width: 26, height: 26, borderRadius: 8, background: "#fff7ed", border: "1px solid #fed7aa", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
           <Sparkles size={14} style={{ color: ORANGE }} />
         </div>
-        <div style={{ minWidth: 0 }}>
+        <div style={{ minWidth: 0, flexShrink: 0 }}>
           <strong style={{ display: "block", fontSize: 14 }}>AI Builder</strong>
-          <span style={{ display: "block", fontSize: 10, color: "#64748b" }}>Bangun dan perbaiki aplikasi lewat chat</span>
+          {!isMobile && <span style={{ display: "block", fontSize: 10, color: "#64748b" }}>Bangun dan perbaiki aplikasi lewat chat</span>}
         </div>
-        <span style={{ fontSize: 10, fontWeight: 700, color: pipelinePhase === "success" ? "#15803d" : pipelinePhase === "failed" ? "#b91c1c" : "#64748b", background: pipelinePhase === "success" ? "#dcfce7" : pipelinePhase === "failed" ? "#fee2e2" : "#f1f5f9", borderRadius: 12, padding: "4px 8px", whiteSpace: "nowrap" }}>{pipelineLabel}</span>
+        <span style={{ fontSize: 10, fontWeight: 700, color: pipelinePhase === "success" ? "#15803d" : pipelinePhase === "failed" ? "#b91c1c" : "#64748b", background: pipelinePhase === "success" ? "#dcfce7" : pipelinePhase === "failed" ? "#fee2e2" : "#f1f5f9", borderRadius: 12, padding: isMobile ? "3px 7px" : "4px 8px", whiteSpace: "nowrap", flexShrink: 0 }}>{pipelineLabel}</span>
         <div style={{ flex: 1 }} />
-        <select value={mode} onChange={(e) => setMode(e.target.value)} style={{ fontSize: 12, border: "1px solid #e5e7eb", borderRadius: 6, padding: "4px 8px" }}>
+        <select value={mode} onChange={(e) => setMode(e.target.value)} style={{ fontSize: isMobile ? 11 : 12, border: "1px solid #e5e7eb", borderRadius: 6, padding: isMobile ? "3px 4px" : "4px 8px", flexShrink: 0 }}>
           <option value="build">Build</option>
           <option value="ask">Ask</option>
           <option value="plan">Plan</option>
@@ -2512,10 +2512,10 @@ if (App) {
         )}
       </div>
       {quota && quotaRemaining !== null && (
-        <div style={{ padding: "6px 12px", borderTop: "1px solid #e5e7eb", background: quotaExhausted ? "#fef2f2" : "#fff", fontSize: 12, color: quotaExhausted ? "#b91c1c" : "#64748b", display: "flex", alignItems: "center", gap: 8 }}>
-          <span>✦ Kredit tersisa: {quotaRemaining.toLocaleString("id-ID")}</span>
-          <small>{quota.plan || "free"}</small>
-          {quotaExhausted && <span style={{ marginLeft: "auto", fontWeight: 700 }}>Kredit habis — upgrade paket untuk lanjut</span>}
+        <div style={{ padding: "6px 12px", borderTop: "1px solid #e5e7eb", background: quotaExhausted ? "#fef2f2" : "#fff", fontSize: 12, color: quotaExhausted ? "#b91c1c" : "#64748b", display: "flex", alignItems: "center", gap: isMobile ? 6 : 8, flexWrap: isMobile ? "wrap" : "nowrap" }}>
+          <span style={{ whiteSpace: "nowrap" }}>✦ Kredit tersisa: {quotaRemaining.toLocaleString("id-ID")}</span>
+          <small style={{ whiteSpace: "nowrap", flexShrink: 0 }}>{quota.plan || "free"}</small>
+          {quotaExhausted && <span style={{ marginLeft: isMobile ? 0 : "auto", fontWeight: 700, ...(isMobile ? { flexBasis: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } : {}) }}>Kredit habis — upgrade paket untuk lanjut</span>}
         </div>
       )}
       <div style={{ padding: isMobile ? "7px 8px calc(7px + env(safe-area-inset-bottom))" : 10, borderTop: "1px solid #e5e7eb", background: "#fff", position: "relative", flexShrink: 0 }}>
@@ -2664,11 +2664,11 @@ if (App) {
           .wb-shell textarea { min-height: 58px; font-size: 15px !important; }
         }
       `}</style>
-      <div style={{ position: "sticky", top: 0, zIndex: 40, background: "#fff", display: "flex", alignItems: "center", gap: 8, rowGap: isMobile ? 8 : 0, flexWrap: isMobile ? "wrap" : "nowrap", padding: "10px 12px", borderBottom: "1px solid #e5e7eb", overflowX: "clip" }}>
-        <button onClick={onBack} style={{ background: "none", border: "1px solid #e5e7eb", borderRadius: 8, padding: 8, cursor: "pointer", display: "flex", flexShrink: 0 }}>
+      <div style={{ position: "sticky", top: 0, zIndex: 40, background: "#fff", display: "flex", alignItems: "center", gap: isMobile ? 6 : 8, rowGap: isMobile ? 8 : 0, flexWrap: isMobile ? "wrap" : "nowrap", padding: isMobile ? "8px 10px" : "10px 12px", borderBottom: "1px solid #e5e7eb", overflowX: "clip" }}>
+        <button onClick={onBack} style={{ background: "none", border: "1px solid #e5e7eb", borderRadius: 8, padding: isMobile ? 7 : 8, cursor: "pointer", display: "flex", flexShrink: 0 }}>
           <ArrowLeft size={16} />
         </button>
-        <strong style={{ fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{project.name}</strong>
+        <strong style={{ fontSize: isMobile ? 13 : 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{project.name}</strong>
         {!isMobile && <span style={{ fontSize: 11, color: "#6b7280", background: "#f3f4f6", padding: "2px 8px", borderRadius: 12, flexShrink: 0 }}>{project.framework}</span>}
         {myRole !== "owner" && (
           <span style={{ fontSize: 10, fontWeight: 700, color: ORANGE, background: "#fff7ed", padding: "3px 8px", borderRadius: 12, flexShrink: 0, textTransform: "uppercase" }}>{myRole}</span>
@@ -2683,7 +2683,7 @@ if (App) {
               void send();
             }
           }} title="Kirim instruksi dan jalankan pipeline aplikasi"
-            style={{ background: ORANGE, color: "#fff", border: "none", borderRadius: 8, padding: "8px 11px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+            style={{ background: ORANGE, color: "#fff", border: "none", borderRadius: 8, padding: isMobile ? "7px 8px" : "8px 11px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
             <Sparkles size={15} /> {!isMobile && (input.trim() ? "Buat / Perbaiki" : "Mulai Buat")}
           </button>
         )}
@@ -2698,17 +2698,17 @@ if (App) {
         </button>}
         {myRole === "owner" && (
           <>
-          <button onClick={doSecurityScan} title="Jalankan security scan (tanpa publish)" style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8, padding: 8, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, flexShrink: 0, color: "#374151" }}>
+          <button onClick={doSecurityScan} title="Jalankan security scan (tanpa publish)" style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8, padding: isMobile ? 7 : 8, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, flexShrink: 0, color: "#374151" }}>
             <ShieldCheck size={16} />
             {!isMobile && (runScanMut.isPending ? "Memindai..." : "Scan")}
           </button>
-          <button onClick={doPublish} title="Publish" style={{ background: ORANGE, color: "#fff", border: "none", borderRadius: 8, padding: 8, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, flexShrink: 0 }}>
+          <button onClick={doPublish} title="Publish" style={{ background: ORANGE, color: "#fff", border: "none", borderRadius: 8, padding: isMobile ? 7 : 8, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, flexShrink: 0 }}>
             <Rocket size={16} />
             {!isMobile && (publishing ? "Publishing..." : "Publish")}
           </button>
           </>
         )}
-        <button onClick={() => setWorkspaceMenuOpen(!workspaceMenuOpen)} title="Tools proyek" style={{ background: workspaceMenuOpen ? "#fff7ed" : "#fff", border: "1px solid #e5e7eb", borderRadius: 8, padding: 8, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "#374151", flexShrink: 0 }}>
+        <button onClick={() => setWorkspaceMenuOpen(!workspaceMenuOpen)} title="Tools proyek" style={{ background: workspaceMenuOpen ? "#fff7ed" : "#fff", border: "1px solid #e5e7eb", borderRadius: 8, padding: isMobile ? 7 : 8, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "#374151", flexShrink: 0 }}>
           <Settings size={16} /> {!isMobile && "Lainnya"}
         </button>
         {workspaceMenuOpen && canEdit && (
