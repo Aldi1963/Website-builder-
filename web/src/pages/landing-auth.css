@@ -1,7 +1,12 @@
-/* landing-auth.css — gaya scoped untuk LandingV2 + AuthV2 (Hermes3D #267-A).
-   Brand dipertahankan: hijau gelap #1d4530, lime #c9f36b, oranye #F6821F
-   sebagai aksen sekunder. Kelas berawalan la- supaya tidak bertabrakan
-   dengan .wb-* di index.css (yang kini tidak lagi dipakai kedua halaman ini).
+/* landing-auth.css — gaya scoped untuk LandingV2 + AuthV2 (Hermes3D #267-A,
+   diselaraskan ke bahasa visual tab Chat Builder oleh #268-A).
+   Brand dipertahankan: hijau gelap #1d4530, lime #c9f36b sebagai aksen
+   sekunder; oranye #F6821F jadi aksen UTAMA, diambil token-per-token dari
+   tab Chat di Builder.tsx (ORANGE, bubble user, kartu asisten, chip contoh,
+   progress bar, dot aktivitas, composer + focus ring, tombol kirim bundar,
+   pill, badge status, segmented control).
+   Kelas berawalan la- supaya tidak bertabrakan dengan .wb-* di index.css
+   (yang kini tidak lagi dipakai kedua halaman ini).
    Niat perbaikan mobile PR #31-33 dipertahankan di sini:
    - headline tidak yatim (baris h1 dipaksa per-baris, ukuran mobile dihitung
      agar "Langsung jadi." muat satu baris di 390px),
@@ -15,6 +20,16 @@
   --la-lime: #c9f36b;
   --la-lime-ink: #8bb632;
   --la-orange: #f6821f;
+  --la-orange-dark: #e56f0e;
+  /* Token bahasa chat (Builder.tsx): */
+  --la-chat-soft: #fff7ed;
+  --la-chat-line: #fed7aa;
+  --la-chat-ink: #9a3412;
+  --la-chat-strong: #c2410c;
+  --la-card-line: #e2e8f0;
+  --la-card-shadow: 0 2px 12px rgba(0, 0, 0, 0.03);
+  --la-ring: 0 0 0 3px rgba(246, 130, 31, 0.12);
+  --la-done: #22c55e;
   --la-bg: #f7f8f4;
   background: var(--la-bg);
   color: var(--la-ink);
@@ -49,7 +64,7 @@
   white-space: nowrap;
 }
 .la-brand span { font-weight: 500; }
-.la-brand i { color: #9ccb3b; font-style: normal; }
+.la-brand i { color: var(--la-orange); font-style: normal; }
 .la-nav-links { display: flex; gap: 28px; flex: 1; }
 .la-nav-links a,
 .la-mobile-menu a {
@@ -62,7 +77,7 @@
 .la-nav-cta {
   border: 0;
   border-radius: 999px;
-  background: var(--la-ink);
+  background: var(--la-orange);
   color: #fff;
   padding: 10px 18px;
   display: inline-flex;
@@ -73,7 +88,7 @@
   cursor: pointer;
   white-space: nowrap;
 }
-.la-nav-cta:hover { background: var(--la-green); }
+.la-nav-cta:hover { background: var(--la-orange-dark); }
 .la-menu-btn { display: none; border: 0; background: transparent; cursor: pointer; color: var(--la-ink); padding: 6px; }
 .la-mobile-menu { display: none; }
 
@@ -93,12 +108,13 @@
   font-size: 10px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #6b843e;
-  border: 1px solid #d2dfbd;
+  color: var(--la-chat-ink);
+  border: 1px solid var(--la-chat-line);
   border-radius: 999px;
   padding: 8px 14px;
-  background: #fff;
+  background: var(--la-chat-soft);
 }
+.la-eyebrow svg { color: var(--la-orange); }
 .la-hero-title {
   font-size: clamp(34px, 10.5vw, 96px);
   line-height: 0.98;
@@ -107,7 +123,7 @@
   font-weight: 800;
 }
 .la-hero-title > span { display: block; }
-.la-hero-title em { color: var(--la-lime-ink); font-style: normal; }
+.la-hero-title em { color: var(--la-orange); font-style: normal; }
 .la-hero-sub {
   max-width: 580px;
   margin: 0 auto;
@@ -116,20 +132,22 @@
   line-height: 1.7;
 }
 
-/* Kotak prompt = centerpiece (ala Emergent/Lovable) */
+/* Kotak prompt = centerpiece (ala Emergent/Lovable).
+   Diselaraskan ke composer chat: radius 16, border #dbe3ee, shadow
+   0 4px 18px rgba(15,23,42,.06), focus ring oranye. */
 .la-prompt {
   max-width: 680px;
   margin: 44px auto 0;
   text-align: left;
   background: #fff;
-  border: 1px solid var(--la-line);
-  border-radius: 18px;
+  border: 1px solid #dbe3ee;
+  border-radius: 16px;
   padding: 16px 18px 14px;
-  box-shadow: 0 24px 60px rgba(24, 53, 27, 0.1);
+  box-shadow: 0 4px 18px rgba(15, 23, 42, 0.06), 0 24px 60px rgba(24, 53, 27, 0.08);
 }
 .la-prompt:focus-within {
-  border-color: #9ccb3b;
-  box-shadow: 0 24px 60px rgba(24, 53, 27, 0.1), 0 0 0 3px rgba(201, 243, 107, 0.35);
+  border-color: #f6821f;
+  box-shadow: 0 4px 18px rgba(15, 23, 42, 0.06), 0 0 0 3px rgba(246, 130, 31, 0.12);
 }
 .la-prompt-head {
   font-size: 12px;
@@ -139,16 +157,29 @@
   align-items: center;
 }
 .la-prompt-head small { color: #9aa39b; font-weight: 400; margin-left: auto; }
+/* Chip FREE — meniru badge status tab Chat (radius 12, 10px bold,
+   teks oranye gelap di atas #fff7ed). */
+.la-free-chip {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--la-chat-strong);
+  background: var(--la-chat-soft);
+  border: 1px solid var(--la-chat-line);
+  border-radius: 12px;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
 .la-live-dot {
   width: 8px;
   height: 8px;
-  background: #a9d449;
+  background: var(--la-orange);
   border-radius: 50%;
   animation: la-pulse 2s infinite;
 }
 @keyframes la-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(169, 212, 73, 0.45); }
-  50% { box-shadow: 0 0 0 5px rgba(169, 212, 73, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(246, 130, 31, 0.45); }
+  50% { box-shadow: 0 0 0 5px rgba(246, 130, 31, 0); }
 }
 .la-prompt-input {
   width: 100%;
@@ -173,20 +204,21 @@
   gap: 12px;
 }
 .la-prompt-foot span { font: 11px "DM Mono", monospace; color: #a1aaa2; }
+/* Tombol kirim bundar 38px oranye — seperti tombol kirim tab Chat. */
 .la-prompt-send {
   border: 0;
-  background: var(--la-lime);
-  color: var(--la-ink);
+  background: var(--la-orange);
+  color: #fff;
   border-radius: 50%;
-  width: 40px;
-  height: 40px;
+  width: 38px;
+  height: 38px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   flex-shrink: 0;
 }
-.la-prompt-send:hover { background: #b8e05a; }
+.la-prompt-send:hover { background: var(--la-orange-dark); }
 .la-chips {
   display: flex;
   flex-wrap: wrap;
@@ -199,17 +231,19 @@
   font-size: 12px;
   color: #9aa39b;
 }
+/* Chip contoh — meniru suggestion chip tab Chat (border oranye,
+   bg #fff7ed, teks #9a3412, pill). */
 .la-chip {
-  border: 1px solid var(--la-line);
-  background: #fff;
-  color: var(--la-muted);
+  border: 1px solid #f6821f;
+  background: var(--la-chat-soft);
+  color: var(--la-chat-ink);
   border-radius: 999px;
   padding: 8px 14px;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
 }
-.la-chip:hover { border-color: var(--la-orange); color: var(--la-ink); }
+.la-chip:hover { border-color: var(--la-orange); background: #ffedd5; color: #7c2d12; }
 .la-hero-ghost {
   display: inline-flex;
   align-items: center;
@@ -243,8 +277,8 @@
 .la-float-left { left: 24px; transform: rotate(-6deg); }
 .la-float-right { right: 24px; transform: rotate(5deg); top: 240px; }
 .la-float-bars { display: flex; align-items: flex-end; gap: 5px; height: 44px; margin-top: 10px; }
-.la-float-bars i { flex: 1; background: #dcecb8; border-radius: 3px 3px 0 0; }
-.la-float-bars i:last-child { background: var(--la-green); }
+.la-float-bars i { flex: 1; background: #ffedd5; border-radius: 3px 3px 0 0; }
+.la-float-bars i:last-child { background: var(--la-orange); }
 .la-float-badge {
   display: inline-flex;
   align-items: center;
@@ -290,7 +324,7 @@
   font-size: 10px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #6b843e;
+  color: var(--la-chat-strong);
 }
 .la-section h2 {
   font-size: clamp(32px, 5vw, 56px);
@@ -299,7 +333,7 @@
   margin: 16px 0;
   font-weight: 800;
 }
-.la-section h2 em { color: var(--la-lime-ink); font-style: normal; }
+.la-section h2 em { color: var(--la-orange); font-style: normal; }
 .la-section-head p { color: var(--la-muted); line-height: 1.7; font-size: 14px; margin: 0; }
 .la-feature-grid {
   display: grid;
@@ -307,19 +341,24 @@
   gap: 12px;
   margin-top: 48px;
 }
+/* Kartu fitur — meniru kartu asisten tab Chat: bg putih, border #e2e8f0,
+   radius 14, shadow 0 2px 12px rgba(0,0,0,.03); ikon di tile oranye
+   (#fff7ed + border #fed7aa) seperti tile Sparkles di header chat. */
 .la-feature-card {
-  border: 1px solid var(--la-line);
+  border: 1px solid var(--la-card-line);
   background: #fff;
   border-radius: 14px;
   padding: 24px;
+  box-shadow: var(--la-card-shadow);
 }
-.la-feature-card:hover { border-color: #b8c7af; }
+.la-feature-card:hover { border-color: var(--la-chat-line); box-shadow: 0 4px 18px rgba(15, 23, 42, 0.06); }
 .la-feature-icon {
   width: 40px;
   height: 40px;
   border-radius: 10px;
-  background: #eef6d8;
-  color: #6b843e;
+  background: var(--la-chat-soft);
+  border: 1px solid var(--la-chat-line);
+  color: var(--la-orange);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -338,8 +377,23 @@
   border-radius: 14px;
   overflow: hidden;
 }
-.la-steps > div { background: var(--la-bg); padding: 28px 24px; }
-.la-steps b { font: 11px "DM Mono", monospace; color: #9bbd42; }
+.la-steps > div { background: var(--la-bg); padding: 28px 24px; position: relative; }
+/* Bilah progres 5px di tiap langkah — meniru progress bar tab Chat
+   (tinggi 4px, radius 4; selesai hijau, aktif oranye, menunggu abu-abu). */
+.la-steps > div::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 5px;
+  background: #e2e8f0;
+}
+.la-steps > div:nth-child(1)::before { background: var(--la-done); }
+.la-steps > div:nth-child(2)::before { background: var(--la-orange); }
+.la-steps b { font: 11px "DM Mono", monospace; color: #94a3b8; }
+.la-steps > div:nth-child(1) b { color: #15803d; }
+.la-steps > div:nth-child(2) b { color: var(--la-chat-strong); }
 .la-steps h3 { margin: 20px 0 8px; font-size: 16px; }
 .la-steps p { color: var(--la-muted); font-size: 13px; line-height: 1.6; margin: 0; }
 
@@ -349,6 +403,17 @@
   color: #f7f8f4;
   text-align: center;
   padding: 96px 28px;
+}
+/* Ikon di tile oranye seperti tile Sparkles di header chat. */
+.la-cta-band > svg {
+  background: var(--la-chat-soft);
+  border: 1px solid var(--la-chat-line);
+  color: var(--la-orange);
+  border-radius: 10px;
+  padding: 8px;
+  width: 38px;
+  height: 38px;
+  box-sizing: border-box;
 }
 .la-cta-band h2 {
   font-size: clamp(32px, 5vw, 56px);
@@ -362,8 +427,8 @@
 .la-cta-btn {
   border: 0;
   border-radius: 999px;
-  background: var(--la-lime);
-  color: var(--la-ink);
+  background: var(--la-orange);
+  color: #fff;
   padding: 14px 28px;
   display: inline-flex;
   align-items: center;
@@ -372,7 +437,7 @@
   font-weight: 700;
   cursor: pointer;
 }
-.la-cta-btn:hover { background: #d4f77e; }
+.la-cta-btn:hover { background: var(--la-orange-dark); }
 .la-footer {
   max-width: 1180px;
   margin: 0 auto;
@@ -398,6 +463,13 @@
   --la-lime: #c9f36b;
   --la-lime-ink: #8bb632;
   --la-orange: #f6821f;
+  --la-orange-dark: #e56f0e;
+  --la-chat-soft: #fff7ed;
+  --la-chat-line: #fed7aa;
+  --la-chat-ink: #9a3412;
+  --la-chat-strong: #c2410c;
+  --la-card-line: #e2e8f0;
+  --la-ring: 0 0 0 3px rgba(246, 130, 31, 0.12);
   min-height: 100vh;
   background: var(--la-green);
   display: grid;
@@ -436,8 +508,63 @@
   font-size: 13px;
   color: #d6e4d4;
 }
-.la-auth-points svg { color: var(--la-lime); flex-shrink: 0; }
+.la-auth-points svg { color: var(--la-orange); flex-shrink: 0; }
 .la-auth-side small { color: #8fa995; font-size: 12px; }
+
+/* Mini percakapan hiasan di panel kiri — gema tab Chat: bubble user oranye
+   (sudut bawah-kanan runcing) + kartu asisten ringan di atas hijau gelap. */
+.la-auth-chatmock {
+  margin-top: 36px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 420px;
+}
+.la-cm-user {
+  align-self: flex-end;
+  background: var(--la-orange);
+  color: #fff;
+  border-radius: 14px;
+  border-bottom-right-radius: 4px;
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  max-width: 94%;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+.la-cm-assistant {
+  align-self: flex-start;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 14px;
+  border-bottom-left-radius: 4px;
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #e6f0e4;
+  max-width: 94%;
+}
+.la-cm-assistant b {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #fff;
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+.la-cm-tile {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--la-chat-soft);
+  border: 1px solid var(--la-chat-line);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--la-orange);
+  flex-shrink: 0;
+}
+.la-cm-check { color: var(--la-lime); font-weight: 700; }
 .la-auth-main {
   background: #f7f8f4;
   color: var(--la-ink);
@@ -449,7 +576,7 @@
 .la-auth-back {
   background: transparent;
   border: 0;
-  color: var(--la-green);
+  color: var(--la-chat-strong);
   padding: 8px 0;
   display: inline-flex;
   align-items: center;
@@ -458,13 +585,42 @@
   font-weight: 600;
   cursor: pointer;
 }
+.la-auth-back:hover { color: var(--la-chat-ink); }
 .la-auth-form h2 { font-size: 26px; letter-spacing: -0.03em; margin: 14px 0 8px; }
 .la-auth-sub { color: var(--la-muted); font-size: 13px; margin: 0 0 22px; line-height: 1.6; }
+/* Segmented control Masuk/Daftar — meniru device switcher tab Chat
+   (wadah radius 8, tombol aktif putih + bayangan, teks oranye gelap). */
+.la-auth-seg {
+  display: inline-flex;
+  gap: 2px;
+  background: #eef1ea;
+  border: 1px solid var(--la-line);
+  border-radius: 8px;
+  padding: 3px;
+  margin: 0 0 18px;
+}
+.la-auth-seg button {
+  border: 0;
+  background: transparent;
+  color: var(--la-muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 18px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.la-auth-seg button[aria-pressed="true"] {
+  background: #fff;
+  color: var(--la-chat-strong);
+  font-weight: 700;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.12);
+}
 .la-auth-input {
   width: 100%;
   padding: 13px 14px;
   border: 1px solid var(--la-line);
-  border-radius: 10px;
+  border-radius: 8px;
   margin-bottom: 10px;
   background: #fff;
   font: inherit;
@@ -473,8 +629,8 @@
 }
 .la-auth-input:focus {
   outline: 0;
-  border-color: #9ccb3b;
-  box-shadow: 0 0 0 3px rgba(201, 243, 107, 0.35);
+  border-color: #f6821f;
+  box-shadow: var(--la-ring);
 }
 .la-auth-error { color: #b42318; font-size: 12px; margin: 5px 0; }
 .la-auth-submit {
@@ -482,22 +638,24 @@
   padding: 13px;
   border: 0;
   border-radius: 999px;
-  background: var(--la-green);
+  background: var(--la-orange);
   color: #fff;
   font-weight: 700;
   font-size: 14px;
   cursor: pointer;
 }
-.la-auth-submit:hover { background: #265a3f; }
+.la-auth-submit:hover { background: var(--la-orange-dark); }
 .la-auth-text-btn {
   background: transparent;
   border: 0;
-  color: var(--la-green);
+  color: var(--la-chat-strong);
   padding: 8px 0;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
+  white-space: nowrap;
 }
+.la-auth-text-btn:hover { color: var(--la-chat-ink); }
 .la-auth-divider {
   display: flex;
   gap: 8px;
@@ -523,7 +681,7 @@
   font-weight: 600;
   cursor: pointer;
 }
-.la-auth-oauth button:hover { border-color: #b8c7af; }
+.la-auth-oauth button:hover { border-color: var(--la-chat-line); }
 .la-auth-links {
   display: flex;
   justify-content: space-between;
@@ -559,7 +717,7 @@
     gap: 16px;
     box-shadow: 0 18px 40px rgba(24, 53, 27, 0.1);
   }
-  .la-mobile-menu .la-nav-cta { display: inline-flex; justify-content: center; background: var(--la-ink); }
+  .la-mobile-menu .la-nav-cta { display: inline-flex; justify-content: center; background: var(--la-orange); }
   .la-hero { padding: 48px 20px 44px; }
   .la-eyebrow { font-size: 9px; padding: 7px 11px; max-width: 100%; }
   .la-hero-sub { font-size: 14px; }
@@ -583,10 +741,12 @@
   .la-auth-side { padding: 22px 20px 20px; gap: 0; }
   .la-auth-side h1 { font-size: 32px; margin: 16px 0 10px; }
   .la-auth-side p { font-size: 13px; }
-  .la-auth-points, .la-auth-side small { display: none; }
+  .la-auth-points, .la-auth-side small, .la-auth-chatmock { display: none; }
   .la-auth-main { padding: 24px 20px 36px; }
   .la-auth-form h2 { font-size: 23px; }
-  .la-auth-links { flex-direction: column; gap: 2px; align-items: flex-start; }
+  /* Perbaikan regresi #267: "Lupa password?" + "Buat akun baru" berdampingan
+     1 baris (row + wrap), bukan bertumpuk 2 baris. */
+  .la-auth-links { flex-direction: row; flex-wrap: wrap; gap: 4px 16px; align-items: center; justify-content: space-between; }
 }
 @media (prefers-reduced-motion: reduce) {
   .la-live-dot { animation: none; }

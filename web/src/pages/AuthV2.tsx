@@ -20,6 +20,10 @@ export default function AuthV2({ onDone }: { onDone: () => void }) {
           <div><Check size={15}/> Database PostgreSQL otomatis</div>
           <div><Check size={15}/> Deploy sekali klik</div>
         </div>
+        <div className="la-auth-chatmock" aria-hidden="true">
+          <div className="la-cm-user">Buatkan aplikasi kasir dengan login, produk, dan laporan penjualan.</div>
+          <div className="la-cm-assistant"><b><span className="la-cm-tile"><Sparkles size={12}/></span> AI Web Builder</b>Siap — 12 file dibuat, build lolos, preview sudah bisa dibuka. <span className="la-cm-check">✓</span></div>
+        </div>
       </div>
       <small>© WebBuilder 2026</small>
     </section>
@@ -28,6 +32,7 @@ export default function AuthV2({ onDone }: { onDone: () => void }) {
         <button type="button" className="la-auth-back" onClick={()=>location.href="/"}><ArrowLeft size={15}/> Kembali</button>
         <h2>{mode==="login"?"Selamat datang kembali":mode==="register"?"Buat workspace baru":"Reset password"}</h2>
         <p className="la-auth-sub">{mode==="register"?"Mulai dari satu ide dan bangun sesuatu yang nyata.":mode==="login"?"Masuk untuk melanjutkan project kamu.":"Masukkan email untuk menerima link reset."}</p>
+        {mode!=="forgot"&&<div className="la-auth-seg" role="group" aria-label="Mode akun"><button type="button" aria-pressed={mode==="login"} onClick={()=>setMode("login")}>Masuk</button><button type="button" aria-pressed={mode==="register"} onClick={()=>setMode("register")}>Daftar</button></div>}
         {mode==="register"&&<input className="la-auth-input" placeholder="Nama lengkap" value={name} onChange={e=>setName(e.target.value)} required/>}
         <input className="la-auth-input" placeholder="Email" type="email" value={email} onChange={e=>setEmail(e.target.value)} required/>
         {mode!=="forgot"&&<input className="la-auth-input" placeholder="Password" type="password" value={password} onChange={e=>setPassword(e.target.value)} required/>}
