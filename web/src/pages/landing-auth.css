@@ -1,0 +1,593 @@
+/* landing-auth.css — gaya scoped untuk LandingV2 + AuthV2 (Hermes3D #267-A).
+   Brand dipertahankan: hijau gelap #1d4530, lime #c9f36b, oranye #F6821F
+   sebagai aksen sekunder. Kelas berawalan la- supaya tidak bertabrakan
+   dengan .wb-* di index.css (yang kini tidak lagi dipakai kedua halaman ini).
+   Niat perbaikan mobile PR #31-33 dipertahankan di sini:
+   - headline tidak yatim (baris h1 dipaksa per-baris, ukuran mobile dihitung
+     agar "Langsung jadi." muat satu baris di 390px),
+   - hero login mobile kecil & rapat (tanpa min-height, tanpa jurang kosong),
+   - kartu fitur mobile tanpa min-height, padding rapat. */
+.la-landing {
+  --la-ink: #17211b;
+  --la-muted: #69736b;
+  --la-line: #dfe5dc;
+  --la-green: #1d4530;
+  --la-lime: #c9f36b;
+  --la-lime-ink: #8bb632;
+  --la-orange: #f6821f;
+  --la-bg: #f7f8f4;
+  background: var(--la-bg);
+  color: var(--la-ink);
+  min-height: 100vh;
+  font-family: Manrope, Inter, system-ui, sans-serif;
+}
+
+/* ── Nav ── */
+.la-nav {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: rgba(247, 248, 244, 0.88);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--la-line);
+}
+.la-nav-inner {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 28px;
+  height: 68px;
+  display: flex;
+  align-items: center;
+  gap: 40px;
+}
+.la-brand {
+  color: var(--la-ink);
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: -0.06em;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.la-brand span { font-weight: 500; }
+.la-brand i { color: #9ccb3b; font-style: normal; }
+.la-nav-links { display: flex; gap: 28px; flex: 1; }
+.la-nav-links a,
+.la-mobile-menu a {
+  color: var(--la-muted);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+}
+.la-nav-links a:hover { color: var(--la-ink); }
+.la-nav-cta {
+  border: 0;
+  border-radius: 999px;
+  background: var(--la-ink);
+  color: #fff;
+  padding: 10px 18px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.la-nav-cta:hover { background: var(--la-green); }
+.la-menu-btn { display: none; border: 0; background: transparent; cursor: pointer; color: var(--la-ink); padding: 6px; }
+.la-mobile-menu { display: none; }
+
+/* ── Hero ── */
+.la-hero {
+  position: relative;
+  overflow: clip;
+  padding: 84px 28px 72px;
+  text-align: center;
+}
+.la-hero-inner { max-width: 920px; margin: 0 auto; }
+.la-eyebrow {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  font-family: "DM Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #6b843e;
+  border: 1px solid #d2dfbd;
+  border-radius: 999px;
+  padding: 8px 14px;
+  background: #fff;
+}
+.la-hero-title {
+  font-size: clamp(34px, 10.5vw, 96px);
+  line-height: 0.98;
+  letter-spacing: -0.06em;
+  margin: 26px 0 20px;
+  font-weight: 800;
+}
+.la-hero-title > span { display: block; }
+.la-hero-title em { color: var(--la-lime-ink); font-style: normal; }
+.la-hero-sub {
+  max-width: 580px;
+  margin: 0 auto;
+  color: var(--la-muted);
+  font-size: 16px;
+  line-height: 1.7;
+}
+
+/* Kotak prompt = centerpiece (ala Emergent/Lovable) */
+.la-prompt {
+  max-width: 680px;
+  margin: 44px auto 0;
+  text-align: left;
+  background: #fff;
+  border: 1px solid var(--la-line);
+  border-radius: 18px;
+  padding: 16px 18px 14px;
+  box-shadow: 0 24px 60px rgba(24, 53, 27, 0.1);
+}
+.la-prompt:focus-within {
+  border-color: #9ccb3b;
+  box-shadow: 0 24px 60px rgba(24, 53, 27, 0.1), 0 0 0 3px rgba(201, 243, 107, 0.35);
+}
+.la-prompt-head {
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.la-prompt-head small { color: #9aa39b; font-weight: 400; margin-left: auto; }
+.la-live-dot {
+  width: 8px;
+  height: 8px;
+  background: #a9d449;
+  border-radius: 50%;
+  animation: la-pulse 2s infinite;
+}
+@keyframes la-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(169, 212, 73, 0.45); }
+  50% { box-shadow: 0 0 0 5px rgba(169, 212, 73, 0); }
+}
+.la-prompt-input {
+  width: 100%;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  resize: none;
+  font: inherit;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--la-ink);
+  padding: 18px 0;
+  display: block;
+}
+.la-prompt-input::placeholder { color: #9aa39b; }
+.la-prompt-foot {
+  border-top: 1px solid #edf0eb;
+  padding-top: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.la-prompt-foot span { font: 11px "DM Mono", monospace; color: #a1aaa2; }
+.la-prompt-send {
+  border: 0;
+  background: var(--la-lime);
+  color: var(--la-ink);
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.la-prompt-send:hover { background: #b8e05a; }
+.la-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 18px;
+}
+.la-chips small {
+  align-self: center;
+  font-size: 12px;
+  color: #9aa39b;
+}
+.la-chip {
+  border: 1px solid var(--la-line);
+  background: #fff;
+  color: var(--la-muted);
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.la-chip:hover { border-color: var(--la-orange); color: var(--la-ink); }
+.la-hero-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 22px;
+  color: var(--la-ink);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+}
+.la-hero-ghost svg { color: var(--la-orange); }
+
+/* Kartu mock melayang (hiasan murni, desktop lebar saja — adaptasi
+   pola Emergent tanpa memakai aset/logo mereka). */
+.la-float-card {
+  position: absolute;
+  top: 190px;
+  width: 190px;
+  background: #fff;
+  border: 1px solid var(--la-line);
+  border-radius: 12px;
+  box-shadow: 0 18px 50px rgba(24, 53, 27, 0.14);
+  padding: 14px;
+  text-align: left;
+  pointer-events: none;
+  display: none;
+  z-index: 1;
+}
+.la-float-card b { display: block; font-size: 12px; margin-bottom: 8px; }
+.la-float-card p { margin: 0; font-size: 11px; color: var(--la-muted); line-height: 1.5; }
+.la-float-left { left: 24px; transform: rotate(-6deg); }
+.la-float-right { right: 24px; transform: rotate(5deg); top: 240px; }
+.la-float-bars { display: flex; align-items: flex-end; gap: 5px; height: 44px; margin-top: 10px; }
+.la-float-bars i { flex: 1; background: #dcecb8; border-radius: 3px 3px 0 0; }
+.la-float-bars i:last-child { background: var(--la-green); }
+.la-float-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--la-green);
+}
+.la-float-badge i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--la-orange);
+  display: inline-block;
+}
+@media (min-width: 1280px) {
+  .la-float-card { display: block; }
+}
+
+/* ── Trust strip ── */
+.la-trust {
+  border-block: 1px solid var(--la-line);
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 20px 28px;
+  display: flex;
+  gap: 28px;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  color: #879189;
+  font-size: 12px;
+}
+.la-trust span { font: 10px "DM Mono", monospace; letter-spacing: 0.1em; color: #b0b8b0; }
+.la-trust b { font-weight: 600; color: #6b7a6e; }
+
+/* ── Seksi ── */
+.la-section { max-width: 1180px; margin: 0 auto; padding: 96px 28px; }
+.la-section-head { max-width: 620px; margin: 0 auto; text-align: center; }
+.la-section-head.left { margin: 0; text-align: left; }
+.la-kicker {
+  font-family: "DM Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #6b843e;
+}
+.la-section h2 {
+  font-size: clamp(32px, 5vw, 56px);
+  line-height: 1.02;
+  letter-spacing: -0.05em;
+  margin: 16px 0;
+  font-weight: 800;
+}
+.la-section h2 em { color: var(--la-lime-ink); font-style: normal; }
+.la-section-head p { color: var(--la-muted); line-height: 1.7; font-size: 14px; margin: 0; }
+.la-feature-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-top: 48px;
+}
+.la-feature-card {
+  border: 1px solid var(--la-line);
+  background: #fff;
+  border-radius: 14px;
+  padding: 24px;
+}
+.la-feature-card:hover { border-color: #b8c7af; }
+.la-feature-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: #eef6d8;
+  color: #6b843e;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+.la-feature-card h3 { margin: 0 0 8px; font-size: 15px; }
+.la-feature-card p { color: var(--la-muted); font-size: 13px; line-height: 1.6; margin: 0; }
+.la-workflow { border-top: 1px solid var(--la-line); }
+.la-steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: var(--la-line);
+  margin-top: 48px;
+  border: 1px solid var(--la-line);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.la-steps > div { background: var(--la-bg); padding: 28px 24px; }
+.la-steps b { font: 11px "DM Mono", monospace; color: #9bbd42; }
+.la-steps h3 { margin: 20px 0 8px; font-size: 16px; }
+.la-steps p { color: var(--la-muted); font-size: 13px; line-height: 1.6; margin: 0; }
+
+/* ── CTA bawah + footer ── */
+.la-cta-band {
+  background: var(--la-green);
+  color: #f7f8f4;
+  text-align: center;
+  padding: 96px 28px;
+}
+.la-cta-band h2 {
+  font-size: clamp(32px, 5vw, 56px);
+  line-height: 1.02;
+  letter-spacing: -0.05em;
+  margin: 16px 0;
+  font-weight: 800;
+}
+.la-cta-band h2 em { color: var(--la-lime); font-style: normal; }
+.la-cta-band p { color: #bfd0c1; margin: 0 auto 28px; max-width: 520px; line-height: 1.7; font-size: 14px; }
+.la-cta-btn {
+  border: 0;
+  border-radius: 999px;
+  background: var(--la-lime);
+  color: var(--la-ink);
+  padding: 14px 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.la-cta-btn:hover { background: #d4f77e; }
+.la-footer {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 28px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: #8a948b;
+}
+.la-footer nav { display: flex; gap: 20px; }
+.la-footer a { color: #8a948b; text-decoration: none; }
+.la-footer a:hover { color: var(--la-ink); }
+
+/* ── Auth ── */
+.la-auth {
+  --la-ink: #17211b;
+  --la-muted: #69736b;
+  --la-line: #dfe5dc;
+  --la-green: #1d4530;
+  --la-lime: #c9f36b;
+  --la-lime-ink: #8bb632;
+  --la-orange: #f6821f;
+  min-height: 100vh;
+  background: var(--la-green);
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  color: #fff;
+  font-family: Manrope, Inter, system-ui, sans-serif;
+}
+.la-auth-side {
+  background: var(--la-green);
+  padding: clamp(32px, 6vw, 88px);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 32px;
+}
+.la-auth-side .la-brand { color: #fff; font-size: 20px; }
+.la-auth-side h1 {
+  font-size: clamp(38px, 5.5vw, 72px);
+  line-height: 0.98;
+  letter-spacing: -0.06em;
+  margin: 22px 0 18px;
+  font-weight: 800;
+}
+.la-auth-side h1 em { color: var(--la-lime); font-style: normal; }
+.la-auth-side p { color: #bfd0c1; max-width: 400px; line-height: 1.7; margin: 0; font-size: 15px; }
+.la-auth-points {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 28px;
+}
+.la-auth-points div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: #d6e4d4;
+}
+.la-auth-points svg { color: var(--la-lime); flex-shrink: 0; }
+.la-auth-side small { color: #8fa995; font-size: 12px; }
+.la-auth-main {
+  background: #f7f8f4;
+  color: var(--la-ink);
+  display: flex;
+  align-items: center;
+  padding: clamp(24px, 5vw, 72px);
+}
+.la-auth-form { width: 100%; max-width: 400px; margin: auto; }
+.la-auth-back {
+  background: transparent;
+  border: 0;
+  color: var(--la-green);
+  padding: 8px 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.la-auth-form h2 { font-size: 26px; letter-spacing: -0.03em; margin: 14px 0 8px; }
+.la-auth-sub { color: var(--la-muted); font-size: 13px; margin: 0 0 22px; line-height: 1.6; }
+.la-auth-input {
+  width: 100%;
+  padding: 13px 14px;
+  border: 1px solid var(--la-line);
+  border-radius: 10px;
+  margin-bottom: 10px;
+  background: #fff;
+  font: inherit;
+  font-size: 14px;
+  color: var(--la-ink);
+}
+.la-auth-input:focus {
+  outline: 0;
+  border-color: #9ccb3b;
+  box-shadow: 0 0 0 3px rgba(201, 243, 107, 0.35);
+}
+.la-auth-error { color: #b42318; font-size: 12px; margin: 5px 0; }
+.la-auth-submit {
+  width: 100%;
+  padding: 13px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--la-green);
+  color: #fff;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+}
+.la-auth-submit:hover { background: #265a3f; }
+.la-auth-text-btn {
+  background: transparent;
+  border: 0;
+  color: var(--la-green);
+  padding: 8px 0;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.la-auth-divider {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 18px 0;
+  color: #9aa39b;
+  font-size: 11px;
+}
+.la-auth-divider hr { flex: 1; border: 0; border-top: 1px solid var(--la-line); }
+.la-auth-oauth { display: flex; gap: 8px; }
+.la-auth-oauth button {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  background: #fff;
+  color: var(--la-ink);
+  border: 1px solid var(--la-line);
+  border-radius: 999px;
+  padding: 11px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.la-auth-oauth button:hover { border-color: #b8c7af; }
+.la-auth-links {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 18px;
+  font-size: 12px;
+}
+.la-auth-note {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  margin-top: 24px;
+  color: #89948b;
+  font-size: 11px;
+}
+
+/* ── Mobile (≤700px): jaga niat PR #31 — headline utuh, hero login rapat ── */
+@media (max-width: 700px) {
+  .la-nav-inner { height: 60px; padding: 0 18px; gap: 16px; }
+  .la-nav-links, .la-nav .la-nav-cta { display: none; }
+  .la-menu-btn { display: block; margin-left: auto; }
+  .la-mobile-menu {
+    display: flex;
+    position: absolute;
+    z-index: 80;
+    top: 60px;
+    left: 0;
+    right: 0;
+    background: #fff;
+    border-bottom: 1px solid var(--la-line);
+    padding: 18px;
+    flex-direction: column;
+    gap: 16px;
+    box-shadow: 0 18px 40px rgba(24, 53, 27, 0.1);
+  }
+  .la-mobile-menu .la-nav-cta { display: inline-flex; justify-content: center; background: var(--la-ink); }
+  .la-hero { padding: 48px 20px 44px; }
+  .la-eyebrow { font-size: 9px; padding: 7px 11px; max-width: 100%; }
+  .la-hero-sub { font-size: 14px; }
+  .la-prompt { margin-top: 32px; border-radius: 16px; padding: 14px 14px 12px; }
+  .la-prompt-input { padding: 14px 0; font-size: 14px; }
+  .la-prompt-foot span { font-size: 10px; }
+  .la-chips { justify-content: flex-start; }
+  .la-trust { padding: 16px 20px; gap: 12px 20px; justify-content: flex-start; }
+  .la-section { padding: 56px 20px; }
+  .la-feature-grid { grid-template-columns: 1fr; margin-top: 32px; }
+  .la-feature-card { padding: 20px; }
+  .la-feature-icon { margin-bottom: 16px; }
+  .la-steps { grid-template-columns: 1fr; margin-top: 32px; }
+  .la-steps > div { padding: 20px; }
+  .la-steps h3 { margin: 16px 0 8px; }
+  .la-cta-band { padding: 64px 20px; }
+  .la-footer { padding: 22px 20px; flex-direction: column; align-items: flex-start; gap: 10px; }
+
+  /* Auth mobile: hero kecil di atas form, tanpa jurang kosong. */
+  .la-auth { display: block; background: #f7f8f4; }
+  .la-auth-side { padding: 22px 20px 20px; gap: 0; }
+  .la-auth-side h1 { font-size: 32px; margin: 16px 0 10px; }
+  .la-auth-side p { font-size: 13px; }
+  .la-auth-points, .la-auth-side small { display: none; }
+  .la-auth-main { padding: 24px 20px 36px; }
+  .la-auth-form h2 { font-size: 23px; }
+  .la-auth-links { flex-direction: column; gap: 2px; align-items: flex-start; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .la-live-dot { animation: none; }
+}
