@@ -231,6 +231,111 @@ func runtimeProject(db *gorm.DB, c *gin.Context) (*models.Project, bool) {
 	return p, true
 }
 
+// normalizeSolutionTsconfigs memperbaiki tsconfig solution-style hasil
+// model supaya `tsc -b` — script build template Vite
+// ("tsc -b && vite build") — lolos.
+//
+// Akar masalah (reproduksi: proyek uji "Uji Fix B 15 Nov", TS 7.0.2):
+// `tsc -b` mengompilasi tiap proyek yang direferensikan dengan opsinya
+// SENDIRI; compilerOptions tsconfig.json root TIDAK diwariskan. Model
+// sering menghasilkan dua varian yang pecah:
+//
+//  1. tsconfig.node.json TANPA "include"/"files". Tanpa itu tsc memakai
+//     include default (semua file .ts/.tsx di bawah root), jadi proyek
+//     node ikut mengompilasi src/*.tsx — tanpa flag jsx — dan gagal
+//     `error TS17004: Cannot use JSX unless the '--jsx' flag is
+//     provided` di setiap elemen JSX. Template Vite selalu membatasi
+//     proyek node ke ["vite.config.ts"]; normalisasi ini mengembalikan
+//     batas itu.
+//  2. tsconfig.app.json TANPA "jsx" (model hanya menulis jsx di root).
+//     Proyek app mengompilasi src/ tanpa jsx -> TS17004 yang sama.
+//     Diisi "react-jsx" bila kuncinya memang tidak ada.
+//
+// Hanya kunci yang HILANG yang ditambahkan; nilai yang sudah ditulis
+// model tidak pernah ditimpa. Config yang tidak bisa dibaca, referensi
+// yang menunjuk ke luar workspace, dan bentuk di luar dua varian di atas
+// dibiarkan apa adanya supaya tsc sendiri yang melaporkannya.
+//
+// BUKAN regresi TypeScript 7: bentuk yang sama gagal identik (12x
+// TS17004) di TypeScript 5.9.3, jadi pin versi TS tidak memperbaikinya;
+// dan perintah build-nya sudah benar untuk proyek solution-style, jadi
+// bukan build script yang diubah.
+func normalizeSolutionTsconfigs(dir string) {
+	rootRaw, err := os.ReadFile(filepath.Join(dir, "tsconfig.json"))
+	if err != nil {
+		return
+	}
+	var root map[string]interface{}
+	if err := json.Unmarshal(rootRaw, &root); err != nil {
+		return
+	}
+	refs, _ := root["references"].([]interface{})
+	if len(refs) == 0 {
+		return
+	}
+	for _, ref := range refs {
+		refMap, _ := ref.(map[string]interface{})
+		rel, _ := refMap["path"].(string)
+		if strings.TrimSpace(rel) == "" {
+			continue
+		}
+		cfgPath := filepath.Join(dir, filepath.FromSlash(rel))
+		// Referensi tidak boleh lolos dari workspace proyek.
+		if rel2, err := filepath.Rel(dir, cfgPath); err != nil || rel2 == ".." || strings.HasPrefix(rel2, ".."+string(os.PathSeparator)) {
+			continue
+		}
+		raw, err := os.ReadFile(cfgPath)
+		if err != nil {
+			continue
+		}
+		var cfg map[string]interface{}
+		if err := json.Unmarshal(raw, &cfg); err != nil {
+			continue
+		}
+		base := strings.ToLower(filepath.Base(cfgPath))
+		changed := false
+		// (1) Proyek tooling/node tanpa include/files: batasi ke vite.config.ts.
+		if strings.Contains(base, "node") {
+			if _, ok := cfg["include"]; !ok {
+				if _, ok := cfg["files"]; !ok {
+					cfg["include"] = []string{"vite.config.ts"}
+					changed = true
+				}
+			}
+		}
+		// (2) Proyek app tanpa jsx: isi react-jsx (template Vite).
+		// Dikenali dari namanya atau dari include yang menyentuh src/.
+		isApp := strings.Contains(base, "app")
+		if !isApp {
+			if inc, ok := cfg["include"].([]interface{}); ok {
+				for _, v := range inc {
+					if s, ok := v.(string); ok && strings.Contains(s, "src") {
+						isApp = true
+						break
+					}
+				}
+			}
+		}
+		if isApp {
+			opts, _ := cfg["compilerOptions"].(map[string]interface{})
+			if opts == nil {
+				opts = map[string]interface{}{}
+				cfg["compilerOptions"] = opts
+			}
+			if _, ok := opts["jsx"]; !ok {
+				opts["jsx"] = "react-jsx"
+				changed = true
+			}
+		}
+		if !changed {
+			continue
+		}
+		if encoded, err := json.MarshalIndent(cfg, "", "  "); err == nil {
+			_ = os.WriteFile(cfgPath, encoded, 0644)
+		}
+	}
+}
+
 func prepareRuntimeWorkspace(p *models.Project) (string, error) {
 	dir := projectRuntimeRoot(p.ID)
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -428,6 +533,11 @@ Environment variable lokal disimpan di file .env.local; jangan commit secret ata
 	} else if !os.IsNotExist(readErr) {
 		return "", readErr
 	}
+	// Proyek solution-style hasil model (tsconfig.json berisi
+	// "references") sering gagal `tsc -b` — lihat
+	// normalizeSolutionTsconfigs. Best-effort: kesalahan yang tersisa
+	// tetap dilaporkan tsc sendiri saat build.
+	normalizeSolutionTsconfigs(dir)
 	viteCfg := filepath.Join(dir, "vite.config.ts")
 	if _, err := os.Stat(viteCfg); os.IsNotExist(err) {
 		content := `import { defineConfig } from "vite";
