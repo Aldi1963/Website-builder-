@@ -63,6 +63,21 @@ func acceptancePort(acceptance map[string]interface{}) (int, bool) {
 	return int(port), true
 }
 
+// previewURLPromptLine menyusun satu baris URL preview untuk system
+// prompt model. Port 0 / tidak valid → "" (tidak disuntik apa pun):
+// URL preview baru diketahui SESUDAH dev server jalan, jadi bila dev
+// server belum nyala, model tidak boleh diberi URL kosong/tebakan —
+// tanpa baris ini model menebak sendiri (run 13: snapshot
+// about:blank karena model tidak tahu URL preview). Port yang dipakai
+// adalah port yang SUDAH dikunci di klien browser (PreviewPort()),
+// jadi URL ini selalu sama dengan yang diizinkan gate navigasi.
+func previewURLPromptLine(port int) string {
+	if port <= 0 || port > 65535 {
+		return ""
+	}
+	return fmt.Sprintf("\n\nPREVIEW APLIKASI:\n- Aplikasi yang kamu bangun bisa dibuka dan diuji di http://127.0.0.1:%d/ — buka URL itu dengan alat browser (browser_navigate_page, lalu browser_take_snapshot untuk melihat hasilnya) dan periksa sendiri sebelum menyelesaikan tugas. Jangan menebak URL lain.", port)
+}
+
 // runBrowserVerificationLoop menjalankan loop verifikasi scripted Fase 2
 // (lihat browser.VerifyPreview): buka preview di Chrome → snapshot →
 // console → network → screenshot, lalu perbaiki dari temuan dan ulangi.
@@ -450,6 +465,18 @@ AUTONOMOUS BLUEPRINT (EMPTY PROJECT):
 		db.Model(p).Update("memory", p.Memory)
 	}
 	sysPrompt += "\n\n" + DesignBrief(preset)
+
+	// URL preview ke system prompt: HANYA bila dev server SUDAH jalan
+	// (port sudah dikunci di klien browser — PreviewPort() > 0).
+	// Tanpa baris ini model tidak tahu alamat preview dan menebak
+	// sendiri (run 13: snapshot about:blank). Bila dev server belum
+	// jalan (mis. build pertama proyek baru), port 0 → helper
+	// mengembalikan "" sehingga tidak ada URL kosong/tebakan yang
+	// disuntik. Ditempatkan sesudah DesignBrief supaya selamat dari
+	// override modePrompts di atas.
+	if browserClient != nil {
+		sysPrompt += previewURLPromptLine(browserClient.PreviewPort())
+	}
 
 	// Find or create a ChatSession for this project
 	var session models.ChatSession
