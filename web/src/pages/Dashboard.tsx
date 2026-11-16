@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { setToken } from "../lib/api";
 import { useProjects, useCreateProject, useCloneFromURL, projectIdFromCreateResponse } from "../lib/hooks/useProjects";
@@ -28,12 +28,32 @@ import {
   useSetAiConfig,
 } from "../lib/hooks/useDashboard";
 import { dashboardKeys } from "../lib/hooks/queryKeys";
-import { Plus, LogOut, FolderOpen, LayoutTemplate, Rocket, Globe, BarChart3, CreditCard, Settings, Trash2, ShieldCheck, Bell } from "lucide-react";
+import { Plus, LogOut, FolderOpen, LayoutTemplate, Rocket, Globe, BarChart3, CreditCard, Settings, Trash2, ShieldCheck, Bell, Search } from "lucide-react";
 import AdminPanel from "./AdminPanel";
 import Profile from "./Profile";
 import "../dashboard.css";
 
 const ORANGE = "#F6821F";
+
+// Presentasi kartu proyek saja (tidak mengubah data/logika): status
+// diturunkan dari field yang sudah dikembalikan API listProjects.
+function projectStatus(p: any): { label: string; tone: string } {
+  if (p.buildStatus === "failed") return { label: "Build gagal", tone: "danger" };
+  if (p.published || p.publishState === "live") return { label: "Live", tone: "live" };
+  if (p.publishState === "preview_ready") return { label: "Siap preview", tone: "ready" };
+  return { label: "Draft", tone: "draft" };
+}
+
+function formatProjectDate(iso: any): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
+}
+
+function projectInitial(name: string): string {
+  const c = (name || "?").trim().charAt(0);
+  return c ? c.toUpperCase() : "?";
+}
 
 function useIsMobile() {
   const [m, setM] = useState(typeof window !== "undefined" && window.innerWidth < 768);
@@ -80,6 +100,11 @@ export default function Dashboard({ onOpen }: { onOpen: (id: string) => void }) 
   const [quickStart, setQuickStart] = useState("");
   const [cloneURL, setCloneURL] = useState("");
   const [cloneError, setCloneError] = useState("");
+  // UI tab Projects saja: cari + urutan (filter client-side, data tetap
+  // dari useProjects; tidak mengubah fetch/buka/hapus).
+  const [projQ, setProjQ] = useState("");
+  const [projSort, setProjSort] = useState("terbaru");
+  const nameInputRef = useRef<HTMLInputElement | null>(null);
   // Pencarian template hanya diterapkan saat Cari/Enter (bukan tiap ketikan),
   // sama seperti perilaku lama `loadTemplates()`.
   const [tplApplied, setTplApplied] = useState({ q: "", cat: "" });
@@ -185,6 +210,27 @@ export default function Dashboard({ onOpen }: { onOpen: (id: string) => void }) 
   }
 
   function loadTemplates() { setTplApplied({ q: tplQ, cat: tplCat }); }
+
+  // Tombol "Proyek baru" di header: fokus ke kolom nama (tanpa mengubah
+  // alur buat proyek yang sudah ada).
+  function focusCreate() {
+    nameInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    nameInputRef.current?.focus({ preventScroll: true });
+  }
+
+  // Daftar tampil tab Projects: cari (nama/slug) + urutan, client-side.
+  const visibleProjects = [...projects]
+    .filter((p: any) => {
+      const q = projQ.trim().toLowerCase();
+      if (!q) return true;
+      return String(p.name || "").toLowerCase().includes(q) || String(p.slug || "").toLowerCase().includes(q);
+    })
+    .sort((a: any, b: any) => {
+      if (projSort === "nama") return String(a.name || "").localeCompare(String(b.name || ""), "id");
+      const ta = new Date(a.updatedAt || a.createdAt || 0).getTime();
+      const tb = new Date(b.updatedAt || b.createdAt || 0).getTime();
+      return projSort === "terlama" ? ta - tb : tb - ta;
+    });
 
   async function create() {
     if (!name.trim()) return;
@@ -359,11 +405,43 @@ export default function Dashboard({ onOpen }: { onOpen: (id: string) => void }) 
 
         {tab === "projects" && (
           <>
-            <div className="wb-page-intro"><div><span className="wb-kicker">WORKSPACE</span><h2 style={{ fontSize: 30, fontWeight: 800, margin: "7px 0 5px", letterSpacing: "-.05em" }}>Project kamu</h2><p style={{ margin: 0, color: "#69736b", fontSize: 13 }}>Bangun, uji, dan luncurkan produk dari satu tempat.</p></div><span className="wb-project-count">{projects.length} project</span></div>
-            <div style={{ ...card, marginBottom: 20 }}>
+            <div className="wb-page-intro">
+              <div>
+                <span className="wb-kicker">WORKSPACE</span>
+                <h2 style={{ fontSize: 30, fontWeight: 800, margin: "7px 0 5px", letterSpacing: "-.05em" }}>Project kamu</h2>
+                <p style={{ margin: 0, color: "#69736b", fontSize: 13 }}>Bangun, uji, dan luncurkan produk dari satu tempat.</p>
+              </div>
+              <div className="wb-dash-head-actions">
+                <span className="wb-project-count">{projects.length} project</span>
+                <button className="wb-dash-new-btn" onClick={focusCreate}
+                  style={{ background: ORANGE, color: "#fff", border: "none", borderRadius: 8, padding: "10px 18px", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
+                  <Plus size={16} /> Proyek baru
+                </button>
+              </div>
+            </div>
+            <div className="wb-dash-toolbar">
+              <div className="wb-dash-search">
+                <Search size={16} />
+                <input placeholder="Cari project..." value={projQ} onChange={(e) => setProjQ(e.target.value)}
+                  aria-label="Cari project" />
+              </div>
+              <select value={projSort} onChange={(e) => setProjSort(e.target.value)} aria-label="Urutkan project">
+                <option value="terbaru">Terbaru</option>
+                <option value="terlama">Terlama</option>
+                <option value="nama">Nama A–Z</option>
+              </select>
+            </div>
+            {projQ.trim() !== "" && (
+              <p className="wb-dash-filter-note">
+                Menampilkan {visibleProjects.length} dari {projects.length} project
+                {" · "}<button type="button" onClick={() => setProjQ("")}>Hapus pencarian</button>
+              </p>
+            )}
+            <div className="wb-create-grid">
+            <div style={{ ...card }}>
               <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 12px" }}>Buat proyek baru</h3>
               <div style={{ display: "flex", gap: 8, maxWidth: "100%" }}>
-                <input placeholder="Nama proyek" value={name} onChange={(e) => setName(e.target.value)}
+                <input id="wb-new-project-name" ref={nameInputRef} placeholder="Nama proyek" value={name} onChange={(e) => setName(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && create()}
                   style={{ flex: "1 1 0", minWidth: 0, border: "1px solid #d1d5db", borderRadius: 8, padding: "10px 14px", fontSize: 14 }} />
                 <button onClick={create} style={{ background: ORANGE, color: "#fff", border: "none", borderRadius: 8, padding: "10px 18px", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
@@ -371,7 +449,7 @@ export default function Dashboard({ onOpen }: { onOpen: (id: string) => void }) 
                 </button>
               </div>
             </div>
-            <div style={{ ...card, marginBottom: 20 }}>
+            <div style={{ ...card }}>
               <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 4px" }}>Clone dari URL</h3>
               <p style={{ margin: "0 0 12px", color: "#69736b", fontSize: 13 }}>
                 Tempel URL website publik — AI membangun ulang struktur &amp; tampilannya sebagai proyek React yang bisa diedit lewat chat. Konten ditulis ulang, bukan disalin mentah-mentah; robots.txt dihormati.
@@ -387,9 +465,10 @@ export default function Dashboard({ onOpen }: { onOpen: (id: string) => void }) 
               </div>
               {cloneError && <p style={{ margin: "10px 0 0", color: "#b91c1c", fontSize: 13 }}>{cloneError}</p>}
             </div>
+            </div>
             {loading ? <p>Memuat...</p> : projects.length === 0 && sharedProjects.length === 0 ? (
               <div style={{ ...card, borderStyle: "dashed", textAlign: "center", padding: "48px 24px" }}>
-                <div style={{ fontSize: 40, marginBottom: 12 }}>🚀</div>
+                <div className="wb-empty-icon"><Rocket size={28} /></div>
                 <h3 style={{ fontSize: 20, fontWeight: 800, color: "#111827", margin: "0 0 6px" }}>Mulai bangun aplikasimu</h3>
                 <p style={{ color: "#6b7280", fontSize: 14, margin: "0 0 24px", lineHeight: 1.5 }}>
                   Deskripsikan aplikasi yang kamu inginkan, dan AI akan membangunnya untukmu dalam hitungan detik.
@@ -425,28 +504,50 @@ export default function Dashboard({ onOpen }: { onOpen: (id: string) => void }) 
               </div>
             ) : (
               <>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 14 }}>
-                {projects.map((p) => (
-                  <button key={p.id} onClick={() => onOpen(String(p.id))}
-                    style={{ ...card, textAlign: "left", cursor: "pointer", padding: 18 }}
-                    onMouseEnter={(e) => (e.currentTarget.style.borderColor = ORANGE)}
-                    onMouseLeave={(e) => (e.currentTarget.style.borderColor = "#e5e7eb")}>
-                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>{p.name}</div>
-                    <div style={{ fontSize: 12, color: "#6b7280" }}>{p.framework} · /{p.slug}</div>
-                  </button>
-                ))}
+              <div className="wb-proj-grid">
+                {visibleProjects.map((p) => {
+                  const st = projectStatus(p);
+                  return (
+                    <button key={p.id} onClick={() => onOpen(String(p.id))} className="wb-proj-card">
+                      <span className="wb-proj-thumb">
+                        <span className="wb-proj-initial">{projectInitial(p.name)}</span>
+                        <span className="wb-proj-fw">{p.framework || "react"}</span>
+                      </span>
+                      <span className="wb-proj-body">
+                        <span className="wb-proj-name">{p.name}</span>
+                        <span className="wb-proj-slug">/{p.slug}</span>
+                        <span className="wb-proj-foot">
+                          <span className={`wb-badge wb-badge--${st.tone}`}>{st.label}</span>
+                          <span className="wb-proj-date">{formatProjectDate(p.updatedAt || p.createdAt)}</span>
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
+              {visibleProjects.length === 0 && (
+                <div style={{ ...card, borderStyle: "dashed", textAlign: "center", padding: "32px 24px", color: "#6b7280", fontSize: 14 }}>
+                  Tidak ada project yang cocok dengan “{projQ.trim()}”.
+                </div>
+              )}
               {sharedProjects.length > 0 && (
                 <>
                   <h3 style={{ fontSize: 14, fontWeight: 700, margin: "20px 0 12px", color: "#6b7280" }}>Dibagikan ke saya</h3>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 14 }}>
+                  <div className="wb-proj-grid">
                     {sharedProjects.map((p) => (
-                      <button key={"s" + p.id} onClick={() => onOpen(String(p.id))}
-                        style={{ ...card, textAlign: "left", cursor: "pointer", padding: 18 }}
-                        onMouseEnter={(e) => (e.currentTarget.style.borderColor = ORANGE)}
-                        onMouseLeave={(e) => (e.currentTarget.style.borderColor = "#e5e7eb")}>
-                        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>{p.name}</div>
-                        <div style={{ fontSize: 12, color: "#6b7280" }}>{p.role} · oleh {p.owner}</div>
+                      <button key={"s" + p.id} onClick={() => onOpen(String(p.id))} className="wb-proj-card">
+                        <span className="wb-proj-thumb">
+                          <span className="wb-proj-initial">{projectInitial(p.name)}</span>
+                          <span className="wb-proj-fw">{p.framework || "react"}</span>
+                        </span>
+                        <span className="wb-proj-body">
+                          <span className="wb-proj-name">{p.name}</span>
+                          <span className="wb-proj-slug">/{p.slug}</span>
+                          <span className="wb-proj-foot">
+                            <span className="wb-badge wb-badge--shared">Dibagikan</span>
+                            <span className="wb-proj-date">{p.role} · oleh {p.owner}</span>
+                          </span>
+                        </span>
                       </button>
                     ))}
                   </div>
