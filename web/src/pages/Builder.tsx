@@ -585,6 +585,12 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
   const setWorkspaceMenuOpen = useBuilderStore((s) => s.setWorkspaceMenuOpen);
   const pipelineLabel = pipelinePhase === "sync" ? "Sinkronisasi file" : pipelinePhase === "install-build" ? "Membangun aplikasi" : pipelinePhase === "migration" ? "Menyiapkan database" : pipelinePhase === "database" ? "Memeriksa database" : pipelinePhase === "runtime" ? "Menyalakan preview" : pipelinePhase === "success" ? "Siap digunakan" : pipelinePhase === "failed" ? "Perlu diperbaiki" : "Siap";
   const runtimeFrameRef = useRef<HTMLIFrameElement>(null);
+  // Auto-attach Live Runtime sekali per proyek (lihat effect di bawah).
+  const runtimeAutoAttachTriedRef = useRef<string | null>(null);
+  // Snapshot files yang terakhir disinkronkan ke runtime — auto-refresh
+  // di bawah tidak perlu sync + reload ulang bila files belum berubah.
+  const lastSyncedFilesRef = useRef<Record<string, string> | null>(null);
+  const [runtimeStarting, setRuntimeStarting] = useState(false);
   const device = useBuilderStore((s) => s.device);
   const setDevice = useBuilderStore((s) => s.setDevice);
   const expanded = useBuilderStore((s) => s.expanded);
@@ -1095,16 +1101,87 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
   // Auto-refresh preview saat file berubah (debounce)
   useEffect(() => {
     if (view !== "preview") return;
+    // Baru saja disinkronkan oleh auto-attach di bawah (files yang sama)
+    // — iframe baru dipasang dengan file terkini, jangan sync + reload
+    // ulang: sync menulis vite.config.ts/.env.local sehingga Vite restart
+    // dan request aset iframe yang sedang dimuat gagal 502.
+    if (files === lastSyncedFilesRef.current) return;
     const t = setTimeout(async () => {
       setPreviewKey((k) => k + 1);
       if (runtimePreview) {
         try {
           await runtimeActions.sync();
+          lastSyncedFilesRef.current = files;
         } catch {}
       }
     }, 1200);
     return () => clearTimeout(t);
   }, [files, runtimePreview, pid]);
+
+  // Auto-attach Live Runtime saat tab Preview pertama kali terlihat.
+  //
+  // Akar preview kosong: preview default (Sandpack) dimuat dari CDN
+  // CodeSandbox — iframe https://*-sandpack.codesandbox.io/ + dependensi
+  // dari unpkg/jsdelivr. Bila browser tidak mencapai CDN itu (offline,
+  // proxy/Cloudflare memblokir), bundler tidak pernah jalan dan preview
+  // hanya menampilkan kotak putih + ikon kubus (LoadingOverlay Sandpack).
+  // Live Runtime disajikan server WebBuilder sendiri (localhost) sehingga
+  // tidak butuh CDN eksternal. Karena itu, saat Preview dibuka, runtime
+  // dinyalakan otomatis (start() idempotent: bila dev server sudah jalan,
+  // langsung mengembalikan previewToken baru). Dijalankan sekali per
+  // proyek — bila user sengaja menekan "Stop Runtime", pilihan itu
+  // dihormati dan preview kembali ke Sandpack.
+  const previewVisible = view === "preview" && (!isMobile || mobileTab === "preview");
+  useEffect(() => {
+    if (!previewVisible || runtimePreview || !canEdit) return;
+    if (Object.keys(files).length === 0) return;
+    if (runtimeAutoAttachTriedRef.current === pid) return;
+    runtimeAutoAttachTriedRef.current = pid;
+    let cancelled = false;
+    (async () => {
+      setRuntimeStarting(true);
+      try {
+        const d = await runtimeActions.start();
+        if (cancelled) return;
+        if (d?.error) throw new Error(d.error);
+        await waitForRuntimeReady();
+        if (cancelled) return;
+        // Sinkronkan file DB ke workspace SEBELUM iframe dipasang: sync
+        // menulis ulang vite.config.ts/.env.local sehingga Vite restart.
+        // Bila sync terjadi sesudah iframe dimuat, request aset yang
+        // sedang berjalan gagal 502 dan aplikasi tidak pernah tampil.
+        await runtimeActions.sync();
+        if (cancelled) return;
+        lastSyncedFilesRef.current = files;
+        // Status "running" belum berarti Vite menjawab HTTP — tunggu proxy
+        // preview benar-benar membalas 200 sebelum iframe dipasang, kalau
+        // tidak iframe menampilkan 502 "preview runtime tidak tersedia".
+        const token = d?.previewToken || "";
+        let previewOk = false;
+        for (let i = 0; i < 20 && !cancelled; i++) {
+          try {
+            const r = await fetch(`/api/projects/${pid}/runtime/preview/?token=${encodeURIComponent(token)}`);
+            await r.text().catch(() => {});
+            if (r.ok) { previewOk = true; break; }
+          } catch {}
+          await new Promise((r) => setTimeout(r, 800));
+        }
+        if (cancelled) return;
+        if (!previewOk) throw new Error("Preview runtime tidak menjawab setelah 16 detik");
+        setPreviewToken(token);
+        setRuntimeRunning(true);
+        setRuntimePreview(true);
+      } catch (e: any) {
+        if (cancelled) return;
+        const msg = "Live Runtime gagal dinyalakan otomatis — preview memakai Sandpack (butuh internet).";
+        setTermLines((l) => [...l, "⚠️ " + msg + " " + (e?.message || e)]);
+        setPreviewErrors((prev) => (prev.includes(msg) ? prev : [...prev.slice(-4), msg]));
+      } finally {
+        if (!cancelled) setRuntimeStarting(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [previewVisible, files, runtimePreview, canEdit, pid]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -2089,10 +2166,16 @@ export default function Builder({ pid, onBack, initialPrompt }: { pid: string; o
             <div style={{ width: deviceWidth, maxWidth: "100%", height: "100%", border: "1px solid #e5e7eb", borderRadius: 8, overflow: "hidden", background: "#fff", display: "flex", flexDirection: "column" }}>
               {runtimePreview ? (
                 <iframe ref={runtimeFrameRef} title="Live Runtime Preview" src={`/api/projects/${pid}/runtime/preview/?token=${encodeURIComponent(previewToken)}&v=${previewKey}`} onLoad={() => { const w = runtimeFrameRef.current?.contentWindow; if (w) w.postMessage({ type: "wb-set-select", enabled: selectModeRef.current }, "*"); }} style={{ width: "100%", height: "100%", border: 0, background: "#fff" }} />
+              ) : runtimeStarting ? (
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, color: "#6b7280", fontSize: 13, background: "#fff", padding: 24, textAlign: "center" }}>
+                  <span style={{ fontWeight: 700, color: "#374151" }}>Menyalakan Live Runtime…</span>
+                  <span style={{ fontSize: 12, color: "#9ca3af" }}>Preview aplikasi dimuat dari server, bukan dari CDN.</span>
+                </div>
               ) : <Suspense fallback={<div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#9ca3af", fontSize: 13 }}>Memuat preview…</div>}><SandpackProvider
                 key={previewKey}
                 template="react-ts"
                 theme="light"
+                style={{ flex: 1, minHeight: 0, height: "100%", display: "flex", flexDirection: "column" }}
                 files={{
                   "/src/App.tsx": `export default function App() { return <div className="p-8 text-center text-gray-500 font-mono">Belum ada kode App.tsx...</div> }`,
                   ...Object.fromEntries(Object.entries(files).map(([k, v]) => ["/" + k, sanitizeSandpackSource(v)])),
