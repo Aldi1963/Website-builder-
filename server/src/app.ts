@@ -1,0 +1,494 @@
+import { Hono } from 'hono'
+import { serveStatic } from '@hono/node-server/serve-static'
+import { streamSSE } from 'hono/streaming'
+import { cors } from 'hono/cors'
+import { randomBytes } from 'node:crypto'
+import { appendFileSync } from 'node:fs'
+import {
+  createProject,
+  getProject,
+  listProjects,
+  deleteProject,
+  renameProject,
+  setStatus,
+  listMessages,
+  addMessage,
+  listFiles,
+  getFile,
+  putFile,
+  recordBuild,
+  lastBuild,
+  publishProject,
+  unpublishProject,
+  projectBySlug,
+  claimOrphanProjects,
+  userOwnsProject,
+} from './db.ts'
+import {
+  ensureWorkspace,
+  buildProject,
+  installDeps,
+  startPreview,
+  stopPreview,
+  runningPreviews,
+  previewPort,
+  readProjectFile,
+  writeProjectFile,
+} from './workspace.ts'
+import {
+  SESSION_COOKIE,
+  sessionCookie,
+  clearCookie,
+  readCookie,
+  createUser,
+  userByEmail,
+  userByToken,
+  createSession,
+  destroySession,
+  purgeExpiredSessions,
+  validateSignup,
+  verifyPassword,
+  countUsers,
+  userById,
+  type User,
+} from './auth.ts'
+import { runAgent, type AgentEvent } from './agent.ts'
+import { complete, FAST_MODEL } from './llm.ts'
+import { DISCOVERY_SYSTEM } from './prompts.ts'
+
+type Env = { Variables: { user: User } }
+
+export const app = new Hono<Env>()
+
+app.use('*', cors({ origin: (o) => o ?? '*', credentials: true }))
+
+/*
+ * Published apps answer on their own hostname: <slug>.vibe.clipku.com.
+ * The subdomain is resolved to a project, its preview is started if needed,
+ * and the request is forwarded verbatim — same path, same method — because
+ * generated apps link assets with absolute /assets/ URLs.
+ */
+const PUBLIC_SUFFIX = process.env.VB_PUBLIC_SUFFIX ?? 'vibe.clipku.com'
+const PUBLIC_ORIGIN = process.env.VB_PUBLIC_ORIGIN ?? 'https://vibe.clipku.com'
+
+function buildHostSubdomain(host: string): string | null {
+  const name = host.split(':')[0].toLowerCase()
+  if (!name.endsWith(`.${PUBLIC_SUFFIX}`)) return null
+  const sub = name.slice(0, -(PUBLIC_SUFFIX.length + 1))
+  if (!sub || sub.includes('.')) return null
+  return sub
+}
+
+async function forward(port: number, request: Request): Promise<Response> {
+  const url = new URL(request.url)
+  const target = `http://127.0.0.1:${port}${url.pathname}${url.search}`
+  const method = request.method
+  const hasBody = method !== 'GET' && method !== 'HEAD'
+  const headers = new Headers(request.headers)
+  headers.delete('host')
+  headers.set('host', `127.0.0.1:${port}`)
+  headers.set('x-forwarded-host', url.host)
+  headers.set('x-forwarded-proto', 'https')
+  const upstream = await fetch(target, {
+    method,
+    headers,
+    body: hasBody ? await request.arrayBuffer() : undefined,
+    redirect: 'manual',
+  })
+  const out = new Headers(upstream.headers)
+  out.delete('content-encoding')
+  out.delete('content-length')
+  out.delete('transfer-encoding')
+  return new Response(upstream.body, { status: upstream.status, headers: out })
+}
+
+app.use('*', async (c, next) => {
+  const host = c.req.header('host') ?? ''
+  const slug = buildHostSubdomain(host)
+  if (!slug) return next()
+
+  const project = projectBySlug(slug)
+  if (!project) return c.text(`Tidak ada aplikasi terbit di ${host}.`, 404)
+  let port: number
+  try {
+    port = await startPreview(project.id)
+  } catch {
+    return c.text('Aplikasi terdaftar tapi preview-nya tidak bisa dinyalakan.', 503)
+  }
+  return forward(port, c.req.raw)
+})
+
+purgeExpiredSessions()
+
+/* ---------- auth ---------- */
+
+function currentUser(c: { req: { header: (n: string) => string | undefined } }): User | undefined {
+  return userByToken(readCookie(c.req.header('cookie'), SESSION_COOKIE))
+}
+
+/* Every /api/projects route is owner-scoped. A single gate keeps the rules in
+   one place instead of trusting each handler to remember. */
+app.use('/api/projects/*', async (c, next) => {
+  const user = currentUser(c)
+  if (!user) return c.json({ error: 'Belum masuk.' }, 401)
+  c.set('user', user)
+  await next()
+})
+app.use('/api/projects', async (c, next) => {
+  const user = currentUser(c)
+  if (!user) return c.json({ error: 'Belum masuk.' }, 401)
+  c.set('user', user)
+  await next()
+})
+
+app.post('/api/auth/signup', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { email?: string; name?: string; password?: string }
+  const email = (body.email ?? '').trim()
+  const password = body.password ?? ''
+  const name = (body.name ?? '').trim() || email.split('@')[0]
+
+  const invalid = validateSignup(email, password)
+  if (invalid) return c.json({ ok: false, error: invalid }, 400)
+  if (userByEmail(email)) return c.json({ ok: false, error: 'Email ini sudah terdaftar.' }, 409)
+
+  const user = createUser(email, name, password)
+  /* First account inherits pre-auth projects so nothing becomes unreachable. */
+  if (countUsers() === 1) claimOrphanProjects(user.id)
+
+  const { token } = createSession(user.id)
+  c.header('set-cookie', sessionCookie(token, 60 * 60 * 24 * 30))
+  return c.json({ ok: true, user }, 201)
+})
+
+app.post('/api/auth/login', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { email?: string; password?: string }
+  const row = userByEmail((body.email ?? '').trim())
+  if (!row || !verifyPassword(body.password ?? '', row.password_hash)) {
+    return c.json({ ok: false, error: 'Email atau password salah.' }, 401)
+  }
+  const { password_hash: _drop, ...user } = row
+  const { token } = createSession(user.id)
+  c.header('set-cookie', sessionCookie(token, 60 * 60 * 24 * 30))
+  return c.json({ ok: true, user })
+})
+
+app.post('/api/auth/logout', (c) => {
+  destroySession(readCookie(c.req.header('cookie'), SESSION_COOKIE))
+  c.header('set-cookie', clearCookie())
+  return c.json({ ok: true })
+})
+
+app.get('/api/auth/me', (c) => {
+  const user = currentUser(c)
+  return c.json({ user: user ?? null, signupOpen: countUsers() === 0 })
+})
+
+/* ---------- health ---------- */
+
+app.get('/api/health', (c) =>
+  c.json({
+    ok: true,
+    service: 'vibebuilder',
+    model: FAST_MODEL,
+    previews: runningPreviews(),
+    uptime: Math.round(process.uptime()),
+  }),
+)
+
+/* ---------- projects ---------- */
+
+app.get('/api/projects', (c) => c.json({ projects: listProjects(c.get('user').id) }))
+
+app.post('/api/projects', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { name?: string; prompt?: string }
+  const id = randomBytes(5).toString('hex')
+  const name = (body.name ?? body.prompt ?? 'Untitled app').slice(0, 60)
+  const project = createProject(id, name, body.prompt ?? '', c.get('user').id)
+  ensureWorkspace(id)
+  return c.json({ project }, 201)
+})
+
+/* Ownership check shared by every by-id route. Returns the project or a
+   response the handler can return as-is. */
+function owned(c: { req: { param: (n: string) => string }; get: (k: 'user') => User }) {
+  const id = c.req.param('id')
+  const project = getProject(id)
+  if (!project) return { error: 'not found' as const, status: 404 as const }
+  if (project.owner_id !== c.get('user').id) return { error: 'not found' as const, status: 404 as const }
+  return { project }
+}
+
+app.get('/api/projects/:id', (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  const p = r.project
+  return c.json({
+    project: p,
+    messages: listMessages(p.id),
+    files: listFiles(p.id),
+    build: lastBuild(p.id) ?? null,
+    previewPort: previewPort(p.id),
+  })
+})
+
+app.patch('/api/projects/:id', async (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  const body = (await c.req.json().catch(() => ({}))) as { name?: string }
+  if (body.name) renameProject(r.project.id, body.name.slice(0, 80))
+  return c.json({ project: getProject(r.project.id) })
+})
+
+app.delete('/api/projects/:id', (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  stopPreview(r.project.id)
+  deleteProject(r.project.id)
+  return c.json({ ok: true })
+})
+
+app.get('/api/projects/:id/files', (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  return c.json({ files: listFiles(r.project.id) })
+})
+
+app.get('/api/projects/:id/file', (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  const path = c.req.query('path') ?? ''
+  const content = getFile(r.project.id, path) ?? readProjectFile(r.project.id, path)
+  if (content === null || content === undefined) return c.json({ error: 'not found' }, 404)
+  return c.json({ path, content })
+})
+
+app.put('/api/projects/:id/file', async (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  const body = (await c.req.json().catch(() => ({}))) as { path?: string; content?: string }
+  if (!body.path) return c.json({ error: 'path wajib' }, 400)
+  const path = writeProjectFile(r.project.id, body.path, body.content ?? '')
+  putFile(r.project.id, path, body.content ?? '')
+  return c.json({ ok: true, path })
+})
+
+app.post('/api/projects/:id/build', async (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  const id = r.project.id
+  setStatus(id, 'building')
+  const build = await buildProject(id)
+  recordBuild(id, build.code === 0, build.output)
+  setStatus(id, build.code === 0 ? 'idle' : 'error')
+  return c.json({ ok: build.code === 0, log: build.output.slice(-8000) })
+})
+
+app.post('/api/projects/:id/install', async (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  const res = await installDeps(r.project.id)
+  return c.json({ ok: res.code === 0, log: res.output.slice(-4000) })
+})
+
+app.post('/api/projects/:id/preview', async (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  try {
+    const port = await startPreview(r.project.id)
+    return c.json({ ok: true, port, url: `http://127.0.0.1:${port}/` })
+  } catch (err) {
+    return c.json({ ok: false, error: (err as Error).message }, 500)
+  }
+})
+
+/* Publish makes a project reachable at a memorable slug. The slug redirects to the
+   project's own preview port rather than proxying, so the generated app keeps
+   serving its absolute /assets URLs without a rewrite layer that would break SSR. */
+app.post('/api/projects/:id/publish', async (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  const project = r.project
+
+  const body = (await c.req.json().catch(() => ({}))) as { slug?: string }
+  const slug = slugify(body.slug || project.name || project.id)
+  if (!slug) return c.json({ ok: false, error: 'slug tidak valid' }, 400)
+
+  const taken = projectBySlug(slug)
+  if (taken && taken.id !== project.id) return c.json({ ok: false, error: `slug "${slug}" sudah dipakai` }, 409)
+
+  const build = await buildProject(project.id)
+  if (build.code !== 0) return c.json({ ok: false, error: 'build gagal', log: build.output.slice(-2000) }, 400)
+  recordBuild(project.id, true, build.output)
+
+  let port: number
+  try {
+    port = await startPreview(project.id)
+  } catch (err) {
+    return c.json({ ok: false, error: (err as Error).message }, 500)
+  }
+
+  publishProject(project.id, slug)
+  return c.json({
+    ok: true,
+    slug,
+    url: `${PUBLIC_ORIGIN.replace('://', `://${slug}.`)}/`,
+    port,
+  })
+})
+
+app.delete('/api/projects/:id/publish', (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  unpublishProject(r.project.id)
+  return c.json({ ok: true })
+})
+
+/* Published apps are public by design — no session required. */
+app.get('/p/:slug', async (c) => {
+  const slug = c.req.param('slug')
+  const project = projectBySlug(slug)
+  if (!project) return c.text(`Tidak ada aplikasi terbit dengan slug "${slug}".`, 404)
+
+  /* On the real deployment the app has its own hostname, so /p/<slug> just
+     points there. Locally there is no DNS, so fall back to the preview port. */
+  if (PUBLIC_SUFFIX !== 'none') return c.redirect(`${PUBLIC_ORIGIN.replace('://', `://${slug}.`)}/`, 302)
+
+  let port: number
+  try {
+    port = await startPreview(project.id)
+  } catch {
+    return c.text('Aplikasi terdaftar tapi preview-nya tidak bisa dinyalakan. Buka workspace proyeknya.', 503)
+  }
+  return c.redirect(`http://127.0.0.1:${port}/`, 302)
+})
+
+app.delete('/api/projects/:id/preview', (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  stopPreview(r.project.id)
+  return c.json({ ok: true })
+})
+
+app.get('/api/projects/:id/preview/status', async (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  const port = previewPort(r.project.id)
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(1200) })
+    return c.json({ running: true, port, status: res.status })
+  } catch {
+    return c.json({ running: false, port })
+  }
+})
+
+app.post('/api/discovery', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { prompt?: string }
+  const prompt = (body.prompt ?? '').trim()
+  if (!prompt) return c.json({ ready: false, questions: ['Aplikasi apa yang mau dibangun?'], assumptions: [] })
+
+  try {
+    const { message } = await complete(
+      [
+        { role: 'system', content: DISCOVERY_SYSTEM },
+        { role: 'user', content: prompt },
+      ],
+      { temperature: 0.1, maxTokens: 500 },
+    )
+    const raw = (typeof message.content === 'string' ? message.content : '').trim()
+    const jsonText = raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1)
+    const parsed = JSON.parse(jsonText) as { ready?: boolean; questions?: string[]; assumptions?: string[] }
+    return c.json({
+      ready: parsed.ready ?? true,
+      questions: (parsed.questions ?? []).slice(0, 3),
+      assumptions: (parsed.assumptions ?? []).slice(0, 4),
+    })
+  } catch {
+    return c.json({ ready: true, questions: [], assumptions: [] })
+  }
+})
+
+app.post('/api/projects/:id/chat', async (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  const id = r.project.id
+
+  const body = (await c.req.json().catch(() => ({}))) as { message?: string; model?: string }
+  const message = (body.message ?? '').trim()
+  if (!message) return c.json({ error: 'message kosong' }, 400)
+
+  return streamSSE(c, async (stream) => {
+    const dbg = (m: string) => { try { appendFileSync('/home/hatch/workspace/logs/vb-sse-debug.log', `${new Date().toISOString()} ${m}\n`) } catch {} }
+    const t0 = Date.now()
+    dbg(`start project=${id}`)
+    c.req.raw.signal?.addEventListener('abort', () => dbg(`req ABORT at ${(Date.now() - t0) / 1000}s`))
+    setStatus(id, 'working')
+    const send = async (event: string, data: unknown) => {
+      try {
+        await stream.writeSSE({ event, data: JSON.stringify(data) })
+        dbg(`sent ${event} at ${((Date.now() - t0) / 1000).toFixed(3)}s`)
+      } catch (err) {
+        dbg(`send fail ${event}: ${(err as Error).message}`)
+      }
+    }
+
+    const onEvent = async (e: AgentEvent) => {
+      dbg(`event ${e.type} at ${(Date.now() - t0) / 1000}s`)
+      if (e.type === 'file') await send('file', e)
+      else if (e.type === 'build') await send('build', e)
+      else if (e.type === 'status') await send('status', e)
+      else if (e.type === 'plan') await send('plan', e)
+      else if (e.type === 'audit') await send('audit', e)
+      else if (e.type === 'assistant') await send('assistant', e)
+      else await send('error', e)
+    }
+
+    try {
+      await runAgent(id, message, onEvent, body.model)
+      dbg(`agent resolved at ${(Date.now() - t0) / 1000}s`)
+      setStatus(id, 'idle')
+    } catch (err) {
+      dbg(`agent THREW at ${(Date.now() - t0) / 1000}s: ${(err as Error).message}`)
+      setStatus(id, 'error')
+      await send('error', { type: 'error', text: (err as Error).message })
+    }
+    await send('done', { ok: true })
+    dbg(`done sent at ${(Date.now() - t0) / 1000}s`)
+  })
+})
+
+app.get('/api/projects/:id/messages', (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  return c.json({ messages: listMessages(r.project.id) })
+})
+
+app.post('/api/projects/:id/messages', async (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  const body = (await c.req.json().catch(() => ({}))) as { role?: string; content?: string }
+  const m = addMessage(r.project.id, body.role ?? 'assistant', body.content ?? '')
+  return c.json({ message: m })
+})
+
+/* ---------- static UI ---------- */
+
+const UI_DIR = new URL('../../platform/dist/', import.meta.url).pathname
+
+app.use('/assets/*', serveStatic({ root: UI_DIR }))
+app.use('/favicon.svg', serveStatic({ root: UI_DIR }))
+
+app.get('/', async (c) => {
+  const fs = await import('node:fs/promises')
+  const html = await fs.readFile(`${UI_DIR}index.html`, 'utf8').catch(() => null)
+  if (!html) return c.text('UI belum di-build. Jalankan: cd platform && npm run build', 503)
+  return c.html(html)
+})
+
+function slugify(input: string) {
+  return input
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40)
+}

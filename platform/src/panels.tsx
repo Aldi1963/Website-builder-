@@ -1,0 +1,437 @@
+import { useEffect, useRef, useState } from 'react'
+import { Activity, Icon, Spinner, useAutoScroll, useCopy } from './ui'
+import type { AuditFinding, PlanStep } from './api'
+
+export type ChatItem = { role: string; content: string; id?: number }
+export type ChatPlan = { ringkasan: string; langkah: PlanStep[]; berkas: string[]; asumsi: string[] }
+export type ChatAudit = { nilai: number; temuan: AuditFinding[]; catatan: string }
+
+export function ChatPanel({
+  messages,
+  sending,
+  status,
+  plan,
+  audit,
+  onSend,
+  onCancel,
+}: {
+  messages: ChatItem[]
+  sending: boolean
+  status: string
+  plan: ChatPlan | null
+  audit: ChatAudit | null
+  onSend: (text: string) => void
+  onCancel: () => void
+}) {
+  const [input, setInput] = useState('')
+  const scrollRef = useAutoScroll(messages.length)
+  const taRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    const ta = taRef.current
+    if (!ta) return
+    ta.style.height = 'auto'
+    ta.style.height = `${Math.min(ta.scrollHeight, 168)}px`
+  }, [input])
+
+  const submit = () => {
+    if (!input.trim() || sending) return
+    onSend(input.trim())
+    setInput('')
+  }
+
+  return (
+    <>
+      <div ref={scrollRef} className="vb-scroll flex-1 overflow-y-auto px-4 py-4">
+        {!messages.length ? (
+          <Welcome onPick={(s) => setInput(s)} />
+        ) : (
+          <div className="flex flex-col gap-4">
+            {messages.map((m, i) => (
+              <Bubble key={m.id ?? i} role={m.role} content={m.content} />
+            ))}
+            {sending && (
+              <div className="vb-enter flex flex-col gap-2 text-[12px] text-quiet">
+                <div className="flex items-center gap-2"><Activity /><span>{status || 'Menganalisis permintaan…'}</span></div>
+                {plan && <PlanCard plan={plan} />}
+                {audit && <AuditCard audit={audit} />}
+              </div>
+            )}
+            {!sending && audit && <AuditCard audit={audit} />}
+          </div>
+        )}
+      </div>
+
+      <div className="vb-seam shrink-0 bg-surface px-3 py-3">
+        <div className="border border-edge bg-ink px-2 py-2 transition-colors focus-within:border-accent">
+          <label htmlFor="vb-prompt" className="sr-only">
+            Instruksi untuk agent
+          </label>
+          <textarea
+            id="vb-prompt"
+            ref={taRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                submit()
+              }
+            }}
+            rows={1}
+            placeholder="Apa yang harus dibangun atau diubah"
+            className="vb-scroll max-h-[168px] w-full resize-none bg-transparent px-1 py-1 text-[13px] leading-relaxed text-body outline-none placeholder:text-quiet"
+          />
+          <div className="mt-1 flex items-center justify-between gap-3 px-1">
+            <span className="hidden text-[11px] text-quiet sm:block">
+              Enter kirim, Shift+Enter baris baru
+            </span>
+            {sending ? (
+              <button
+                onClick={onCancel}
+                className="flex h-8 max-md:h-11 items-center gap-1.5 border border-edge px-2.5 text-[11.5px] text-body transition-colors hover:border-quiet"
+              >
+                <Icon name="stop" size={10} />
+                Hentikan
+              </button>
+            ) : (
+              <button
+                onClick={submit}
+                disabled={!input.trim()}
+                className="flex h-8 max-md:h-11 items-center gap-1.5 bg-accent px-2.5 text-[11.5px] font-medium text-ink transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:border disabled:border-edge disabled:bg-transparent disabled:text-quiet"
+              >
+                <Icon name="arrow" size={11} />
+                Kirim
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
+
+function PlanCard({ plan }: { plan: ChatPlan }) {
+  return (
+    <section aria-label="Rencana kerja AI" className="border border-edge bg-surface px-3 py-3 text-body">
+      <p className="text-[11px] font-medium text-accent">RENCANA KERJA</p>
+      <p className="mt-1 text-[12px] leading-relaxed">{plan.ringkasan}</p>
+      {!!plan.langkah.length && <ol className="mt-2 flex flex-col gap-1.5">
+        {plan.langkah.map((step, i) => <li key={`${step.judul}-${i}`} className="flex gap-2 text-[11.5px] leading-relaxed">
+          <span className="flex h-4 w-4 shrink-0 items-center justify-center border border-edge font-mono text-[10px] text-accent">{i + 1}</span>
+          <span><strong className="font-medium">{step.judul}</strong><span className="text-quiet"> — {step.detail}</span></span>
+        </li>)}
+      </ol>}
+      {!!plan.asumsi.length && <p className="mt-2 border-t border-edge pt-2 text-[11px] leading-relaxed text-quiet">Asumsi: {plan.asumsi.join(' · ')}</p>}
+      {!!plan.berkas.length && <p className="mt-1 truncate font-mono text-[10px] text-quiet" title={plan.berkas.join(', ')}>Berkas: {plan.berkas.join(' · ')}</p>}
+    </section>
+  )
+}
+
+function AuditCard({ audit }: { audit: ChatAudit }) {
+  const [open, setOpen] = useState(false)
+  const critical = audit.temuan.filter((x) => x.tingkat === 'kritis').length
+  const important = audit.temuan.filter((x) => x.tingkat === 'penting').length
+  return (
+    <section aria-label="Laporan tinjauan kode" className="border border-edge bg-surface px-3 py-3 text-body">
+      <div className="flex items-center justify-between gap-2">
+        <div><p className="text-[11px] font-medium text-accent">TINJAUAN KODE · {audit.nilai}/100</p>
+          <p className="mt-1 text-[11.5px] leading-relaxed">{audit.catatan}</p></div>
+        <span className="shrink-0 font-mono text-[11px] text-quiet">{audit.temuan.length} temuan</span>
+      </div>
+      <p className="mt-2 text-[10.5px] text-quiet">{critical} kritis · {important} penting · {audit.temuan.length - critical - important} ringan</p>
+      {!!audit.temuan.length && <button onClick={() => setOpen((v) => !v)} aria-expanded={open} className="mt-2 text-[11px] text-accent underline underline-offset-2">{open ? 'Sembunyikan rincian' : 'Lihat rincian'}</button>}
+      {open && <ul className="mt-2 flex flex-col gap-2 border-t border-edge pt-2">{audit.temuan.map((finding, i) => <li key={`${finding.berkas}-${finding.baris}-${i}`} className="text-[11px] leading-relaxed">
+        <p className="font-medium">{finding.tingkat} · {finding.kategori}</p><p className="font-mono text-[10px] text-quiet">{finding.berkas}:{finding.baris}</p>
+        <p>{finding.masalah}</p><p className="text-quiet">Perbaikan: {finding.perbaikan}</p>
+      </li>)}</ul>}
+    </section>
+  )
+}
+
+function Welcome({ onPick }: { onPick: (s: string) => void }) {
+  const samples = [
+    { title: 'Papan tugas', body: 'kolom backlog, dikerjakan, selesai; geser kartu antar kolom' },
+    { title: 'Pencatat pengeluaran', body: 'tambah transaksi, filter per bulan, total per kategori' },
+    { title: 'Katalog resep', body: 'daftar resep dengan pencarian bahan dan langkah masak' },
+  ]
+
+  return (
+    <div className="vb-enter pt-2">
+      <h2 className="font-display text-[19px] leading-snug text-body">
+        Tulis satu kalimat, agent menulis aplikasinya
+      </h2>
+      <p className="mt-2 max-w-[42ch] text-[12.5px] leading-relaxed text-quiet">
+        File ditulis langsung ke workspace proyek, di-build, lalu tampil di panel kanan.
+        Kalau permintaannya terlalu luas untuk ditebak, agent bertanya dulu.
+      </p>
+
+      <div className="mt-5 border-t border-edge">
+        <p className="vb-seam-none pt-3 text-[11px] text-quiet">Mulai dari salah satu</p>
+        <div className="mt-2 flex flex-col">
+          {samples.map((s) => (
+            <button
+              key={s.title}
+              onClick={() => onPick(`Buat ${s.title.toLowerCase()}: ${s.body}.`)}
+              className="group flex min-h-[52px] flex-col justify-center border-b border-edge py-2 text-left transition-colors hover:bg-surface"
+            >
+              <span className="text-[12.5px] text-body">{s.title}</span>
+              <span className="text-[11.5px] text-quiet">{s.body}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function Bubble({ role, content }: { role: string; content: string }) {
+  const { copied, copy } = useCopy()
+
+  if (role === 'user') {
+    return (
+      <div className="vb-enter flex flex-col items-end gap-1">
+        <span className="text-[11px] text-quiet">kamu</span>
+        <div className="max-w-[92%] border border-edge bg-surface px-3 py-2 text-[13px] leading-relaxed text-body">
+          {content}
+        </div>
+      </div>
+    )
+  }
+
+  if (role === 'error') {
+    return (
+      <div className="vb-enter border-l-2 border-accent bg-surface px-3 py-2">
+        <p className="text-[11px] text-accent">agent gagal</p>
+        <p className="mt-1 whitespace-pre-wrap text-[12.5px] leading-relaxed text-body">{content}</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="vb-enter group">
+      <span className="text-[11px] text-quiet">agent</span>
+      <div className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-body">{content}</div>
+      <button
+        onClick={() => copy(content)}
+        className="mt-1 flex h-6 items-center gap-1 text-[11px] text-quiet opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+      >
+        <Icon name="copy" size={10} />
+        {copied ? 'tersalin' : 'salin'}
+      </button>
+    </div>
+  )
+}
+
+export function PreviewPane({
+  previewOn,
+  previewPort,
+  dirty,
+  buildLog,
+  onRun,
+  booting,
+  hasFiles,
+}: {
+  previewOn: boolean
+  previewPort: number
+  dirty: boolean
+  buildLog: { ok: boolean; log: string } | null
+  onRun: () => void
+  booting: boolean
+  hasFiles: boolean
+}) {
+  const [reloadKey, setReloadKey] = useState(0)
+  const url = `http://127.0.0.1:${previewPort}/`
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex h-9 max-md:h-12 shrink-0 items-center gap-2 border-b border-edge bg-surface px-3">
+        <span className="text-[11px] text-quiet">preview</span>
+        <span className="min-w-0 flex-1 truncate border border-edge bg-ink px-2 py-0.5 font-mono text-[11px] text-quiet">
+          {previewOn ? url : 'belum berjalan'}
+        </span>
+        {dirty && previewOn && <span className="text-[11px] text-accent">versi lama</span>}
+        <button
+          onClick={() => setReloadKey((k) => k + 1)}
+          disabled={!previewOn}
+          aria-label="Muat ulang preview"
+          className="flex h-6 w-6 items-center justify-center text-quiet transition-colors hover:text-body disabled:opacity-40"
+        >
+          <Icon name="reload" size={12} />
+        </button>
+      </div>
+
+      <div className="relative min-h-0 flex-1 bg-ink">
+        {previewOn ? (
+          <iframe
+            key={reloadKey}
+            src={url}
+            title="Preview aplikasi yang dibangun"
+            className="h-full w-full border-0 bg-white"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center px-6">
+            <div className="max-w-[36ch]">
+              <p className="font-display text-[16px] leading-snug text-body">
+                {booting
+                  ? 'Build sedang berjalan'
+                  : hasFiles
+                    ? 'Kode sudah ada, preview belum dinyalakan'
+                    : 'Belum ada kode di proyek ini'}
+              </p>
+              <p className="mt-1.5 text-[12px] leading-relaxed text-quiet">
+                {booting
+                  ? 'Agent menulis file lalu menjalankan build. Preview muncul sendiri setelah build lolos.'
+                  : hasFiles
+                    ? 'Tekan Jalankan untuk build dan menyajikan aplikasi di port lokal.'
+                    : 'Kirim instruksi di panel kiri. File pertama akan muncul di tab Kode.'}
+              </p>
+              {!booting && buildLog && !buildLog.ok && (
+                <p className="mt-3 border-l-2 border-accent pl-2 text-[11.5px] leading-relaxed text-body">
+                  Build terakhir gagal. Log lengkap ada di tab Kode, bagian Log.
+                </p>
+              )}
+              {!booting && hasFiles && (
+                <button
+                  onClick={onRun}
+                  className="mt-4 flex h-8 max-md:h-11 items-center gap-1.5 border border-edge px-2.5 text-[11.5px] text-body transition-colors hover:border-quiet"
+                >
+                  <Icon name="run" size={10} />
+                  Jalankan
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {buildLog && !buildLog.ok && (
+        <div className="max-h-[150px] shrink-0 overflow-y-auto border-t border-edge bg-surface px-3 py-2">
+          <p className="text-[11px] text-quiet">keluaran build terakhir</p>
+          <pre className="vb-scroll mt-1 whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-body">
+            {buildLog.log.slice(-1600)}
+          </pre>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export function CodePane({
+  files,
+  openFile,
+  content,
+  buildLog,
+  onOpen,
+  onChange,
+  onSave,
+  onBuild,
+}: {
+  files: { path: string }[]
+  openFile: string | null
+  content: string
+  buildLog: { ok: boolean; log: string } | null
+  onOpen: (p: string) => void
+  onChange: (v: string) => void
+  onSave: () => void
+  onBuild: () => void
+}) {
+  const [showLog, setShowLog] = useState(false)
+
+  useEffect(() => {
+    if (buildLog && !buildLog.ok) setShowLog(true)
+  }, [buildLog])
+
+  return (
+    <div className="flex min-h-0 flex-1">
+      <div className="vb-scroll w-[196px] max-md:w-[132px] shrink-0 overflow-y-auto border-r border-edge bg-surface">
+        <p className="border-b border-edge px-3 py-2 text-[11px] text-quiet">
+          {files.length ? `${files.length} file` : 'file'}
+        </p>
+        {!files.length && (
+          <div className="px-3 py-3">
+            <p className="text-[11.5px] leading-relaxed text-body">Belum ada file</p>
+            <p className="mt-1 text-[11px] leading-relaxed text-quiet">
+              File muncul setelah agent menulis yang pertama. Kirim instruksi di tab Chat.
+            </p>
+          </div>
+        )}
+        {files.map((f) => (
+          <button
+            key={f.path}
+            onClick={() => onOpen(f.path)}
+            aria-current={openFile === f.path ? 'true' : undefined}
+            className={`flex min-h-[30px] max-md:min-h-[44px] w-full items-center gap-1.5 border-l-2 px-2.5 py-1 text-left text-[11.5px] transition-colors ${
+              openFile === f.path
+                ? 'border-l-accent bg-ink text-body'
+                : 'border-l-transparent text-quiet hover:bg-ink hover:text-body'
+            }`}
+            title={f.path}
+          >
+            <span className="truncate">{f.path.replace(/^src\//, '')}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex h-9 max-md:h-12 shrink-0 items-center gap-2 border-b border-edge bg-surface px-3">
+          <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-quiet">
+            {openFile ?? 'belum ada file dipilih'}
+          </span>
+          <button
+            onClick={() => setShowLog((v) => !v)}
+            aria-expanded={showLog}
+            className={`flex h-6 items-center gap-1 px-1.5 text-[11px] transition-colors ${
+              showLog ? 'text-body' : 'text-quiet hover:text-body'
+            }`}
+          >
+            <Icon name="rule" size={11} />
+            Log
+          </button>
+          <button
+            onClick={onSave}
+            disabled={!openFile}
+            className="h-6 border border-edge px-2 text-[11px] text-body transition-colors hover:border-quiet disabled:opacity-40"
+          >
+            Simpan
+          </button>
+          <button
+            onClick={onBuild}
+            className="flex h-6 items-center gap-1 bg-accent px-2 text-[11px] font-medium text-ink transition-opacity hover:opacity-90"
+          >
+            <Icon name="run" size={9} />
+            Build
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1">
+          {openFile ? (
+            <textarea
+              value={content}
+              onChange={(e) => onChange(e.target.value)}
+              spellCheck={false}
+              aria-label={`Isi file ${openFile}`}
+              className="vb-scroll h-full w-full resize-none bg-ink px-3 py-2 font-mono text-[11.5px] leading-relaxed text-body outline-none"
+            />
+          ) : (
+            <div className="flex h-full items-center justify-center px-6 text-center text-[12px] text-quiet">
+              Pilih file di kiri untuk membaca dan mengubah isinya.
+            </div>
+          )}
+        </div>
+
+        {showLog && buildLog && (
+          <div className="max-h-[170px] shrink-0 overflow-y-auto border-t border-edge bg-surface px-3 py-2">
+            <p className="text-[11px] text-quiet">
+              build {buildLog.ok ? 'lolos' : 'gagal'}
+            </p>
+            <pre className="vb-scroll mt-1 whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-body">
+              {buildLog.log.slice(-3000)}
+            </pre>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}

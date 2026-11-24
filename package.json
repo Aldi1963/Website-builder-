@@ -1,0 +1,9 @@
+{
+  "name": "vibebuilder",
+  "private": true,
+  "type": "module",
+  "workspaces": ["template", "platform", "server"],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present"
+  }
+}

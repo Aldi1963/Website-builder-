@@ -1,0 +1,186 @@
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { join, dirname } from 'node:path'
+import { spawn, type ChildProcess } from 'node:child_process'
+import { PROJECTS_DIR, TEMPLATE_DIR, PREVIEW_PORT_BASE, MAX_PREVIEWS } from './paths.ts'
+
+const SKIP = new Set(['node_modules', 'dist', '.output', '.tanstack', '.git'])
+
+export function projectDir(projectId: string) {
+  return join(PROJECTS_DIR, projectId)
+}
+
+export function ensureWorkspace(projectId: string): string {
+  const dir = projectDir(projectId)
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true })
+    cpSync(TEMPLATE_DIR, dir, {
+      recursive: true,
+      filter: (src) => {
+        const rel = src.slice(TEMPLATE_DIR.length + 1)
+        if (!rel) return true
+        return !rel.split('/').some((seg) => SKIP.has(seg))
+      },
+    })
+  }
+  return dir
+}
+
+export function writeProjectFile(projectId: string, relPath: string, content: string) {
+  const dir = ensureWorkspace(projectId)
+  const safe = sanitize(relPath)
+  const abs = join(dir, safe)
+  if (!abs.startsWith(dir)) throw new Error('path escapes workspace')
+  mkdirSync(dirname(abs), { recursive: true })
+  writeFileSync(abs, content, 'utf8')
+  return safe
+}
+
+export function readProjectFile(projectId: string, relPath: string): string | null {
+  const dir = projectDir(projectId)
+  const abs = join(dir, sanitize(relPath))
+  if (!existsSync(abs)) return null
+  return readFileSync(abs, 'utf8')
+}
+
+export function deleteProjectFile(projectId: string, relPath: string) {
+  const dir = projectDir(projectId)
+  const abs = join(dir, sanitize(relPath))
+  if (existsSync(abs)) rmSync(abs, { recursive: false, force: true })
+}
+
+function sanitize(p: string) {
+  const cleaned = p.replace(/\\/g, '/').replace(/^\/+/, '')
+  if (cleaned.includes('..')) throw new Error('invalid path')
+  return cleaned
+}
+
+export type RunResult = { code: number; output: string }
+
+export function run(cmd: string, args: string[], cwd: string, timeoutMs = 180_000): Promise<RunResult> {
+  return new Promise((resolve) => {
+    const child = spawn(cmd, args, { cwd, env: { ...process.env, CI: '1' }, stdio: ['ignore', 'pipe', 'pipe'] })
+    let out = ''
+    const push = (b: Buffer) => {
+      out += b.toString('utf8')
+      if (out.length > 40_000) out = out.slice(-40_000)
+    }
+    child.stdout.on('data', push)
+    child.stderr.on('data', push)
+    const timer = setTimeout(() => child.kill('SIGKILL'), timeoutMs)
+    child.on('close', (code) => {
+      clearTimeout(timer)
+      resolve({ code: code ?? 1, output: out })
+    })
+    child.on('error', (err) => {
+      clearTimeout(timer)
+      resolve({ code: 1, output: `${out}\n${err.message}` })
+    })
+  })
+}
+
+export async function installDeps(projectId: string) {
+  const dir = ensureWorkspace(projectId)
+  if (existsSync(join(dir, 'node_modules', '.package-lock.json'))) return { code: 0, output: 'deps cached' }
+  return run('npm', ['install', '--no-audit', '--no-fund'], dir, 300_000)
+}
+
+export async function buildProject(projectId: string) {
+  const dir = ensureWorkspace(projectId)
+  const r = await run('npm', ['run', 'build'], dir, 240_000)
+  if (r.code === 0) reconcileAssets(dir)
+  return r
+}
+
+/**
+ * TanStack Start hashes src/styles.css separately for the client and SSR graphs,
+ * so the SSR chunk can reference /assets/styles-<hash>.css that the client build
+ * never emitted. Map every dangling /assets/* reference onto the closest real file.
+ */
+function reconcileAssets(dir: string) {
+  const clientAssets = join(dir, 'dist', 'client', 'assets')
+  if (!existsSync(clientAssets)) return
+  const real = readdirSync(clientAssets)
+  const serverDir = join(dir, 'dist', 'server')
+  const walk = (d: string): string[] =>
+    readdirSync(d, { withFileTypes: true }).flatMap((e) =>
+      e.isDirectory() ? walk(join(d, e.name)) : e.name.endsWith('.js') ? [join(d, e.name)] : [],
+    )
+  if (!existsSync(serverDir)) return
+
+  for (const file of walk(serverDir)) {
+    let src = readFileSync(file, 'utf8')
+    let changed = false
+    for (const m of new Set(src.match(/\/assets\/[A-Za-z0-9._-]+/g) ?? [])) {
+      const name = m.slice('/assets/'.length)
+      if (real.includes(name)) continue
+      const ext = name.slice(name.lastIndexOf('.'))
+      const base = name.slice(0, name.lastIndexOf('.'))
+      const prefix = base.split('-')[0]
+      const candidates = real.filter((f) => f.startsWith(`${prefix}-`) && f.endsWith(ext))
+      if (candidates.length !== 1) continue
+      src = src.split(m).join(`/assets/${candidates[0]}`)
+      changed = true
+    }
+    if (changed) writeFileSync(file, src, 'utf8')
+  }
+}
+
+const previews = new Map<string, { port: number; proc: ChildProcess }>()
+
+export function previewPort(projectId: string): number {
+  const existing = previews.get(projectId)
+  if (existing) return existing.port
+  const used = new Set([...previews.values()].map((v) => v.port))
+  let h = 0
+  for (const ch of projectId) h = (h * 31 + ch.charCodeAt(0)) >>> 0
+  const start = h % MAX_PREVIEWS
+  for (let i = 0; i < MAX_PREVIEWS; i++) {
+    const candidate = PREVIEW_PORT_BASE + ((start + i) % MAX_PREVIEWS)
+    if (!used.has(candidate)) return candidate
+  }
+  throw new Error('semua slot preview terpakai')
+}
+
+export async function startPreview(projectId: string): Promise<number> {
+  const existing = previews.get(projectId)
+  if (existing && existing.proc.exitCode === null) return existing.port
+
+  const dir = ensureWorkspace(projectId)
+  // keep the static-asset server in sync with the platform's current version
+  const serverFile = join(TEMPLATE_DIR, 'server.mjs')
+  if (existsSync(serverFile)) cpSync(serverFile, join(dir, 'server.mjs'))
+  const port = previewPort(projectId)
+  const proc = spawn('node', ['server.mjs'], {
+    cwd: dir,
+    env: { ...process.env, PORT: String(port), HOST: '127.0.0.1' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  proc.stdout?.on('data', () => {})
+  proc.stderr?.on('data', () => {})
+  proc.on('exit', () => previews.delete(projectId))
+  previews.set(projectId, { port, proc })
+
+  for (let i = 0; i < 40; i++) {
+    await new Promise((r) => setTimeout(r, 250))
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(1500) })
+      if (res.status < 500) return port
+    } catch {
+      /* not ready yet */
+    }
+  }
+  stopPreview(projectId)
+  throw new Error('preview gagal start (port timeout)')
+}
+
+export function stopPreview(projectId: string) {
+  const p = previews.get(projectId)
+  if (p) {
+    p.proc.kill('SIGTERM')
+    previews.delete(projectId)
+  }
+}
+
+export function runningPreviews() {
+  return [...previews.entries()].map(([id, v]) => ({ projectId: id, port: v.port }))
+}

@@ -1,0 +1,12 @@
+node_modules/
+dist/
+*.log
+logs/
+data/projects/
+data/db/
+data/*.db
+server/data/
+.vite/
+*.png
+/tmp/
+data/*.db-*
