@@ -87,6 +87,7 @@ export type AgentEvent =
   | { type: 'audit'; nilai: number; temuan: { tingkat: string; kategori: string; berkas: string; baris: number; masalah: string; perbaikan: string }[]; catatan: string }
   | { type: 'file'; path: string; action: 'write' | 'delete' }
   | { type: 'build'; ok: boolean; log: string }
+  | { type: 'assistant_delta'; text: string }
   | { type: 'assistant'; text: string }
   | { type: 'error'; text: string }
 
@@ -138,12 +139,19 @@ export async function runAgent(
       const dbg = (m: string) => { try { appendFileSync('/home/hatch/workspace/logs/vb-sse-debug.log', `${new Date().toISOString()} [agent] ${m}\n`) } catch {} }
       dbg(`final summary start project=${projectId} msgs=${messages.length}`)
       const summarize = async () => {
+        let streamed = ''
         const finalResp = await complete(
           [...messages, { role: 'user', content: 'Beri ringkasan akhir sekarang tanpa memanggil tool.' }],
-          { model, temperature: 0.25, maxTokens: 4000 },
+          {
+            model, temperature: 0.25, maxTokens: 4000,
+            onDelta: async (d) => {
+              streamed += d
+              await emit({ type: 'assistant_delta', text: d })
+            },
+          },
         )
         const clean = (typeof finalResp.message.content === 'string' ? finalResp.message.content : '').trim()
-        dbg(`final summary response project=${projectId} len=${clean.length}`)
+        dbg(`final summary response project=${projectId} len=${clean.length} streamed=${streamed.length}`)
         if (!clean) throw new Error('ringkasan akhir kosong')
         addMessage(projectId, 'assistant', clean)
         await emit({ type: 'assistant', text: clean })
@@ -304,23 +312,6 @@ export async function runAgent(
 
     if (didWrite && !auditCompleted && step === 0) {
       messages.push({ role: 'user', content: 'Sebelum ringkasan akhir, panggil tool audit satu kali.' })
-    }
-    if (auditCompleted && didWrite) {
-      messages.push({ role: 'user', content: 'Audit selesai dan build sudah dijalankan. Beri ringkasan akhir sekarang tanpa memanggil tool.' })
-      await emit({ type: 'status', text: 'Menyusun ringkasan akhir…' })
-      try {
-        const finalResp = await complete(messages, { model, temperature: 0.25, maxTokens: 4000 })
-        const clean = (typeof finalResp.message.content === 'string' ? finalResp.message.content : '').trim()
-        if (clean) {
-          addMessage(projectId, 'assistant', clean)
-          await emit({ type: 'assistant', text: clean })
-          return
-        }
-        await emit({ type: 'error', text: 'Model mengembalikan ringkasan akhir kosong.' })
-      } catch (err) {
-        await emit({ type: 'error', text: `LLM gagal membuat ringkasan akhir: ${(err as Error).message}` })
-      }
-      return
     }
   }
 

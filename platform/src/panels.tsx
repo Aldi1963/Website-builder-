@@ -12,6 +12,7 @@ export function ChatPanel({
   status,
   plan,
   audit,
+  streamText,
   onSend,
   onCancel,
 }: {
@@ -20,11 +21,12 @@ export function ChatPanel({
   status: string
   plan: ChatPlan | null
   audit: ChatAudit | null
+  streamText?: string
   onSend: (text: string) => void
   onCancel: () => void
 }) {
   const [input, setInput] = useState('')
-  const scrollRef = useAutoScroll(messages.length)
+  const scrollRef = useAutoScroll(messages.length + (streamText?.length ?? 0))
   const taRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
@@ -52,9 +54,17 @@ export function ChatPanel({
             ))}
             {sending && (
               <div className="vb-enter flex flex-col gap-2 text-[12px] text-quiet">
-                <div className="flex items-center gap-2"><Activity /><span>{status || 'Menganalisis permintaan…'}</span></div>
+                {status && (
+                  <div className="flex items-center gap-2"><Activity /><span>{status}</span></div>
+                )}
                 {plan && <PlanCard plan={plan} />}
                 {audit && <AuditCard audit={audit} />}
+                {streamText ? (
+                  <div className="border border-edge bg-surface px-3 py-3 text-[12.5px] leading-relaxed text-body">
+                    <p className="mb-1 text-[11px] font-medium text-accent">ASISTEN</p>
+                    <p className="whitespace-pre-wrap">{streamText}<span className="vb-caret ml-0.5 inline-block h-3 w-1.5 animate-pulse bg-accent align-middle" /></p>
+                  </div>
+                ) : null}
               </div>
             )}
             {!sending && audit && <AuditCard audit={audit} />}
@@ -192,7 +202,7 @@ function Bubble({ role, content }: { role: string; content: string }) {
     return (
       <div className="vb-enter flex flex-col items-end gap-1">
         <span className="text-[11px] text-quiet">kamu</span>
-        <div className="max-w-[92%] border border-edge bg-surface px-3 py-2 text-[13px] leading-relaxed text-body">
+        <div className="max-w-[92%] bg-accent px-3.5 py-2 text-[13px] leading-relaxed text-ink">
           {content}
         </div>
       </div>
@@ -210,8 +220,11 @@ function Bubble({ role, content }: { role: string; content: string }) {
 
   return (
     <div className="vb-enter group">
-      <span className="text-[11px] text-quiet">agent</span>
-      <div className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-body">{content}</div>
+      <div className="flex items-center gap-2">
+        <span className="flex h-5 w-5 items-center justify-center bg-accent font-mono text-[10px] font-bold text-ink" aria-hidden="true">V</span>
+        <span className="text-[11px] font-medium text-body">VibeBuilder</span>
+      </div>
+      <div className="mt-1.5 whitespace-pre-wrap text-[13px] leading-relaxed text-body">{content}</div>
       <button
         onClick={() => copy(content)}
         className="mt-1 flex h-6 items-center gap-1 text-[11px] text-quiet opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"

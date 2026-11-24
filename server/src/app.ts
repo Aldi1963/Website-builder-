@@ -438,6 +438,7 @@ app.post('/api/projects/:id/chat', async (c) => {
       else if (e.type === 'status') await send('status', e)
       else if (e.type === 'plan') await send('plan', e)
       else if (e.type === 'audit') await send('audit', e)
+      else if (e.type === 'assistant_delta') await send('assistant_delta', e)
       else if (e.type === 'assistant') await send('assistant', e)
       else await send('error', e)
     }

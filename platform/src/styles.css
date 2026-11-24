@@ -113,3 +113,13 @@ button:disabled, [aria-disabled="true"] {
     transition-duration: 0.01ms !important;
   }
 }
+
+.vb-caret {
+  display: inline-block;
+  width: 6px;
+  height: 14px;
+  animation: vb-blink 1s steps(2, start) infinite;
+}
+@keyframes vb-blink {
+  to { visibility: hidden; }
+}

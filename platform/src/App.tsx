@@ -348,6 +348,7 @@ type Tab = 'chat' | 'code'
 function Workspace({ projectId, onTitle }: { projectId: string; onTitle: (n: string) => void }) {
   const [tab, setTab] = useState<Tab>('chat')
   const [messages, setMessages] = useState<{ role: string; content: string; id?: number }[]>([])
+  const [streamText, setStreamText] = useState('')
   const [files, setFiles] = useState<{ path: string }[]>([])
   const [previewPort, setPreviewPort] = useState<number>(0)
   const [previewOn, setPreviewOn] = useState(false)
@@ -402,6 +403,7 @@ function Workspace({ projectId, onTitle }: { projectId: string; onTitle: (n: str
     setStatus('menyiapkan')
     setPlan(null)
     setAudit(null)
+    setStreamText('')
     setMessages((m) => [...m, { role: 'user', content: text }])
 
     const ctrl = new AbortController()
@@ -421,8 +423,21 @@ function Workspace({ projectId, onTitle }: { projectId: string; onTitle: (n: str
         setBuildLog({ ok, log })
         if (!ok) setTab('code')
       },
-      onAssistant: (t) => setMessages((m) => [...m, { role: 'assistant', content: t }]),
-      onError: (t) => setMessages((m) => [...m, { role: 'error', content: t }]),
+      onAssistantDelta: (d) => {
+        setStreamText((prev) => {
+          const next = prev + d
+          setStatus('')
+          return next
+        })
+      },
+      onAssistant: (t) => {
+        setStreamText('')
+        setMessages((m) => [...m, { role: 'assistant', content: t }])
+      },
+      onError: (t) => {
+        setStreamText('')
+        setMessages((m) => [...m, { role: 'error', content: t }])
+      },
       onDone: () => {
         setStatus('')
         void api.files(projectId).then(({ files }) => setFiles(files.map((f) => ({ path: f.path }))))
@@ -613,6 +628,7 @@ function Workspace({ projectId, onTitle }: { projectId: string; onTitle: (n: str
             status={status}
             plan={plan}
             audit={audit}
+            streamText={streamText}
             onSend={send}
             onCancel={() => abortRef.current?.abort()}
           />

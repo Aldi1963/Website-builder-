@@ -64,14 +64,14 @@ function parseSse(raw: string): { choices: Choice[]; usage?: unknown } {
 
 export async function complete(
   messages: ChatMessage[],
-  opts: { model?: string; tools?: unknown[]; temperature?: number; maxTokens?: number } = {},
+  opts: { model?: string; tools?: unknown[]; temperature?: number; maxTokens?: number; onDelta?: (text: string) => void | Promise<void> } = {},
 ): Promise<{ message: ChatMessage & { role: 'assistant' }; usage?: unknown }> {
   const body: Record<string, unknown> = {
     model: opts.model ?? FAST_MODEL,
     messages,
     temperature: opts.temperature ?? 0.3,
     max_tokens: opts.maxTokens ?? 8192,
-    stream: false,
+    stream: Boolean(opts.onDelta),
   }
   if (opts.tools?.length) {
     body.tools = opts.tools
@@ -94,6 +94,55 @@ export async function complete(
     throw new Error(`LLM ${res.status}: ${text.slice(0, 400)}`)
   }
 
+  if (!res.body) throw new Error('LLM response tanpa body')
+  const contentType = res.headers.get('content-type') ?? ''
+  const looksStream = contentType.includes('text/event-stream')
+
+  // Streaming: teruskan setiap delta teks ke onDelta sambil menampung hasil utuh.
+  if (looksStream && opts.onDelta) {
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let full = ''
+    const toolBuf = new Map<number, ToolCall>()
+    let usage: unknown
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const parts = buffer.split('\n')
+      buffer = parts.pop() ?? ''
+      for (const line of parts) {
+        if (!line.startsWith('data:')) continue
+        const payload = line.slice(5).trim()
+        if (!payload || payload === '[DONE]') continue
+        let chunk: any
+        try { chunk = JSON.parse(payload) } catch { continue }
+        if (chunk.usage) usage = chunk.usage
+        const d = chunk.choices?.[0]?.delta
+        if (!d) continue
+        if (typeof d.content === 'string' && d.content) {
+          full += d.content
+          await opts.onDelta(d.content)
+        }
+        for (const tc of d.tool_calls ?? []) {
+          const idx = tc.index ?? 0
+          const cur = toolBuf.get(idx) ?? { id: tc.id ?? `call_${idx}`, type: 'function' as const, function: { name: '', arguments: '' } }
+          if (tc.id) cur.id = tc.id
+          if (tc.function?.name) cur.function.name = tc.function.name
+          if (tc.function?.arguments) cur.function.arguments += tc.function.arguments
+          toolBuf.set(idx, cur)
+        }
+      }
+    }
+    const calls = [...toolBuf.values()].filter((t) => t.function.name)
+    const message: any = { role: 'assistant', content: full }
+    if (calls.length) message.tool_calls = calls
+    if (!full && !calls.length) throw new Error('LLM stream mengembalikan konten kosong')
+    return { message, usage }
+  }
+
+  // Non-stream (atau delta tanpa onDelta): kumpulkan semuanya lalu kembalikan sekali.
   const raw = await res.text()
   let json: { choices?: Choice[]; usage?: unknown }
   if (raw.trimStart().startsWith('data:')) {
@@ -109,7 +158,7 @@ export async function complete(
   const message = json.choices?.[0]?.message
   if (!message) throw new Error(`LLM response tanpa message: ${raw.slice(0, 200)}`)
   if (typeof message.content !== 'string' && !message.tool_calls?.length) {
-    const finish = json.choices?.[0]?.finish_reason ?? json.choices?.[0]?.delta?.reasoning_details?.length ? 'reasoning' : 'unknown'
+    const finish = (json.choices?.[0] as any)?.finish_reason ?? 'unknown'
     throw new Error(`LLM mengembalikan konten kosong (finish_reason=${finish}); coba model lain atau naikkan max_tokens.`)
   }
   return { message, usage: json.usage }

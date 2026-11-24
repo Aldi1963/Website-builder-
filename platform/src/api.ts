@@ -111,6 +111,7 @@ export type ChatHandlers = {
   onAudit?: (event: Extract<AgentEvent, { type: 'audit' }>) => void
   onFile?: (path: string, action: 'write' | 'delete') => void
   onBuild?: (ok: boolean, log: string) => void
+  onAssistantDelta?: (text: string) => void
   onAssistant?: (text: string) => void
   onError?: (text: string) => void
   onDone?: () => void
@@ -153,6 +154,7 @@ export async function chatStream(projectId: string, message: string, h: ChatHand
       else if (event === 'audit') h.onAudit?.(payload)
       else if (event === 'file') h.onFile?.(payload.path, payload.action)
       else if (event === 'build') h.onBuild?.(payload.ok, payload.log)
+      else if (event === 'assistant_delta') h.onAssistantDelta?.(payload.text)
       else if (event === 'assistant') h.onAssistant?.(payload.text)
       else if (event === 'error') h.onError?.(payload.text)
       else if (event === 'done') h.onDone?.()
