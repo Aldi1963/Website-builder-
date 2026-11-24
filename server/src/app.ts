@@ -24,6 +24,7 @@ import {
   claimOrphanProjects,
   userOwnsProject,
 } from './db.ts'
+import { listVersions, getVersionDiff, restoreVersion, snapshotVersion, diffLines } from './versions.ts'
 import {
   ensureWorkspace,
   buildProject,
@@ -461,6 +462,46 @@ app.get('/api/projects/:id/messages', (c) => {
   const r = owned(c)
   if ('error' in r) return c.json({ error: r.error }, r.status)
   return c.json({ messages: listMessages(r.project.id) })
+})
+
+/* ---------- version history ---------- */
+
+app.get('/api/projects/:id/versions', (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  return c.json({ versions: listVersions(r.project.id) })
+})
+
+app.get('/api/projects/:id/versions/:vid', (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  const vid = Number(c.req.param('vid'))
+  const diff = getVersionDiff(r.project.id, vid)
+  if (!diff) return c.json({ error: 'versi tidak ditemukan' }, 404)
+  return c.json(diff)
+})
+
+app.post('/api/projects/:id/versions/:vid/restore', async (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  const vid = Number(c.req.param('vid'))
+  const res = restoreVersion(r.project.id, vid)
+  if (!res.ok) return c.json({ error: 'versi tidak ditemukan' }, 404)
+  snapshotVersion(r.project.id, `restore ke v${vid}`)
+  const build = await buildProject(r.project.id)
+  recordBuild(r.project.id, build.code === 0, build.output)
+  return c.json({ ok: true, restored: res.restored, buildOk: build.code === 0 })
+})
+
+/* ---------- file diff ---------- */
+
+app.get('/api/projects/:id/file/diff', (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  const path = c.req.query('path') ?? ''
+  const before = c.req.query('before') ?? ''
+  const after = getFile(r.project.id, path) ?? readProjectFile(r.project.id, path) ?? ''
+  return c.json({ path, diff: diffLines(before, after).slice(0, 400) })
 })
 
 app.post('/api/projects/:id/messages', async (c) => {

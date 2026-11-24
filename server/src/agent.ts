@@ -1,6 +1,6 @@
 import { complete, STRONG_MODEL, type ChatMessage, type ToolCall } from './llm.ts'
 import { appendFileSync } from 'node:fs'
-import { AUDIT_SYSTEM, BASE_SYSTEM, PLAN_SYSTEM } from './prompts.ts'
+import { AUDIT_SYSTEM, BASE_SYSTEM, PLAN_SYSTEM, QUICK_EDIT_SYSTEM } from './prompts.ts'
 import {
   readProjectFile,
   writeProjectFile,
@@ -10,6 +10,7 @@ import {
   ensureWorkspace,
 } from './workspace.ts'
 import { putFile, removeFile, listFiles, addMessage, listMessages } from './db.ts'
+import { snapshotVersion, restoreVersion, listVersions } from './versions.ts'
 
 const TOOLS = [
   {
@@ -101,6 +102,11 @@ export async function runAgent(
 ): Promise<void> {
   ensureWorkspace(projectId)
   addMessage(projectId, 'user', userPrompt)
+  const versionLabel = userPrompt
+
+  // Snapshot sebelum run — dipakai untuk version history & rollback UI.
+  let snapshotId = 0
+  try { snapshotId = snapshotVersion(projectId, `sebelum: ${versionLabel}`) } catch { /* snapshot gagal tidak memblokir run */ }
 
   const history = listMessages(projectId).slice(-24)
   const messages: ChatMessage[] = [
@@ -110,6 +116,24 @@ export async function runAgent(
 
   let lastBuildFailed = false
 
+  // Klasifikasi cepat: edit kecil vs pekerjaan penuh. Edit kecil = jalur ringkas tanpa plan/audit.
+  let quickEdit = false
+  if (history.length > 1 && listFiles(projectId).length > 0) {
+    try {
+      const cls = await complete([
+        { role: 'system', content: 'Klasifikasi permintaan. Balas HANYA JSON: {"kecil": true|false}. Kecil=true bila permintaan hanya mengubah satu bagian kecil yang sudah ada (teks, warna, komponen tunggal, perbaikan kecil). Kecil=false bila menambah fitur, mengubah struktur data, atau membuat halaman/flow baru.' },
+        { role: 'user', content: userPrompt },
+      ], { model, temperature: 0, maxTokens: 100 })
+      const raw = typeof cls.message.content === 'string' ? cls.message.content : ''
+      const jsonText = raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1)
+      quickEdit = JSON.parse(jsonText).kecil === true
+    } catch { /* default: jalur penuh */ }
+  }
+
+  if (quickEdit) {
+    messages[0] = { role: 'system', content: `${QUICK_EDIT_SYSTEM}\n\nWorkspace saat ini:\n${fileIndex(projectId)}` }
+    await emit({ type: 'plan', ringkasan: 'Edit cepat: perubahan kecil langsung diterapkan', langkah: [{ judul: 'Terapkan perubahan', detail: 'Menulis file minimum yang disebut permintaan.' }, { judul: 'Verifikasi build', detail: 'Build produksi untuk memastikan tidak merusak aplikasi.' }], berkas: [], asumsi: [] })
+  } else {
   // Generate and stream a concrete plan before the implementation agent acts.
   await emit({ type: 'status', text: 'Menyusun rencana…' })
   try {
@@ -126,14 +150,16 @@ export async function runAgent(
   } catch {
     await emit({ type: 'plan', ringkasan: 'Membangun dan memverifikasi perubahan yang diminta', langkah: [{judul:'Memahami proyek',detail:'Membaca struktur dan pola kode yang sudah ada.'},{judul:'Menerapkan perubahan',detail:'Menulis komponen dan logika yang diperlukan.'},{judul:'Menguji hasil',detail:'Menjalankan build dan memperbaiki error.'}], berkas: [], asumsi: [] })
   }
+  } // end else (full pipeline)
 
   let auditCompleted = false
   let auditFixRequested = false
   let didWrite = false
+  let autoFixRounds = 0
   for (let step = 0; step < MAX_STEPS; step++) {
     await emit({ type: 'status', text: step === 0 ? 'Memeriksa proyek…' : 'Menerapkan rencana…' })
 
-    if (auditCompleted && didWrite) {
+    if (!quickEdit && auditCompleted && didWrite) {
       await emit({ type: 'status', text: 'Menyusun ringkasan akhir…' })
       await new Promise((r) => setImmediate(r))
       const dbg = (m: string) => { try { appendFileSync('/home/hatch/workspace/logs/vb-sse-debug.log', `${new Date().toISOString()} [agent] ${m}\n`) } catch {} }
@@ -186,7 +212,7 @@ export async function runAgent(
     const calls: ToolCall[] = msg.tool_calls ?? []
 
     if (msg.content && typeof msg.content === 'string' && msg.content.trim() && !calls.length) {
-      if (!auditCompleted && didWrite && !auditFixRequested) {
+      if (!quickEdit && !auditCompleted && didWrite && !auditFixRequested) {
         auditFixRequested = true
         messages.push({ role: 'assistant', content: msg.content })
         messages.push({ role: 'user', content: 'Panggil tool audit satu kali sekarang untuk meninjau keamanan, data, UI, dan aksesibilitas.' })
@@ -310,10 +336,19 @@ export async function runAgent(
       messages.push({ role: 'tool', tool_call_id: call.id, name, content: result.slice(0, 12_000) })
     }
 
-    if (didWrite && !auditCompleted && step === 0) {
+    // Auto-fix build: setelah giliran menulis file, bila build terakhir gagal, suruh agent memperbaiki sendiri.
+    if (stepDidWrite && lastBuildFailed && autoFixRounds < 4) {
+      autoFixRounds++
+      messages.push({ role: 'user', content: 'Build terakhir GAGAL. Perbaiki error build sekarang: baca file terkait bila perlu, tulis perbaikan lewat write_file, lalu panggil build lagi. Jangan menambah fitur baru.' })
+    }
+
+    if (!quickEdit && didWrite && !auditCompleted && step === 0) {
       messages.push({ role: 'user', content: 'Sebelum ringkasan akhir, panggil tool audit satu kali.' })
     }
   }
+
+  // Snapshot setelah run selesai (versi hasil) + catat versi untuk UI history.
+  try { snapshotVersion(projectId, `sesudah: ${versionLabel}`) } catch { /* abaikan */ }
 
   await emit({ type: 'error', text: `Batas ${MAX_STEPS} langkah tercapai.` })
 }

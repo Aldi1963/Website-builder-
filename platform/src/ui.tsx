@@ -76,6 +76,7 @@ const PATHS: Record<string, string> = {
   sun: 'M12 4V2M12 22v-2M4 12H2M22 12h-2M5.6 5.6 4.2 4.2M19.8 19.8l-1.4-1.4M18.4 5.6l1.4-1.4M4.2 19.8l1.4-1.4M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z',
   moon: 'M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z',
   logout: 'M15 4h4v16h-4M11 16l-4-4 4-4M7 12h9',
+  back: 'M20 12H7M13 5l-7 7 7 7',
 }
 
 export function Icon({

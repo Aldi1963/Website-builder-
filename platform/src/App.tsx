@@ -349,6 +349,7 @@ function Workspace({ projectId, onTitle }: { projectId: string; onTitle: (n: str
   const [tab, setTab] = useState<Tab>('chat')
   const [messages, setMessages] = useState<{ role: string; content: string; id?: number }[]>([])
   const [streamText, setStreamText] = useState('')
+  const [changedFiles, setChangedFiles] = useState<string[]>([])
   const [files, setFiles] = useState<{ path: string }[]>([])
   const [previewPort, setPreviewPort] = useState<number>(0)
   const [previewOn, setPreviewOn] = useState(false)
@@ -404,6 +405,7 @@ function Workspace({ projectId, onTitle }: { projectId: string; onTitle: (n: str
     setPlan(null)
     setAudit(null)
     setStreamText('')
+    setChangedFiles([])
     setMessages((m) => [...m, { role: 'user', content: text }])
 
     const ctrl = new AbortController()
@@ -413,9 +415,10 @@ function Workspace({ projectId, onTitle }: { projectId: string; onTitle: (n: str
       onStatus: (t) => setStatus(t),
       onPlan: (event) => setPlan(event),
       onAudit: (event) => setAudit(event),
-      onFile: async () => {
+      onFile: async (path) => {
         const { files } = await api.files(projectId)
         setFiles(files.map((f) => ({ path: f.path })))
+        if (path) setChangedFiles((prev) => (prev.includes(path) ? prev : [...prev, path]))
         setDirty(true)
         if (previewOn) void reloadPreview()
       },
@@ -651,10 +654,13 @@ function Workspace({ projectId, onTitle }: { projectId: string; onTitle: (n: str
               openFile={openFile}
               content={fileContent}
               buildLog={buildLog}
+              changedFiles={changedFiles}
+              projectId={projectId}
               onOpen={openFileAt}
               onChange={setFileContent}
               onSave={saveFile}
               onBuild={startPreview}
+              onFilesRefresh={() => void api.files(projectId).then(({ files }) => setFiles(files.map((f) => ({ path: f.path }))))}
             />
           )}
         </section>

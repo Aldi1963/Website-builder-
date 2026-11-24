@@ -336,25 +336,56 @@ export function CodePane({
   openFile,
   content,
   buildLog,
+  changedFiles,
+  projectId,
   onOpen,
   onChange,
   onSave,
   onBuild,
+  onFilesRefresh,
 }: {
   files: { path: string }[]
   openFile: string | null
   content: string
   buildLog: { ok: boolean; log: string } | null
+  changedFiles: string[]
+  projectId: string
   onOpen: (p: string) => void
   onChange: (v: string) => void
   onSave: () => void
   onBuild: () => void
+  onFilesRefresh: () => void
 }) {
   const [showLog, setShowLog] = useState(false)
+  const [tab, setTab] = useState<'edit' | 'diff'>('edit')
+  const [diff, setDiff] = useState<string[] | null>(null)
 
   useEffect(() => {
     if (buildLog && !buildLog.ok) setShowLog(true)
   }, [buildLog])
+
+  const showDiff = async () => {
+    if (!openFile) return
+    setTab('diff')
+    try {
+      const r = await fetch(`/api/projects/${projectId}/file/diff?path=${encodeURIComponent(openFile)}&before=`)
+      const d = await r.json()
+      setDiff(d.diff ?? [])
+    } catch {
+      setDiff(['(gagal memuat diff)'])
+    }
+  }
+
+  const restoreLatest = async () => {
+    try {
+      const r = await fetch(`/api/projects/${projectId}/versions`)
+      const d = await r.json()
+      const versions: { id: number; label: string }[] = d.versions ?? []
+      if (!versions.length) return
+      await fetch(`/api/projects/${projectId}/versions/${versions[0].id}/restore`, { method: 'POST' })
+      onFilesRefresh()
+    } catch { /* biarkan */ }
+  }
 
   return (
     <div className="flex min-h-0 flex-1">
@@ -383,8 +414,21 @@ export function CodePane({
             title={f.path}
           >
             <span className="truncate">{f.path.replace(/^src\//, '')}</span>
+            {changedFiles.includes(f.path) && (
+              <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-accent" title="berubah pada giliran ini" />
+            )}
           </button>
         ))}
+        {files.length > 0 && (
+          <button
+            onClick={restoreLatest}
+            className="mt-2 mx-2 mb-3 flex h-7 items-center gap-1 border border-edge px-2 text-[10.5px] text-quiet transition-colors hover:border-quiet hover:text-body"
+            title="Kembalikan semua file ke snapshot sebelum giliran terakhir"
+          >
+            <Icon name="back" size={10} />
+            Rollback
+          </button>
+        )}
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -392,6 +436,21 @@ export function CodePane({
           <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-quiet">
             {openFile ?? 'belum ada file dipilih'}
           </span>
+          <button
+            onClick={() => { setTab('edit'); setDiff(null) }}
+            aria-pressed={tab === 'edit'}
+            className={`h-6 px-1.5 text-[11px] transition-colors ${tab === 'edit' ? 'text-body' : 'text-quiet hover:text-body'}`}
+          >
+            Edit
+          </button>
+          <button
+            onClick={showDiff}
+            aria-pressed={tab === 'diff'}
+            disabled={!openFile}
+            className={`h-6 px-1.5 text-[11px] transition-colors disabled:opacity-40 ${tab === 'diff' ? 'text-body' : 'text-quiet hover:text-body'}`}
+          >
+            Diff
+          </button>
           <button
             onClick={() => setShowLog((v) => !v)}
             aria-expanded={showLog}
@@ -419,7 +478,15 @@ export function CodePane({
         </div>
 
         <div className="min-h-0 flex-1">
-          {openFile ? (
+          {tab === 'diff' && diff !== null ? (
+            <pre className="vb-scroll h-full w-full overflow-auto bg-ink px-3 py-2 font-mono text-[11px] leading-relaxed">
+              {diff.length
+                ? diff.map((l) => l.startsWith('+') ? `+${l.slice(1)}` : l).map((l, i) => (
+                    <div key={i} className={l.startsWith('+') ? 'text-accent' : l.startsWith('-') ? 'text-quiet line-through' : 'text-body'}>{l}</div>
+                  ))
+                : '(tidak ada perubahan)'}
+            </pre>
+          ) : openFile ? (
             <textarea
               value={content}
               onChange={(e) => onChange(e.target.value)}
