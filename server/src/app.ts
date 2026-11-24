@@ -69,8 +69,8 @@ app.use('*', cors({ origin: (o) => o ?? '*', credentials: true }))
  * and the request is forwarded verbatim — same path, same method — because
  * generated apps link assets with absolute /assets/ URLs.
  */
-const PUBLIC_SUFFIX = process.env.VB_PUBLIC_SUFFIX ?? 'vibe.clipku.com'
-const PUBLIC_ORIGIN = process.env.VB_PUBLIC_ORIGIN ?? 'https://vibe.clipku.com'
+const PUBLIC_SUFFIX = process.env.VB_PUBLIC_SUFFIX ?? 'none'
+const PUBLIC_ORIGIN = process.env.VB_PUBLIC_ORIGIN ?? 'none'
 
 function buildHostSubdomain(host: string): string | null {
   const name = host.split(':')[0].toLowerCase()
