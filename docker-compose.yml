@@ -1,0 +1,73 @@
+# TREK A item 2 — docker-compose untuk dev/prod lokal.
+#
+#   docker compose up --build          # app + postgres
+#   docker compose --profile optional up --build   # + redis
+#
+# BACA DULU — tiga batasan yang disengaja (bukan bug compose ini):
+#   1. Server mengikat 127.0.0.1:18082 (server/main.go). Karena itu service
+#      `app` memakai network_mode: host; pemetaan `ports:` TIDAK bisa
+#      dipakai sampai main.go bind 0.0.0.0 (di luar partisi TREK A).
+#      Konsekuensinya: compose ini hanya benar di host Linux.
+#   2. Server SELALU memakai SQLite ../data/webbuilder.db (main.go) dan
+#      MENGABAIKAN DATABASE_URL. Service `postgres` di bawah ini hanya
+#      disediakan untuk opt-in Postgres di masa depan — app tidak
+#      terhubung ke sana hari ini. Jangan anggap data tersimpan di Postgres.
+#   3. Server tidak memakai Redis hari ini (queue in-memory;
+#      server/internal/queue/queue.go). Service `redis` ada di profile
+#      `optional` untuk kebutuhan mendatang, bukan kebutuhan runtime.
+#
+# Jangan taruh secret produksi di file ini. JWT_SECRET wajib diisi lewat
+# environment shell atau file .env yang TIDAK di-commit (lihat .env.example).
+# Password Postgres di bawah ini hanya default untuk dev lokal.
+
+services:
+  app:
+    build: .
+    # Wajib host networking sampai server bind 0.0.0.0 (lihat catatan 1).
+    network_mode: host
+    environment:
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET wajib diset di environment/.env}
+      # AI_* opsional; kosong = fitur AI nonaktif sampai dikonfigurasi.
+      AI_BASE_URL: ${AI_BASE_URL:-}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-}
+      # DATABASE_URL saat ini diabaikan server (SQLite default) — lihat catatan 2.
+      DATABASE_URL: ${DATABASE_URL:-}
+    volumes:
+      # Database SQLite + state runtime. Jangan hapus volume/bind ini.
+      - ./data:/app/data
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-webbuilder}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-webbuilder_dev_only}
+      POSTGRES_DB: ${POSTGRES_DB:-webbuilder}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-webbuilder}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    # Disediakan untuk opt-in Postgres mendatang; app belum memakainya.
+
+  redis:
+    profiles: ["optional"]
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    # Opsional; server tidak memakai Redis hari ini (lihat catatan 3).
+
+volumes:
+  pgdata:
+  redisdata:

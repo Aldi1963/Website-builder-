@@ -1,0 +1,107 @@
+name: Deploy
+
+# TREK A item 11 — workflow deploy PLACEHOLDER.
+#
+# Status: BELUM AKTIF. Semua langkah deploy nyata masih TODO dan tidak ada
+# satu pun host, kredensial, atau secret yang di-hardcode di file ini.
+# Workflow ini hanya jalan manual (workflow_dispatch) dan tidak melakukan
+# apa pun selain mencetak apa yang masih kurang — sengaja, supaya tidak ada
+# deploy setengah jadi yang tersenggol tidak sengaja.
+#
+# Yang harus dilengkapi sebelum workflow ini diaktifkan (lihat docs/deploy.md):
+#   1. Target deploy + cara aksesnya (host/SSH atau registry + orchestrator).
+#   2. Secrets GitHub: DEPLOY_SSH_HOST, DEPLOY_SSH_USER, DEPLOY_SSH_KEY,
+#      dan (bila memakai registry) REGISTRY_USER / REGISTRY_PASSWORD.
+#   3. Perintah health-check pasca-deploy + kriteria rollback.
+#   4. Approval environment "production" di repo settings (GitHub
+#      Environments) agar deploy produksi butuh persetujuan manusia.
+# Sampai keempatnya ada, JANGAN ubah workflow ini menjadi otomatis (push).
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target deploy"
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      ref:
+        description: "Ref (branch/tag/commit) yang di-deploy; kosong = ref pemicu"
+        required: false
+        type: string
+        default: ""
+      rollback:
+        description: "Jalankan rollback ke rilis sebelumnya, bukan deploy baru"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy-staging:
+    name: deploy staging
+    if: ${{ inputs.environment == 'staging' && inputs.rollback == false }}
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      - name: Placeholder — belum ada target staging
+        run: |
+          echo "::warning::Workflow deploy masih PLACEHOLDER (TREK A item 11)."
+          echo "Target staging belum ditentukan. Lengkapi docs/deploy.md lalu ganti langkah ini."
+          echo "TODO: build image (docker build -t webbuilder:staging .)"
+          echo "TODO: push image ke registry (butuh secret REGISTRY_USER/REGISTRY_PASSWORD)"
+          echo "TODO: deploy ke host staging (butuh secret DEPLOY_SSH_HOST/DEPLOY_SSH_USER/DEPLOY_SSH_KEY)"
+          echo "TODO: health-check staging (GET / -> 200) lalu tandai rilis"
+          exit 0
+
+  deploy-production:
+    name: deploy production
+    if: ${{ inputs.environment == 'production' && inputs.rollback == false }}
+    runs-on: ubuntu-latest
+    # environment: production di GitHub harus dikonfigurasi dengan
+    # "Required reviewers" sebelum job ini boleh jalan tanpa pengawasan.
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      - name: Placeholder — belum ada target produksi
+        run: |
+          echo "::warning::Workflow deploy masih PLACEHOLDER (TREK A item 11)."
+          echo "Deploy produksi TIDAK BOLEH otomatis sebelum staging terbukti + approval environment aktif."
+          echo "TODO: verifikasi staging hijau pada ref yang sama sebelum lanjut"
+          echo "TODO: backup database produksi (scripts/backup.sh) sebelum deploy"
+          echo "TODO: build + push image dengan tag rilis (mis. git SHA)"
+          echo "TODO: deploy ke host produksi (butuh secret DEPLOY_SSH_HOST/DEPLOY_SSH_USER/DEPLOY_SSH_KEY)"
+          echo "TODO: health-check produksi + smoke test login"
+          exit 0
+
+  rollback:
+    name: rollback
+    if: ${{ inputs.rollback == true }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      - name: Placeholder — prosedur rollback manual
+        run: |
+          echo "::warning::Rollback otomatis belum diimplementasikan (TREK A item 11)."
+          echo "Ikuti docs/deploy.md bagian Rollback (manual):"
+          echo "  1. Kembalikan image/container ke tag rilis sebelumnya."
+          echo "  2. Bila skema/data berubah, restore backup via scripts/restore.sh"
+          echo "     (restore database HANYA bila yakin — data baru sesudah backup akan hilang)."
+          echo "  3. Verifikasi health-check + login, lalu umumkan ke tim."
+          echo "TODO: ganti langkah ini dengan rollback otomatis (redeploy tag sebelumnya + restore bila perlu)."
+          exit 0

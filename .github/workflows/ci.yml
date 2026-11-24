@@ -1,0 +1,92 @@
+name: CI
+
+# TREK A item 1 — CI/CD.
+# Menjalankan: tes + vet Go, typecheck + build web, secret scan,
+# dan pemeriksaan OpenAPI tidak stale (langkah terakhir bergantung pada
+# generator Track D: server/cmd/generate-openapi — lihat catatan di bawah).
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  server:
+    name: server (Go)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache-dependency-path: server/go.sum
+      - name: Vet
+        run: go vet ./...
+      - name: Build
+        run: go build ./...
+      - name: Test
+        run: go test ./...
+
+  web:
+    name: web (React + TS)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      # Install dari root workspace: lockfile yang dipakai adalah
+      # pnpm-lock.yaml di root (web/pnpm-lock.yaml hanya stub).
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck
+        working-directory: web
+        run: pnpm typecheck
+      - name: Build
+        working-directory: web
+        run: pnpm build
+
+  openapi:
+    name: openapi (tidak stale)
+    runs-on: ubuntu-latest
+    needs: server
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache-dependency-path: server/go.sum
+      # Generator ada di server/cmd/generate-openapi (Track D, 15 Nov 2026).
+      # Langkah ini menggagalkan CI bila server/openapi.yaml ATAU
+      # packages/types/src/index.ts berbeda dari hasil generate.
+      - name: Check OpenAPI is not stale
+        run: |
+          if [ ! -d cmd/generate-openapi ]; then
+            echo "OpenAPI generator (server/cmd/generate-openapi) belum ada — skip pemeriksaan stale."
+            exit 0
+          fi
+          go run ./cmd/generate-openapi
+          git diff --exit-code -- openapi.yaml ../packages/types/src/index.ts
+
+  gitleaks:
+    name: secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
