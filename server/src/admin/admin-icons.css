@@ -7,9 +7,10 @@
    — BUKAN dari ingatan. Rantai ini terverifikasi: 7 ikon yang tampil
    benar di HP (gear, key, speedometer2, people, box, bell, sun-fill)
    punya codepoint yang sama persis di main.css dan di CSS resmi itu,
-   dan ke-9 codepoint di bawah ini ada di font vendor.
-   Daftar lengkap ikon yang dipakai panel (audit 25 Nov 2026): 33 ikon,
-   9 di antaranya hilang dari main.css dan semuanya ada di file ini.
+   dan ke-11 codepoint di bawah ini ada di font vendor.
+   Daftar lengkap ikon yang dipakai panel (audit 25 Nov 2026, ditambah
+   2 ikon fitur pengumuman/pemeliharaan): 35 ikon,
+   11 di antaranya hilang dari main.css dan semuanya ada di file ini.
    File ini terpisah dari CSS template agar tidak tertimpa bila template
    di-vendor ulang. */
 .bi-box-arrow-up-left:before { content: "\f1c4"; }
@@ -20,4 +21,6 @@
 .bi-heart-pulse:before { content: "\f76f"; }
 .bi-lightning:before { content: "\f46f"; }
 .bi-memory:before { content: "\f6e3"; }
+.bi-megaphone:before { content: "\f484"; }
 .bi-robot:before { content: "\f6b1"; }
+.bi-wrench:before { content: "\f621"; }

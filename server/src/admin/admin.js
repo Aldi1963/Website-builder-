@@ -87,7 +87,7 @@
       const val = values && values[f.name] !== undefined ? values[f.name] : (f.value ?? '')
       const help = f.help ? `<div class="form-text">${esc(f.help)}</div>` : ''
       if (f.type === 'textarea') {
-        return `<div class="mb-3"><label class="form-label" for="form-${esc(f.name)}">${esc(f.label)}</label><textarea class="form-control" id="form-${esc(f.name)}" rows="3">${esc(val)}</textarea>${help}</div>`
+        return `<div class="mb-3"><label class="form-label" for="form-${esc(f.name)}">${esc(f.label)}</label><textarea class="form-control" id="form-${esc(f.name)}" rows="${f.rows || 3}">${esc(val)}</textarea>${help}</div>`
       }
       return `<div class="mb-3"><label class="form-label" for="form-${esc(f.name)}">${esc(f.label)}</label><input type="${esc(f.type || 'text')}" class="form-control" id="form-${esc(f.name)}" value="${esc(val)}"${f.min !== undefined ? ` min="${f.min}"` : ''}${f.required ? ' required' : ''}>${help}</div>`
     }).join('')
@@ -228,8 +228,10 @@
     { title: 'Penggunaan', url: '/admin/usage', type: 'halaman' },
     { title: 'Build', url: '/admin/builds', type: 'halaman' },
     { title: 'Pesan', url: '/admin/messages', type: 'halaman' },
+    { title: 'Pengumuman', url: '/admin/pengumuman', type: 'halaman' },
     { title: 'Sesi', url: '/admin/sessions', type: 'halaman' },
     { title: 'Kesehatan Sistem', url: '/admin/health', type: 'halaman' },
+    { title: 'Pemeliharaan', url: '/admin/pemeliharaan', type: 'halaman' },
     { title: 'Pengaturan AI', url: '/admin/ai-settings', type: 'halaman' },
     { title: 'Pengaturan', url: '/admin/settings', type: 'halaman' },
   ]
@@ -282,6 +284,8 @@
     else if (name === 'usage') await loadUsage()
     else if (name === 'builds') await loadBuilds()
     else if (name === 'messages') await loadMessages()
+    else if (name === 'pemeliharaan') await loadMaintenance()
+    else if (name === 'pengumuman') await loadAnnouncements()
     else if (name === 'sessions') await loadSessions()
     else if (name === 'health') await loadHealth()
     else if (name === 'ai-settings') await loadAiSettings()
@@ -667,6 +671,122 @@
   if (msgSearchBtn) msgSearchBtn.addEventListener('click', runMessagesSearch)
   const msgSearch = $('#messages-search')
   if (msgSearch) msgSearch.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); runMessagesSearch() } })
+
+  /* ---------- pengumuman (fitur 4) ---------- */
+  let announcementsCache = []
+  async function loadAnnouncements() {
+    const data = await api('/api/admin/announcements')
+    announcementsCache = data.announcements || []
+    const body = $('#announcements-body')
+    if (!body) return
+    body.innerHTML = announcementsCache.length
+      ? announcementsCache.map((a) => {
+          const excerpt = a.body.length > 120 ? `${a.body.slice(0, 120)}…` : a.body
+          return `<tr>
+            <td><strong>${esc(a.title)}</strong></td>
+            <td class="text-break" style="min-width: 240px">${esc(excerpt || '–')}</td>
+            <td>${a.active ? '<span class="badge bg-success">Aktif</span>' : '<span class="badge bg-secondary">Nonaktif</span>'}</td>
+            <td>${esc(fmtDate(a.created_at))}</td>
+            <td class="text-end text-nowrap">
+              ${a.active
+                ? `<button class="btn btn-sm btn-outline-warning" data-act="deactivate-announcement" data-id="${a.id}">Nonaktifkan</button>`
+                : `<button class="btn btn-sm btn-outline-success" data-act="activate-announcement" data-id="${a.id}">Aktifkan</button>`}
+              <button class="btn btn-sm btn-outline-primary" data-act="edit-announcement" data-id="${a.id}">Ubah</button>
+              <button class="btn btn-sm btn-outline-danger" data-act="delete-announcement" data-id="${a.id}" data-title="${esc(a.title)}">Hapus</button>
+            </td>
+          </tr>`
+        }).join('')
+      : '<tr><td colspan="5" class="text-muted">Belum ada pengumuman.</td></tr>'
+    $$('#announcements-body [data-act]').forEach((btn) => btn.addEventListener('click', async () => {
+      const id = btn.dataset.id
+      if (btn.dataset.act === 'activate-announcement') {
+        const ok = await confirmDialog('Aktifkan pengumuman', 'Aktifkan pengumuman ini? Pengumuman aktif lainnya akan dinonaktifkan.', 'Ya, aktifkan')
+        if (!ok) return
+        try {
+          await api(`/api/admin/announcements/${encodeURIComponent(id)}/activate`, { method: 'POST' })
+          toast('Pengumuman diaktifkan.')
+          loadAnnouncements()
+        } catch (err) { toast(err.message, 'error') }
+      } else if (btn.dataset.act === 'deactivate-announcement') {
+        try {
+          await api(`/api/admin/announcements/${encodeURIComponent(id)}/activate`, { method: 'POST', body: JSON.stringify({ active: false }) })
+          toast('Pengumuman dinonaktifkan.')
+          loadAnnouncements()
+        } catch (err) { toast(err.message, 'error') }
+      } else if (btn.dataset.act === 'delete-announcement') {
+        const ok = await confirmDialog('Hapus pengumuman', `Hapus pengumuman "${btn.dataset.title}"? Tindakan ini tidak bisa dibatalkan.`, 'Ya, hapus')
+        if (!ok) return
+        try {
+          await api(`/api/admin/announcements/${encodeURIComponent(id)}`, { method: 'DELETE' })
+          toast('Pengumuman dihapus.')
+          loadAnnouncements()
+        } catch (err) { toast(err.message, 'error') }
+      } else if (btn.dataset.act === 'edit-announcement') {
+        const a = announcementsCache.find((x) => String(x.id) === String(id))
+        if (!a) return
+        const vals = await formDialog('Ubah pengumuman', [
+          { name: 'title', label: 'Judul', required: true },
+          { name: 'body', label: 'Isi', type: 'textarea', rows: 4 },
+        ], { title: a.title, body: a.body })
+        if (!vals || !String(vals.title || '').trim()) return
+        try {
+          await api(`/api/admin/announcements/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify({ title: vals.title, body: vals.body }) })
+          toast('Pengumuman diperbarui.')
+          loadAnnouncements()
+        } catch (err) { toast(err.message, 'error') }
+      }
+    }))
+  }
+
+  const announcementAddBtn = $('#announcement-add-btn')
+  if (announcementAddBtn) announcementAddBtn.addEventListener('click', async () => {
+    const vals = await formDialog('Buat pengumuman', [
+      { name: 'title', label: 'Judul', required: true },
+      { name: 'body', label: 'Isi', type: 'textarea', rows: 4, help: 'Isi pengumuman yang ditampilkan di banner builder.' },
+    ], {})
+    if (!vals || !String(vals.title || '').trim()) return
+    try {
+      await api('/api/admin/announcements', { method: 'POST', body: JSON.stringify({ title: vals.title, body: vals.body }) })
+      toast('Pengumuman dibuat (belum aktif).')
+      loadAnnouncements()
+    } catch (err) { toast(err.message, 'error') }
+  })
+
+  /* ---------- pemeliharaan (fitur 8) ---------- */
+  function updateMaintenancePreview() {
+    const text = $('#maintenance-preview-text')
+    if (!text) return
+    const msg = $('#maintenance-message').value.trim()
+    text.textContent = msg || 'Belum ada pesan.'
+  }
+
+  async function loadMaintenance() {
+    const s = await api('/api/admin/maintenance')
+    const enabled = $('#maintenance-enabled')
+    if (!enabled) return
+    enabled.checked = !!s.enabled
+    $('#maintenance-message').value = s.message || ''
+    updateMaintenancePreview()
+    $('#maintenance-updated').textContent = s.updated_at ? `Terakhir disimpan ${fmtDate(s.updated_at)}` : ''
+    $('#maintenance-status-body').innerHTML = s.enabled
+      ? '<p class="mb-1"><span class="badge bg-warning text-dark">Mode pemeliharaan AKTIF</span></p><p class="text-muted mb-0">Pengaturan tersimpan, tapi halaman maintenance untuk pengunjung belum tampil — middleware penyajian belum dipasang.</p>'
+      : '<p class="mb-1"><span class="badge bg-success">Mode pemeliharaan nonaktif</span></p><p class="text-muted mb-0">Situs berjalan normal.</p>'
+  }
+
+  const maintenanceMessage = $('#maintenance-message')
+  if (maintenanceMessage) maintenanceMessage.addEventListener('input', updateMaintenancePreview)
+
+  const maintenanceForm = $('#maintenance-form')
+  if (maintenanceForm) maintenanceForm.addEventListener('submit', async (e) => {
+    e.preventDefault()
+    const enabled = $('#maintenance-enabled').checked
+    const message = $('#maintenance-message').value
+    try {
+      await api('/api/admin/maintenance', { method: 'PUT', body: JSON.stringify({ enabled, message }) })
+      toast(enabled ? 'Mode pemeliharaan diaktifkan (tersimpan; halaman pengunjung menyusul).' : 'Mode pemeliharaan dimatikan.')
+      loadMaintenance()
+    } catch (err) { toast(err.message, 'error') }
+  })
 
   /* ---------- sesi ---------- */
   async function loadSessions() {
