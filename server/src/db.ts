@@ -49,6 +49,44 @@ CREATE TABLE IF NOT EXISTS builds (
 CREATE INDEX IF NOT EXISTS idx_messages_project ON messages(project_id, id);
 `)
 
+/* ---- Admin: pengaturan override, plan, dan pencatatan token per user ---- */
+/* Pengaturan AI: override database mengalahkan environment, environment
+   mengalahkan default bawaan. Nilai sensitif (API key) tidak pernah
+   dikembalikan API — hanya status terpasang/belum. */
+db.exec(`
+CREATE TABLE IF NOT EXISTS admin_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS plans (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  token_limit INTEGER NOT NULL DEFAULT 0,
+  price_idr INTEGER NOT NULL DEFAULT 0,
+  description TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS user_plans (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  plan_id TEXT REFERENCES plans(id) ON DELETE SET NULL,
+  assigned_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS token_usage (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT,
+  model TEXT NOT NULL DEFAULT '',
+  prompt_tokens INTEGER NOT NULL DEFAULT 0,
+  completion_tokens INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_token_usage_user ON token_usage(user_id, created_at);
+`)
+
 /* Publish state lives on the project row. The column is added in place so an
    existing database keeps working without a migration tool. */
 try {

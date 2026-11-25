@@ -92,8 +92,40 @@
   })
   $('#sidebar-backdrop').addEventListener('click', () => document.body.classList.remove('sidebar-open'))
 
+  /* ---------- modal form generik ---------- */
+  let formResolve = null
+  function formDialog(title, fields, values) {
+    $('#form-title').textContent = title
+    $('#form-body').innerHTML = fields.map((f) => {
+      const val = values && values[f.name] !== undefined ? values[f.name] : (f.value ?? '')
+      const help = f.help ? `<div class="form-text">${esc(f.help)}</div>` : ''
+      if (f.type === 'textarea') {
+        return `<div class="mb-3"><label class="form-label" for="form-${esc(f.name)}">${esc(f.label)}</label><textarea class="form-control" id="form-${esc(f.name)}" rows="3">${esc(val)}</textarea>${help}</div>`
+      }
+      return `<div class="mb-3"><label class="form-label" for="form-${esc(f.name)}">${esc(f.label)}</label><input type="${esc(f.type || 'text')}" class="form-control" id="form-${esc(f.name)}" value="${esc(val)}"${f.min !== undefined ? ` min="${f.min}"` : ''}${f.required ? ' required' : ''}>${help}</div>`
+    }).join('')
+    const modal = new bootstrap.Modal($('#formModal'))
+    modal.show()
+    return new Promise((resolve) => {
+      formResolve = (v) => { resolve(v); formResolve = null }
+    })
+  }
+  $('#form-save').addEventListener('click', () => {
+    if (!formResolve) return
+    const out = {}
+    $$('#form-body input, #form-body textarea').forEach((el) => {
+      const name = el.id.replace(/^form-/, '')
+      out[name] = el.type === 'number' ? Number(el.value) : el.value
+    })
+    bootstrap.Modal.getInstance($('#formModal')).hide()
+    formResolve(out)
+  })
+  $('#formModal').addEventListener('hidden.bs.modal', () => {
+    if (formResolve) formResolve(null)
+  })
+
   /* ---------- navigasi halaman ---------- */
-  const pages = ['dashboard', 'users', 'projects', 'usage', 'health', 'settings']
+  const pages = ['dashboard', 'users', 'projects', 'plans', 'usage', 'builds', 'messages', 'sessions', 'health', 'ai-settings', 'settings']
   const loaded = {}
   function showPage(name) {
     $$('section[data-page]').forEach((s) => s.classList.toggle('d-none', s.dataset.page !== name))
@@ -138,8 +170,13 @@
       if (name === 'dashboard') await loadDashboard()
       else if (name === 'users') await loadUsers()
       else if (name === 'projects') await loadProjects()
+      else if (name === 'plans') await loadPlans()
       else if (name === 'usage') await loadUsage()
+      else if (name === 'builds') await loadBuilds()
+      else if (name === 'messages') await loadMessages()
+      else if (name === 'sessions') await loadSessions()
       else if (name === 'health') await loadHealth()
+      else if (name === 'ai-settings') await loadAiSettings()
       else if (name === 'settings') await loadSettings()
     } catch (err) {
       toast(err.message, 'error')
@@ -206,6 +243,8 @@
         <td>${esc(fmtDateShort(u.created_at))}</td>
         <td>${fmtNum(u.projects)}</td>
         <td>${fmtNum(u.messages)}</td>
+        <td>${fmtNum(u.tokens)}</td>
+        <td>${u.plan_name ? `<span class="badge bg-info">${esc(u.plan_name)}</span>` : '<span class="text-muted">–</span>'}</td>
         <td>${esc(timeAgo(u.last_seen))}</td>
         <td>${status}</td>
         <td class="text-end">
@@ -292,6 +331,230 @@
     $('#usage-byuser-body').innerHTML = data.byUser.length
       ? data.byUser.map((u) => `<tr><td>${esc(u.name || u.email)}<br><small class="text-muted">${esc(u.email)}</small></td><td>${fmtNum(u.messages)}</td></tr>`).join('')
       : '<tr><td colspan="2" class="text-muted">Belum ada data.</td></tr>'
+    $('#usage-tokens-total').textContent = fmtNum(data.totals.tokens || 0)
+    $('#usage-tokens-body').innerHTML = (data.byUserTokens || []).length
+      ? data.byUserTokens.map((u) => `<tr><td>${esc(u.name || u.email)}<br><small class="text-muted">${esc(u.email)}</small></td><td>${fmtNum(u.tokens)}</td><td>${fmtNum(u.prompt_tokens)}</td><td>${fmtNum(u.completion_tokens)}</td></tr>`).join('')
+      : '<tr><td colspan="4" class="text-muted">Belum ada token tercatat per pengguna.</td></tr>'
+  }
+
+  /* ---------- plan ---------- */
+  let plansCache = []
+  async function loadPlans() {
+    const [plansData, usersData] = await Promise.all([api('/api/admin/plans'), api('/api/admin/users')])
+    plansCache = plansData.plans || []
+    $('#plans-body').innerHTML = plansCache.length
+      ? plansCache.map((p) => `<tr>
+          <td><strong>${esc(p.name)}</strong><br><small class="text-muted font-monospace">${esc(p.id)}</small></td>
+          <td>${p.token_limit > 0 ? fmtNum(p.token_limit) : '<span class="badge bg-success">Tanpa batas</span>'}</td>
+          <td>Rp ${fmtNum(p.price_idr)}</td>
+          <td>${fmtNum(p.users)}</td>
+          <td>${esc(p.description || '–')}</td>
+          <td class="text-end">
+            <button class="btn btn-sm btn-outline-primary" data-act="edit-plan" data-id="${esc(p.id)}">Ubah</button>
+            <button class="btn btn-sm btn-outline-danger" data-act="delete-plan" data-id="${esc(p.id)}" data-name="${esc(p.name)}">Hapus</button>
+          </td>
+        </tr>`).join('')
+      : '<tr><td colspan="6" class="text-muted">Belum ada plan.</td></tr>'
+
+    const planOptions = (currentId) => `<option value="">— Tanpa plan —</option>` + plansCache.map((p) => `<option value="${esc(p.id)}"${p.id === currentId ? ' selected' : ''}>${esc(p.name)}</option>`).join('')
+    $('#plan-users-body').innerHTML = usersData.users.map((u) => {
+      const pct = u.plan_limit > 0 ? Math.min(100, Math.round((u.tokens / u.plan_limit) * 100)) : null
+      const quota = u.plan_limit > 0
+        ? `<div class="progress" style="height: 6px;"><div class="progress-bar ${pct >= 100 ? 'bg-danger' : pct >= 80 ? 'bg-warning' : 'bg-success'}" style="width: ${pct}%"></div></div><small class="text-muted">${fmtNum(u.tokens)} / ${fmtNum(u.plan_limit)} (${pct}%)</small>`
+        : `<small class="text-muted">${fmtNum(u.tokens)} dipakai · tanpa batas</small>`
+      return `<tr>
+        <td>${esc(u.name || u.email)}<br><small class="text-muted">${esc(u.email)}</small></td>
+        <td>${u.plan_name ? `<span class="badge bg-info">${esc(u.plan_name)}</span>` : '<span class="text-muted">–</span>'}</td>
+        <td>${fmtNum(u.tokens)}</td>
+        <td>${quota}</td>
+        <td><select class="form-select form-select-sm" data-plan-user="${esc(u.id)}" style="max-width: 200px;">${planOptions(u.plan_id)}</select></td>
+      </tr>`
+    }).join('')
+
+    $$('#plans-body [data-act]').forEach((btn) => btn.addEventListener('click', async () => {
+      const id = btn.dataset.id
+      if (btn.dataset.act === 'delete-plan') {
+        const ok = await confirmDialog('Hapus plan', `Hapus plan "${btn.dataset.name}"? Pengguna yang memakai plan ini jadi tanpa plan.`, 'Ya, hapus')
+        if (!ok) return
+        try {
+          await api(`/api/admin/plans/${encodeURIComponent(id)}`, { method: 'DELETE' })
+          toast('Plan dihapus.')
+          loaded.plans = false; loadPlans()
+        } catch (err) { toast(err.message, 'error') }
+        return
+      }
+      const p = plansCache.find((x) => x.id === id)
+      if (!p) return
+      const vals = await formDialog('Ubah plan', [
+        { name: 'name', label: 'Nama plan', required: true },
+        { name: 'tokenLimit', label: 'Kuota token (0 = tanpa batas)', type: 'number', min: 0, help: 'Jumlah token maksimum per pengguna.' },
+        { name: 'priceIdr', label: 'Harga (Rp)', type: 'number', min: 0 },
+        { name: 'description', label: 'Keterangan', type: 'textarea' },
+      ], { name: p.name, tokenLimit: p.token_limit, priceIdr: p.price_idr, description: p.description })
+      if (!vals) return
+      try {
+        await api(`/api/admin/plans/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ name: vals.name, tokenLimit: vals.tokenLimit, priceIdr: vals.priceIdr, description: vals.description }) })
+        toast('Plan diperbarui.')
+        loaded.plans = false; loadPlans()
+      } catch (err) { toast(err.message, 'error') }
+    }))
+
+    $$('#plan-users-body [data-plan-user]').forEach((sel) => sel.addEventListener('change', async () => {
+      const userId = sel.dataset.planUser
+      const planId = sel.value || null
+      try {
+        await api(`/api/admin/users/${encodeURIComponent(userId)}/plan`, { method: 'POST', body: JSON.stringify({ planId }) })
+        toast('Plan pengguna diperbarui.')
+        loaded.plans = false; loadPlans()
+        loaded.users = false
+      } catch (err) {
+        toast(err.message, 'error')
+        loaded.plans = false; loadPlans()
+      }
+    }))
+  }
+
+  $('#plan-add-btn').addEventListener('click', async () => {
+    const vals = await formDialog('Tambah plan', [
+      { name: 'name', label: 'Nama plan', required: true, help: 'cth. Pro, Starter, Enterprise' },
+      { name: 'tokenLimit', label: 'Kuota token (0 = tanpa batas)', type: 'number', min: 0, value: 0 },
+      { name: 'priceIdr', label: 'Harga (Rp)', type: 'number', min: 0, value: 0 },
+      { name: 'description', label: 'Keterangan', type: 'textarea' },
+    ], {})
+    if (!vals || !String(vals.name || '').trim()) return
+    try {
+      await api('/api/admin/plans', { method: 'POST', body: JSON.stringify({ name: vals.name, tokenLimit: vals.tokenLimit, priceIdr: vals.priceIdr, description: vals.description }) })
+      toast('Plan dibuat.')
+      loaded.plans = false; loadPlans()
+    } catch (err) { toast(err.message, 'error') }
+  })
+
+  /* ---------- pengaturan AI ---------- */
+  function srcBadge(src) {
+    if (src === 'db') return '<span class="badge bg-primary">panel</span>'
+    if (src === 'env') return '<span class="badge bg-warning text-dark">env</span>'
+    return '<span class="badge bg-secondary">default</span>'
+  }
+  async function loadAiSettings() {
+    const s = await api('/api/admin/ai-settings')
+    $('#ai-model').value = s.model || ''
+    $('#ai-model').placeholder = s.defaults.model
+    $('#ai-model-strong').value = s.modelStrong || ''
+    $('#ai-model-strong').placeholder = s.defaults.modelStrong
+    $('#ai-model-audit').value = s.modelAudit || ''
+    $('#ai-model-audit').placeholder = s.defaults.modelAudit
+    $('#ai-endpoint').value = s.endpoint || ''
+    $('#ai-key').value = ''
+    $('#ai-key').placeholder = s.keyConfigured ? '•••••••• (terpasang — isi untuk mengganti)' : 'Belum ada key'
+    $('#ai-model-src').innerHTML = srcBadge(s.sources.model)
+    $('#ai-model-strong-src').innerHTML = srcBadge(s.sources.modelStrong)
+    $('#ai-model-audit-src').innerHTML = srcBadge(s.sources.modelAudit)
+    $('#ai-endpoint-src').innerHTML = srcBadge(s.sources.endpoint)
+    $('#ai-key-src').innerHTML = srcBadge(s.sources.key)
+    $('#ai-effective-list').innerHTML = [
+      ['Model utama', s.model],
+      ['Model kuat', s.modelStrong],
+      ['Model audit', s.modelAudit],
+      ['Endpoint', s.endpoint],
+      ['API key', s.keyConfigured ? 'Terpasang' : 'Tidak ada'],
+    ].map(([k, v]) => `<dt class="col-sm-4">${esc(k)}</dt><dd class="col-sm-8 font-monospace">${esc(v)}</dd>`).join('')
+  }
+
+  $('#ai-settings-form').addEventListener('submit', async (e) => {
+    e.preventDefault()
+    const payload = {
+      model: $('#ai-model').value.trim(),
+      modelStrong: $('#ai-model-strong').value.trim(),
+      modelAudit: $('#ai-model-audit').value.trim(),
+      endpoint: $('#ai-endpoint').value.trim(),
+    }
+    const key = $('#ai-key').value.trim()
+    if (key) payload.key = key
+    try {
+      await api('/api/admin/ai-settings', { method: 'PUT', body: JSON.stringify(payload) })
+      toast('Pengaturan AI disimpan — berlaku langsung tanpa restart.')
+      $('#ai-key').value = ''
+      loaded['ai-settings'] = false; loadAiSettings()
+    } catch (err) { toast(err.message, 'error') }
+  })
+
+  $('#ai-test-btn').addEventListener('click', async () => {
+    const box = $('#ai-test-result')
+    box.innerHTML = '<p class="text-muted mb-0"><span class="spinner-border spinner-border-sm me-2"></span>Mengirim prompt tes ke LLM…</p>'
+    try {
+      const r = await api('/api/admin/ai-settings/test', { method: 'POST' })
+      box.innerHTML = `<p class="mb-1"><span class="badge bg-success">Berhasil</span> <small class="text-muted">${r.latencyMs} ms · model <code>${esc(r.model)}</code></small></p><p class="mb-0">Balasan: <strong>${esc(r.reply)}</strong></p>`
+    } catch (err) {
+      box.innerHTML = `<p class="mb-1"><span class="badge bg-danger">Gagal</span></p><p class="text-danger mb-0">${esc(err.message)}</p>`
+    }
+  })
+
+  /* ---------- build ---------- */
+  async function loadBuilds() {
+    const data = await api('/api/admin/builds?limit=100')
+    $('#builds-subtitle').textContent = `${fmtNum(data.builds.length)} build terakhir dari semua proyek`
+    $('#builds-body').innerHTML = data.builds.length
+      ? data.builds.map((b) => `<tr>
+          <td class="font-monospace">${b.id}</td>
+          <td><strong>${esc(b.project_name)}</strong><br><small class="text-muted font-monospace">${esc(b.project_id)}</small></td>
+          <td>${esc(b.owner_email || '–')}</td>
+          <td>${b.ok ? '<span class="badge bg-success">Berhasil</span>' : '<span class="badge bg-danger">Gagal</span>'}</td>
+          <td>${esc(fmtDate(b.created_at))}</td>
+          <td class="text-end"><button class="btn btn-sm btn-outline-secondary" data-act="show-log" data-id="${esc(b.id)}" data-log="${esc(b.log || '')}" data-name="${esc(b.project_name)}">Lihat log</button></td>
+        </tr>`).join('')
+      : '<tr><td colspan="6" class="text-muted">Belum ada build.</td></tr>'
+    $$('#builds-body [data-act="show-log"]').forEach((btn) => btn.addEventListener('click', () => {
+      $('#log-title').textContent = `Log build #${btn.dataset.id} — ${btn.dataset.name}`
+      $('#log-body').textContent = btn.dataset.log || '(log kosong)'
+      new bootstrap.Modal($('#logModal')).show()
+    }))
+  }
+
+  /* ---------- pesan ---------- */
+  let messagesQuery = ''
+  async function loadMessages() {
+    const q = messagesQuery ? `?q=${encodeURIComponent(messagesQuery)}&limit=100` : '?limit=100'
+    const data = await api(`/api/admin/messages${q}`)
+    $('#messages-body').innerHTML = data.messages.length
+      ? data.messages.map((m) => `<tr>
+          <td><strong>${esc(m.project_name)}</strong><br><small class="text-muted font-monospace">${esc(m.project_id)}</small></td>
+          <td>${esc(m.owner_email || '–')}</td>
+          <td><span class="badge ${m.role === 'user' ? 'bg-primary' : m.role === 'assistant' ? 'bg-success' : 'bg-secondary'}">${esc(m.role)}</span></td>
+          <td class="text-break">${esc(m.excerpt)}</td>
+          <td>${esc(fmtDate(m.created_at))}</td>
+        </tr>`).join('')
+      : '<tr><td colspan="5" class="text-muted">Tidak ada pesan.</td></tr>'
+  }
+
+  function runMessagesSearch() {
+    messagesQuery = $('#messages-search').value.trim()
+    loaded.messages = false; loadMessages()
+  }
+  $('#messages-search-btn').addEventListener('click', runMessagesSearch)
+  $('#messages-search').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); runMessagesSearch() } })
+
+  /* ---------- sesi ---------- */
+  async function loadSessions() {
+    const data = await api('/api/admin/sessions')
+    $('#sessions-body').innerHTML = data.sessions.length
+      ? data.sessions.map((s) => `<tr>
+          <td>${esc(s.name || s.email || '–')}<br><small class="text-muted">${esc(s.email || '')}</small></td>
+          <td>${esc(fmtDate(s.created_at))}</td>
+          <td>${esc(fmtDate(s.expires_at))}</td>
+          <td>${s.active ? '<span class="badge bg-success">Aktif</span>' : '<span class="badge bg-secondary">Kedaluwarsa</span>'}</td>
+          <td class="font-monospace">${esc(s.hash)}</td>
+          <td class="text-end">${s.active ? `<button class="btn btn-sm btn-outline-danger" data-act="revoke-session" data-hash="${esc(s.hash)}" data-email="${esc(s.email || '')}">Cabut</button>` : '<span class="text-muted small">–</span>'}</td>
+        </tr>`).join('')
+      : '<tr><td colspan="6" class="text-muted">Tidak ada sesi.</td></tr>'
+    $$('#sessions-body [data-act="revoke-session"]').forEach((btn) => btn.addEventListener('click', async () => {
+      const ok = await confirmDialog('Cabut sesi', `Cabut sesi login milik ${btn.dataset.email}? Pengguna harus masuk lagi.`, 'Ya, cabut')
+      if (!ok) return
+      try {
+        await api(`/api/admin/sessions/${encodeURIComponent(btn.dataset.hash)}`, { method: 'DELETE' })
+        toast('Sesi dicabut.')
+        loaded.sessions = false; loadSessions()
+      } catch (err) { toast(err.message, 'error') }
+    }))
   }
 
   async function loadHealth() {
@@ -335,9 +598,10 @@
     const s = await api('/api/admin/settings')
     const rows = [
       ['Model utama', s.model],
-      ['Model kuat', s.strongModel],
+      ['Model kuat', s.modelStrong],
+      ['Model audit', s.modelAudit],
       ['LLM host', s.llmHost],
-      ['API key LLM', s.llmKeyConfigured ? 'Terpasang' : 'Tidak ada'],
+      ['API key LLM', s.keyConfigured ? 'Terpasang' : 'Tidak ada'],
       ['Domain publik', `${s.publicSuffix} (${s.publicOrigin})`],
       ['Database', `${s.dbPath} (${fmtBytes(s.dbSize)})`],
       ['Pendaftaran', s.signupOpen ? 'Terbuka (belum ada pengguna)' : 'Tertutup (sudah ada pengguna)'],

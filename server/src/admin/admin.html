@@ -65,9 +65,14 @@
               <li class="nav-item"><a class="nav-link active" href="#" data-nav="dashboard"><i class="bi bi-speedometer2"></i><span>Dashboard</span></a></li>
               <li class="nav-item"><a class="nav-link" href="#" data-nav="users"><i class="bi bi-people"></i><span>Pengguna</span><span class="badge bg-primary rounded-pill ms-auto" id="nav-users-count"></span></a></li>
               <li class="nav-item"><a class="nav-link" href="#" data-nav="projects"><i class="bi bi-box"></i><span>Proyek</span><span class="badge bg-primary rounded-pill ms-auto" id="nav-projects-count"></span></a></li>
+              <li class="nav-item"><a class="nav-link" href="#" data-nav="plans"><i class="bi bi-award"></i><span>Plan</span></a></li>
               <li class="nav-item"><a class="nav-link" href="#" data-nav="usage"><i class="bi bi-graph-up"></i><span>Penggunaan</span></a></li>
+              <li class="nav-item"><a class="nav-link" href="#" data-nav="builds"><i class="bi bi-hammer"></i><span>Build</span></a></li>
+              <li class="nav-item"><a class="nav-link" href="#" data-nav="messages"><i class="bi bi-chat-left-text"></i><span>Pesan</span></a></li>
+              <li class="nav-item"><a class="nav-link" href="#" data-nav="sessions"><i class="bi bi-key"></i><span>Sesi</span></a></li>
               <li class="nav-item"><a class="nav-link" href="#" data-nav="health"><i class="bi bi-heart-pulse"></i><span>Kesehatan</span><span class="badge rounded-pill ms-auto" id="nav-health-badge"></span></a></li>
               <li class="nav-item mt-3"><small class="text-muted px-3 text-uppercase fw-bold">Admin</small></li>
+              <li class="nav-item"><a class="nav-link" href="#" data-nav="ai-settings"><i class="bi bi-robot"></i><span>Pengaturan AI</span></a></li>
               <li class="nav-item"><a class="nav-link" href="#" data-nav="settings"><i class="bi bi-gear"></i><span>Pengaturan</span></a></li>
               <li class="nav-item"><a class="nav-link" href="/"><i class="bi bi-box-arrow-up-left"></i><span>Kembali ke Builder</span></a></li>
             </ul>
@@ -179,7 +184,7 @@
             <div class="card">
               <div class="card-body">
                 <div class="table-responsive"><table class="table table-hover mb-0" data-filterable>
-                  <thead class="table-light"><tr><th>Pengguna</th><th>Dibuat</th><th>Proyek</th><th>Pesan</th><th>Terakhir aktif</th><th>Status</th><th class="text-end">Aksi</th></tr></thead>
+                  <thead class="table-light"><tr><th>Pengguna</th><th>Dibuat</th><th>Proyek</th><th>Pesan</th><th>Token</th><th>Plan</th><th>Terakhir aktif</th><th>Status</th><th class="text-end">Aksi</th></tr></thead>
                   <tbody id="users-body"></tbody>
                 </table></div>
               </div>
@@ -229,6 +234,161 @@
                 </div>
               </div>
             </div>
+            <div class="row g-4 mb-4">
+              <div class="col-lg-12">
+                <div class="card">
+                  <div class="card-header"><h2 class="h5 card-title mb-0">Token per Pengguna</h2></div>
+                  <div class="card-body">
+                    <p class="text-muted small">Token LLM tercatat per pengguna sejak pencatatan aktif (riwayat sebelum itu tidak ada datanya). Total token tercatat: <strong id="usage-tokens-total">–</strong>.</p>
+                    <div class="table-responsive"><table class="table table-hover mb-0">
+                      <thead class="table-light"><tr><th>Pengguna</th><th>Token</th><th>Prompt</th><th>Completion</th></tr></thead>
+                      <tbody id="usage-tokens-body"></tbody>
+                    </table></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- PLAN -->
+          <section data-page="plans" class="d-none">
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3 mb-4">
+              <div><h1 class="h3 mb-0">Plan</h1><p class="text-muted mb-0">Paket token untuk pengguna. Kuota dipakai untuk pemantauan — chat belum dibatasi kuota.</p></div>
+              <div class="d-flex gap-2 flex-shrink-0">
+                <button type="button" class="btn btn-primary" id="plan-add-btn"><i class="bi bi-plus-lg"></i> Tambah Plan</button>
+              </div>
+            </div>
+            <div class="card mb-4">
+              <div class="card-body">
+                <div class="table-responsive"><table class="table table-hover mb-0">
+                  <thead class="table-light"><tr><th>Nama</th><th>Kuota Token</th><th>Harga (Rp)</th><th>Pengguna</th><th>Keterangan</th><th class="text-end">Aksi</th></tr></thead>
+                  <tbody id="plans-body"></tbody>
+                </table></div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-header"><h2 class="h5 card-title mb-0">Plan per Pengguna</h2></div>
+              <div class="card-body">
+                <div class="table-responsive"><table class="table table-hover mb-0">
+                  <thead class="table-light"><tr><th>Pengguna</th><th>Plan Saat Ini</th><th>Token Dipakai</th><th>Kuota</th><th>Ubah Plan</th></tr></thead>
+                  <tbody id="plan-users-body"></tbody>
+                </table></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- PENGATURAN AI -->
+          <section data-page="ai-settings" class="d-none">
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3 mb-4">
+              <div><h1 class="h3 mb-0">Pengaturan AI</h1><p class="text-muted mb-0">Model dan provider LLM yang dipakai server. Perubahan berlaku langsung tanpa restart.</p></div>
+            </div>
+            <div class="row g-4 mb-4">
+              <div class="col-lg-7">
+                <div class="card">
+                  <div class="card-header"><h2 class="h5 card-title mb-0">Konfigurasi AI</h2></div>
+                  <div class="card-body">
+                    <form id="ai-settings-form" autocomplete="off">
+                      <div class="mb-3">
+                        <label class="form-label" for="ai-model">Model utama <span class="badge bg-secondary" id="ai-model-src"></span></label>
+                        <input type="text" class="form-control" id="ai-model" placeholder="cth. cx/gpt-5.6-luna">
+                        <div class="form-text">Model default untuk chat dan agent. Kosongkan untuk kembali ke environment/default.</div>
+                      </div>
+                      <div class="mb-3">
+                        <label class="form-label" for="ai-model-strong">Model kuat <span class="badge bg-secondary" id="ai-model-strong-src"></span></label>
+                        <input type="text" class="form-control" id="ai-model-strong" placeholder="cth. cx/gpt-5.6-luna">
+                        <div class="form-text">Model untuk pekerjaan berat bila diminta klien.</div>
+                      </div>
+                      <div class="mb-3">
+                        <label class="form-label" for="ai-model-audit">Model audit <span class="badge bg-secondary" id="ai-model-audit-src"></span></label>
+                        <input type="text" class="form-control" id="ai-model-audit" placeholder="cth. cx/gpt-5.6-luna-review">
+                        <div class="form-text">Model peninjau keamanan/aksesibilitas sesudah penulisan file.</div>
+                      </div>
+                      <div class="mb-3">
+                        <label class="form-label" for="ai-endpoint">Endpoint LLM <span class="badge bg-secondary" id="ai-endpoint-src"></span></label>
+                        <input type="url" class="form-control" id="ai-endpoint" placeholder="http://127.0.0.1:20128/v1/chat/completions">
+                        <div class="form-text">URL lengkap endpoint OpenAI-compatible (chat/completions).</div>
+                      </div>
+                      <div class="mb-3">
+                        <label class="form-label" for="ai-key">API key <span class="badge bg-secondary" id="ai-key-src"></span></label>
+                        <input type="password" class="form-control" id="ai-key" placeholder="••••••••" autocomplete="new-password">
+                        <div class="form-text" id="ai-key-hint">Isi untuk mengganti key, atau kosongkan untuk memakai yang sudah tersimpan / environment. Nilai key tidak pernah ditampilkan.</div>
+                      </div>
+                      <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Simpan Pengaturan AI</button>
+                        <button type="button" class="btn btn-outline-secondary" id="ai-test-btn"><i class="bi bi-lightning"></i> Tes Koneksi</button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              </div>
+              <div class="col-lg-5">
+                <div class="card">
+                  <div class="card-header"><h2 class="h5 card-title mb-0">Konfigurasi Efektif</h2></div>
+                  <div class="card-body"><dl class="row mb-0" id="ai-effective-list"></dl></div>
+                </div>
+                <div class="card mt-4">
+                  <div class="card-header"><h2 class="h5 card-title mb-0">Hasil Tes Koneksi</h2></div>
+                  <div class="card-body" id="ai-test-result"><p class="text-muted mb-0">Belum ada tes. Tekan "Tes Koneksi" untuk mengirim satu prompt kecil ke LLM dengan konfigurasi saat ini.</p></div>
+                </div>
+                <div class="card mt-4">
+                  <div class="card-header"><h2 class="h5 card-title mb-0">Sumber Nilai</h2></div>
+                  <div class="card-body">
+                    <p class="text-muted mb-0"><span class="badge bg-primary">panel</span> diubah dari panel admin ini (tersimpan di database). <span class="badge bg-warning text-dark">env</span> berasal dari environment server. <span class="badge bg-secondary">default</span> nilai bawaan kode. Nilai panel selalu menang atas env.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- BUILD -->
+          <section data-page="builds" class="d-none">
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3 mb-4">
+              <div><h1 class="h3 mb-0">Build</h1><p class="text-muted mb-0" id="builds-subtitle">Riwayat build produksi semua proyek.</p></div>
+            </div>
+            <div class="card">
+              <div class="card-body">
+                <div class="table-responsive"><table class="table table-hover mb-0" data-filterable>
+                  <thead class="table-light"><tr><th>#</th><th>Proyek</th><th>Pemilik</th><th>Hasil</th><th>Waktu</th><th class="text-end">Log</th></tr></thead>
+                  <tbody id="builds-body"></tbody>
+                </table></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- PESAN -->
+          <section data-page="messages" class="d-none">
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3 mb-4">
+              <div><h1 class="h3 mb-0">Pesan</h1><p class="text-muted mb-0">Semua pesan chat di semua proyek.</p></div>
+              <div class="d-flex gap-2 flex-shrink-0">
+                <div class="input-group" style="max-width: 320px;">
+                  <input type="search" class="form-control" id="messages-search" placeholder="Cari isi pesan…" aria-label="Cari pesan">
+                  <button type="button" class="btn btn-outline-secondary" id="messages-search-btn"><i class="bi bi-search"></i></button>
+                </div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-body">
+                <div class="table-responsive"><table class="table table-hover mb-0">
+                  <thead class="table-light"><tr><th>Proyek</th><th>Pemilik</th><th>Peran</th><th>Isi</th><th>Waktu</th></tr></thead>
+                  <tbody id="messages-body"></tbody>
+                </table></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- SESI -->
+          <section data-page="sessions" class="d-none">
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3 mb-4">
+              <div><h1 class="h3 mb-0">Sesi</h1><p class="text-muted mb-0">Sesi login aktif dan kedaluwarsa. Hash sesi hanya ditampilkan 12 karakter pertama.</p></div>
+            </div>
+            <div class="card">
+              <div class="card-body">
+                <div class="table-responsive"><table class="table table-hover mb-0" data-filterable>
+                  <thead class="table-light"><tr><th>Pengguna</th><th>Dibuat</th><th>Kedaluwarsa</th><th>Status</th><th>Hash</th><th class="text-end">Aksi</th></tr></thead>
+                  <tbody id="sessions-body"></tbody>
+                </table></div>
+              </div>
+            </div>
           </section>
 
           <!-- KESEHATAN -->
@@ -273,7 +433,7 @@
                 <div class="card mt-4">
                   <div class="card-header"><h2 class="h5 card-title mb-0">Catatan</h2></div>
                   <div class="card-body">
-                    <p class="text-muted mb-0">Model dan provider dibaca dari environment saat server start. Mengubahnya butuh edit environment lalu restart server (service <code>vibebuilder</code>). Akun admin adalah akun pertama yang dibuat, kecuali <code>VB_ADMIN_EMAIL</code> diset.</p>
+                    <p class="text-muted mb-0">Model dan provider LLM bisa diubah dari halaman <strong>Pengaturan AI</strong> (tersimpan di database, berlaku tanpa restart). Akun admin adalah akun pertama yang dibuat, kecuali <code>VB_ADMIN_EMAIL</code> diset.</p>
                   </div>
                 </div>
               </div>
@@ -306,6 +466,31 @@
         <div class="modal-footer">
           <button type="button" class="btn btn-light" data-bs-dismiss="modal">Batal</button>
           <button type="button" class="btn btn-danger" id="confirm-yes">Ya, lanjutkan</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="formModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title" id="form-title">Form</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button></div>
+        <div class="modal-body" id="form-body"></div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light" data-bs-dismiss="modal">Batal</button>
+          <button type="button" class="btn btn-primary" id="form-save">Simpan</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="logModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title" id="log-title">Log Build</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button></div>
+        <div class="modal-body"><pre class="mb-0 small" id="log-body" style="white-space: pre-wrap; word-break: break-word; max-height: 60vh; overflow: auto;"></pre></div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light" data-bs-dismiss="modal">Tutup</button>
         </div>
       </div>
     </div>

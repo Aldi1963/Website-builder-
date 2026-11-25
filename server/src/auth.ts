@@ -73,7 +73,7 @@ export function verifyPassword(password: string, stored: string): boolean {
   return expected.length === actual.length && timingSafeEqual(expected, actual)
 }
 
-function tokenHash(token: string) {
+export function tokenHash(token: string) {
   return createHash('sha256').update(token).digest('hex')
 }
 

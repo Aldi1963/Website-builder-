@@ -65,7 +65,7 @@ import {
   type User,
 } from './auth.ts'
 import { runAgent, type AgentEvent } from './agent.ts'
-import { complete, FAST_MODEL, llmUsage } from './llm.ts'
+import { complete, effectiveModel, llmUsage } from './llm.ts'
 import { DISCOVERY_SYSTEM } from './prompts.ts'
 import { registerAdmin } from './admin.ts'
 
@@ -288,7 +288,7 @@ app.get('/api/health', (c) =>
   c.json({
     ok: true,
     service: 'vibebuilder',
-    model: FAST_MODEL,
+    model: effectiveModel(),
     previews: runningPreviews(),
     uptime: Math.round(process.uptime()),
   }),
@@ -545,7 +545,7 @@ app.post('/api/projects/:id/chat', async (c) => {
     }
 
     try {
-      await runAgent(id, message, onEvent, body.model, body.planMode)
+      await runAgent(id, message, onEvent, body.model, body.planMode, { userId: c.get('user').id })
       dbg(`agent resolved at ${(Date.now() - t0) / 1000}s`)
       setStatus(id, 'idle')
     } catch (err) {

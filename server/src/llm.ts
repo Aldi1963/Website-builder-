@@ -1,4 +1,5 @@
 import { BASE_SYSTEM } from './prompts.ts'
+import { db } from './db.ts'
 
 export type ChatMessage =
   | { role: 'system' | 'user' | 'assistant'; content: string; tool_calls?: ToolCall[] }
@@ -19,6 +20,25 @@ export const LLM_KEY_CONFIGURED = API_KEY.length > 0
 
 export const FAST_MODEL = process.env.VB_MODEL ?? 'cx/gpt-5.6-luna'
 export const STRONG_MODEL = process.env.VB_MODEL_STRONG ?? FAST_MODEL
+export const AUDIT_MODEL = process.env.VB_MODEL_AUDIT ?? 'cx/gpt-5.6-luna-review'
+
+/* ---- Konfigurasi AI efektif: override database (diatur dari panel admin)
+   mengalahkan environment, environment mengalahkan default bawaan. ---- */
+export function adminSetting(key: string): string | undefined {
+  try {
+    const row = db.prepare('SELECT value FROM admin_settings WHERE key = ?').get(key) as { value: string } | undefined
+    return row?.value
+  } catch {
+    return undefined
+  }
+}
+
+export function effectiveModel(): string { return adminSetting('llm.model') ?? FAST_MODEL }
+export function effectiveStrongModel(): string { return adminSetting('llm.model_strong') ?? STRONG_MODEL }
+export function effectiveAuditModel(): string { return adminSetting('llm.model_audit') ?? AUDIT_MODEL }
+export function effectiveEndpoint(): string { return adminSetting('llm.url') ?? ENDPOINT }
+export function effectiveKey(): string { return adminSetting('llm.key') ?? API_KEY }
+export function effectiveKeyConfigured(): boolean { return effectiveKey().length > 0 }
 
 /* Pemakaian gateway sejak proses server start — ditampilkan di chip Token. */
 export const llmUsage = { requests: 0, promptTokens: 0, completionTokens: 0 }
@@ -31,13 +51,25 @@ function trackUsage(u: unknown) {
   llmUsage.completionTokens += Number(o.completion_tokens ?? 0)
 }
 
+/* Pencatatan token per pengguna (dipakai panel admin Plan/Usage).
+   Gagal catat tidak boleh menggagalkan chat. */
+function recordTokenUsage(userId: string, model: string, u: unknown) {
+  const o = u as { prompt_tokens?: number; completion_tokens?: number } | undefined
+  if (!o || typeof o !== 'object') return
+  try {
+    db.prepare(
+      'INSERT INTO token_usage (user_id, model, prompt_tokens, completion_tokens, created_at) VALUES (?, ?, ?, ?, ?)',
+    ).run(userId, model, Number(o.prompt_tokens ?? 0), Number(o.completion_tokens ?? 0), Date.now())
+  } catch { /* abaikan */ }
+}
+
 type Choice = { message?: ChatMessage & { role: 'assistant' }; delta?: Partial<ChatMessage> & { role?: string } }
 
 /**
  * Sebagian upstream mengabaikan `stream:false` dan membalas SSE. Gabungkan delta
  * chunk jadi satu message utuh agar jalur non-stream dan stream punya satu bentuk.
  */
-function parseSse(raw: string): { choices: Choice[]; usage?: unknown } {
+function parseSse(raw: string, noteUsage: (u: unknown) => void = trackUsage): { choices: Choice[]; usage?: unknown } {
   let content = ''
   const calls: ToolCall[] = []
   const byIndex = new Map<number, ToolCall>()
@@ -53,7 +85,7 @@ function parseSse(raw: string): { choices: Choice[]; usage?: unknown } {
     } catch {
       continue
     }
-    if (chunk.usage) { usage = chunk.usage; trackUsage(chunk.usage) }
+    if (chunk.usage) { usage = chunk.usage; noteUsage(chunk.usage) }
     const d = chunk.choices?.[0]?.delta
     if (!d) continue
     if (typeof d.content === 'string') content += d.content
@@ -79,10 +111,19 @@ function parseSse(raw: string): { choices: Choice[]; usage?: unknown } {
 
 export async function complete(
   messages: ChatMessage[],
-  opts: { model?: string; tools?: unknown[]; temperature?: number; maxTokens?: number; onDelta?: (text: string) => void | Promise<void> } = {},
+  opts: { model?: string; tools?: unknown[]; temperature?: number; maxTokens?: number; onDelta?: (text: string) => void | Promise<void>; userId?: string } = {},
 ): Promise<{ message: ChatMessage & { role: 'assistant' }; usage?: unknown }> {
+  /* Konfigurasi diselesaikan per panggilan supaya perubahan dari panel admin
+     berlaku tanpa restart server. */
+  const endpoint = effectiveEndpoint()
+  const apiKey = effectiveKey()
+  const model = opts.model ?? effectiveModel()
+  const noteUsage = (u: unknown) => {
+    trackUsage(u)
+    if (opts.userId) recordTokenUsage(opts.userId, model, u)
+  }
   const body: Record<string, unknown> = {
-    model: opts.model ?? FAST_MODEL,
+    model,
     messages,
     temperature: opts.temperature ?? 0.3,
     max_tokens: opts.maxTokens ?? 8192,
@@ -93,12 +134,12 @@ export async function complete(
     body.tool_choice = 'auto'
   }
 
-  const res = await fetch(ENDPOINT, {
+  const res = await fetch(endpoint, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
       accept: 'application/json',
-      ...(API_KEY ? { authorization: `Bearer ${API_KEY}` } : {}),
+      ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
     },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(180_000),
@@ -133,7 +174,7 @@ export async function complete(
         if (!payload || payload === '[DONE]') continue
         let chunk: any
         try { chunk = JSON.parse(payload) } catch { continue }
-        if (chunk.usage) { usage = chunk.usage; trackUsage(chunk.usage) }
+        if (chunk.usage) { usage = chunk.usage; noteUsage(chunk.usage) }
         const d = chunk.choices?.[0]?.delta
         if (!d) continue
         if (typeof d.content === 'string' && d.content) {
@@ -161,18 +202,18 @@ export async function complete(
   const raw = await res.text()
   let json: { choices?: Choice[]; usage?: unknown }
   if (raw.trimStart().startsWith('data:')) {
-    json = parseSse(raw)
+    json = parseSse(raw, noteUsage)
   } else {
     try {
       json = JSON.parse(raw)
     } catch {
-      json = parseSse(raw)
+      json = parseSse(raw, noteUsage)
     }
   }
 
   const message = json.choices?.[0]?.message
   if (!message) throw new Error(`LLM response tanpa message: ${raw.slice(0, 200)}`)
-  if (json.usage) trackUsage(json.usage)
+  if (json.usage) noteUsage(json.usage)
   if (typeof message.content !== 'string' && !message.tool_calls?.length) {
     const finish = (json.choices?.[0] as any)?.finish_reason ?? 'unknown'
     throw new Error(`LLM mengembalikan konten kosong (finish_reason=${finish}); coba model lain atau naikkan max_tokens.`)
@@ -180,13 +221,13 @@ export async function complete(
   return { message, usage: json.usage }
 }
 
-export async function completeText(prompt: string, model = FAST_MODEL, system = BASE_SYSTEM) {
+export async function completeText(prompt: string, model = FAST_MODEL, system = BASE_SYSTEM, userId?: string) {
   const { message } = await complete(
     [
       { role: 'system', content: system },
       { role: 'user', content: prompt },
     ],
-    { model },
+    { model, userId },
   )
   return typeof message.content === 'string' ? message.content : ''
 }
