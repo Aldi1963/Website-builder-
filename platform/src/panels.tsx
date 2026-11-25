@@ -470,7 +470,7 @@ export function ChatPanel({
 
       <div className="shrink-0 bg-ink px-3 pb-[max(10px,env(safe-area-inset-bottom))] pt-2.5 md:px-5 md:pb-4">
         <div className="mx-auto max-w-[720px]">
-          <div className="overflow-hidden rounded-[22px] border border-edge bg-surface shadow-[0_8px_28px_rgba(15,23,42,0.08)] transition-colors focus-within:border-accent focus-within:ring-1 focus-within:ring-accent/20">
+          <div className="overflow-hidden rounded-[22px] border border-edge bg-surface shadow-[0_8px_28px_rgba(15,23,42,0.08)] transition-colors focus-within:border-quiet focus-within:ring-1 focus-within:ring-edge">
             {expanded && (
               <div className="flex items-center justify-between gap-3 bg-ink px-3 py-2 text-[11px] text-quiet">
                 <span>Instruksi lebih panjang. Atur model atau mode dari setelan.</span>
