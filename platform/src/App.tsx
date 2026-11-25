@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import { Tabs } from '@cloudflare/kumo/components/tabs'
 import { Button } from '@cloudflare/kumo/components/button'
 import { Icon, Spinner, Wordmark } from './ui'
 import { api, auth, ChatHandlers, chatStream, Project, exportProjectZip, type User } from './api'
@@ -20,6 +19,10 @@ function SessionMenu({
   onToggleTheme,
   dark,
   usage,
+  onPublish,
+  publishing,
+  published,
+  onUnpublish,
 }: {
   onOpenSettings: () => void
   onRun: () => void
@@ -30,6 +33,10 @@ function SessionMenu({
   onToggleTheme: () => void
   dark: boolean
   usage: { requests: number; promptTokens: number; completionTokens: number } | null
+  onPublish: () => void
+  publishing: boolean
+  published: boolean
+  onUnpublish: () => void
 }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -81,11 +88,20 @@ function SessionMenu({
             </div>
           )}
           <button className={item} onClick={() => { setOpen(false); onOpenSettings() }} role="menuitem">
-            <Icon name="rule" size={13} /> Setelan sesi &amp; model
+            <Icon name="rule" size={13} /> Setelan &amp; model
           </button>
           <button className={item} onClick={() => { setOpen(false); onRun() }} disabled={running} role="menuitem">
             <Icon name="run" size={13} /> {running ? 'Sedang build…' : runLabel}
           </button>
+          {published ? (
+            <button className={item} onClick={() => { setOpen(false); onUnpublish() }} role="menuitem">
+              <Icon name="close" size={13} /> Tarik publikasi
+            </button>
+          ) : (
+            <button className={item} onClick={() => { setOpen(false); onPublish() }} disabled={publishing || !canExport} role="menuitem">
+              <Icon name="check" size={13} /> {publishing ? 'Menerbitkan…' : 'Terbitkan'}
+            </button>
+          )}
           <button className={item} onClick={() => { setOpen(false); onExport() }} disabled={!canExport} role="menuitem">
             <Icon name="download" size={13} /> Export ZIP
           </button>
@@ -223,22 +239,11 @@ export default function App() {
       />
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="flex h-12 shrink-0 items-center gap-2 border-b border-edge bg-surface px-3 md:hidden">
-          <button
-            onClick={() => setNavOpen(true)}
-            aria-expanded={navOpen}
-            aria-controls="vb-nav"
-            className="flex h-11 w-11 items-center justify-center text-body"
-          >
-            <Icon name="menu" size={16} title="Buka daftar proyek" />
-          </button>
-          <Wordmark size={14} />
-        </header>
-
         {activeId ? (
           <Workspace
             key={activeId}
             projectId={activeId}
+            onMenu={() => setNavOpen(true)}
             onTitle={(name) => setProjects((p) => p.map((x) => (x.id === activeId ? { ...x, name } : x)))}
           />
         ) : (
@@ -441,7 +446,7 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
 
 type Tab = 'chat' | 'code'
 
-function Workspace({ projectId, onTitle }: { projectId: string; onTitle: (n: string) => void }) {
+function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle: (n: string) => void; onMenu: () => void }) {
   const { dark, toggle } = useTheme()
   const [tab, setTab] = useState<Tab>('chat')
   const [messages, setMessages] = useState<{ role: string; content: string; id?: number }[]>([])
@@ -657,6 +662,13 @@ function Workspace({ projectId, onTitle }: { projectId: string; onTitle: (n: str
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <header className="flex h-12 shrink-0 items-center gap-2 border-b border-edge bg-ink px-3">
+        <button
+          onClick={onMenu}
+          aria-label="Buka daftar proyek"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-edge text-body hover:bg-surface max-md:h-11 max-md:w-11"
+        >
+          <Icon name="back" size={15} />
+        </button>
         <label htmlFor="vb-project-name" className="sr-only">
           Nama proyek
         </label>
@@ -667,17 +679,6 @@ function Workspace({ projectId, onTitle }: { projectId: string; onTitle: (n: str
           onBlur={rename}
           onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
           className="min-w-0 max-w-[200px] flex-1 rounded border border-transparent bg-transparent px-1.5 py-1 text-[13px] font-medium text-body outline-none transition-colors hover:border-edge focus:border-edge max-sm:max-w-[130px]"
-        />
-
-        <Tabs
-          variant="segmented"
-          size="sm"
-          selectedValue={tab}
-          onValueChange={(v) => setTab(v as Tab)}
-          tabs={[
-            { value: 'chat', label: 'Chat' },
-            { value: 'code', label: 'Kode' },
-          ]}
         />
 
         <div className="ml-auto flex items-center gap-2">
@@ -709,6 +710,10 @@ function Workspace({ projectId, onTitle }: { projectId: string; onTitle: (n: str
             onToggleTheme={toggle}
             dark={dark}
             usage={usage}
+            onPublish={() => void publish()}
+            publishing={publishing}
+            published={!!slug}
+            onUnpublish={() => void unpublish()}
           />
         </div>
       </header>
