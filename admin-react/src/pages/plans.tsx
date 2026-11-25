@@ -43,6 +43,7 @@ const PLAN_FIELDS = [
   { name: 'name', label: 'Nama plan', required: true },
   { name: 'tokenLimit', label: 'Kuota token (0 = tanpa batas)', type: 'number', min: 0, help: 'Jumlah token maksimum per pengguna.' },
   { name: 'priceIdr', label: 'Harga (Rp)', type: 'number', min: 0 },
+  { name: 'monthlyCredits', label: 'Credit bulanan', type: 'number', min: 0, help: 'Jatah credit yang diberikan tiap bulan ke pengguna plan ini.' },
   { name: 'description', label: 'Keterangan', type: 'textarea' },
 ]
 
@@ -85,6 +86,7 @@ export default function PlansPage() {
         name: vals.name,
         tokenLimit: vals.tokenLimit,
         priceIdr: vals.priceIdr,
+        monthlyCredits: vals.monthlyCredits,
         description: vals.description,
       })
       toast.success('Plan dibuat.')
@@ -103,6 +105,7 @@ export default function PlansPage() {
         name: vals.name,
         tokenLimit: vals.tokenLimit,
         priceIdr: vals.priceIdr,
+        monthlyCredits: vals.monthlyCredits,
         description: vals.description,
       })
       toast.success('Plan diperbarui.')
@@ -164,6 +167,7 @@ export default function PlansPage() {
                 <Th>Nama</Th>
                 <Th>Kuota Token</Th>
                 <Th>Harga (Rp)</Th>
+                <Th>Credit / Bln</Th>
                 <Th>Pengguna</Th>
                 <Th>Keterangan</Th>
                 <Th className="text-right">Aksi</Th>
@@ -186,6 +190,7 @@ export default function PlansPage() {
                       )}
                     </Td>
                     <Td>Rp {fmtNum(p.price_idr)}</Td>
+                    <Td>{fmtNum(p.monthly_credits)}</Td>
                     <Td>{fmtNum(p.users)}</Td>
                     <Td>{p.description || '–'}</Td>
                     <Td className="text-right whitespace-nowrap">
@@ -202,7 +207,7 @@ export default function PlansPage() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={6} className="border-b border-border px-4 py-3 align-top text-muted">Belum ada plan.</td>
+                  <td colSpan={7} className="border-b border-border px-4 py-3 align-top text-muted">Belum ada plan.</td>
                 </tr>
               )}
             </tbody>
@@ -288,6 +293,7 @@ export default function PlansPage() {
           { name: 'name', label: 'Nama plan', required: true, help: 'cth. Pro, Starter, Enterprise' },
           { name: 'tokenLimit', label: 'Kuota token (0 = tanpa batas)', type: 'number', min: 0, value: 0, help: 'Jumlah token maksimum per pengguna.' },
           { name: 'priceIdr', label: 'Harga (Rp)', type: 'number', min: 0, value: 0 },
+          { name: 'monthlyCredits', label: 'Credit bulanan', type: 'number', min: 0, value: 0, help: 'Jatah credit yang diberikan tiap bulan ke pengguna plan ini.' },
           { name: 'description', label: 'Keterangan', type: 'textarea' },
         ]}
         values={{}}
@@ -303,6 +309,7 @@ export default function PlansPage() {
                 name: editPlan.name,
                 tokenLimit: editPlan.token_limit,
                 priceIdr: editPlan.price_idr,
+                monthlyCredits: editPlan.monthly_credits,
                 description: editPlan.description,
               }
             : {}
