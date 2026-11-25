@@ -670,6 +670,9 @@ app.get('/', async (c) => {
   const fs = await import('node:fs/promises')
   const html = await fs.readFile(`${UI_DIR}index.html`, 'utf8').catch(() => null)
   if (!html) return c.text('UI belum di-build. Jalankan: cd platform && npm run build', 503)
+  // Entry point tidak boleh di-cache (browser/CDN): aset JS/CSS sudah
+  // content-hash, jadi index.html segar = deploy baru langsung terlihat.
+  c.header('Cache-Control', 'no-store')
   return c.html(html)
 })
 
