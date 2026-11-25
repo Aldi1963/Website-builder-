@@ -227,7 +227,9 @@
     { title: 'Plan', url: '/admin/plans', type: 'halaman' },
     { title: 'Penggunaan', url: '/admin/usage', type: 'halaman' },
     { title: 'Build', url: '/admin/builds', type: 'halaman' },
+    { title: 'Domain', url: '/admin/domain', type: 'halaman' },
     { title: 'Pesan', url: '/admin/messages', type: 'halaman' },
+    { title: 'Moderasi', url: '/admin/moderasi', type: 'halaman' },
     { title: 'Sesi', url: '/admin/sessions', type: 'halaman' },
     { title: 'Kesehatan Sistem', url: '/admin/health', type: 'halaman' },
     { title: 'Pengaturan AI', url: '/admin/ai-settings', type: 'halaman' },
@@ -278,6 +280,8 @@
     if (name === 'dashboard') await loadDashboard(ov)
     else if (name === 'users') await loadUsers()
     else if (name === 'projects') await loadProjects()
+    else if (name === 'moderasi') await loadModeration()
+    else if (name === 'domain') await loadDomains()
     else if (name === 'plans') await loadPlans()
     else if (name === 'usage') await loadUsage()
     else if (name === 'builds') await loadBuilds()
@@ -442,6 +446,123 @@
       } catch (err) { toast(err.message, 'error') }
     }))
   }
+
+  /* ---------- FITUR 3 — moderasi ---------- */
+  async function loadModeration() {
+    const data = await api('/api/admin/moderation')
+    const flagged = data.projects.filter((p) => p.flagged).length
+    const suspended = data.projects.filter((p) => p.suspended).length
+    $('#moderation-subtitle').textContent = `${fmtNum(data.projects.length)} proyek · ${fmtNum(flagged)} ditandai · ${fmtNum(suspended)} ditangguhkan`
+    const statusBadge = (s) => {
+      const map = { idle: 'bg-success', working: 'bg-primary', building: 'bg-warning', error: 'bg-danger' }
+      return `<span class="badge ${map[s] || 'bg-secondary'}">${esc(s)}</span>`
+    }
+    $('#moderation-body').innerHTML = data.projects.length
+      ? data.projects.map((p) => `<tr>
+        <td><strong>${esc(p.name)}</strong><br><small class="text-muted font-monospace">${esc(p.id)}</small></td>
+        <td>${esc(p.owner_email || 'tanpa pemilik')}</td>
+        <td>${statusBadge(p.status)}</td>
+        <td>${p.flagged
+          ? `<span class="badge bg-warning text-dark">Ditandai</span><br><small class="text-muted">${esc(p.flag_reason)}</small><br><small class="text-muted">oleh ${esc(p.flag_by || '–')} · ${esc(fmtDateShort(p.flagged_at))}</small>`
+          : '<span class="text-muted">–</span>'}</td>
+        <td>${p.suspended ? '<span class="badge bg-danger">Ditangguhkan</span>' : '<span class="badge bg-success">Aktif</span>'}</td>
+        <td class="text-nowrap"><a href="/proyek/${esc(p.id)}">Buka</a>${p.slug ? ` · <a href="/p/${esc(p.slug)}" target="_blank" rel="noopener">Terbit</a>` : ''}</td>
+        <td class="text-end text-nowrap">
+          ${p.flagged
+            ? `<button class="btn btn-sm btn-outline-secondary" data-act="unflag" data-id="${esc(p.id)}" data-name="${esc(p.name)}">Hapus tanda</button>`
+            : `<button class="btn btn-sm btn-outline-warning" data-act="flag" data-id="${esc(p.id)}" data-name="${esc(p.name)}">Tandai</button>`}
+          ${p.suspended
+            ? `<button class="btn btn-sm btn-outline-success" data-act="unsuspend" data-id="${esc(p.id)}" data-name="${esc(p.name)}">Buka penangguhan</button>`
+            : `<button class="btn btn-sm btn-outline-danger" data-act="suspend" data-id="${esc(p.id)}" data-name="${esc(p.name)}">Tangguhkan</button>`}
+        </td>
+      </tr>`).join('')
+      : '<tr><td colspan="7" class="text-muted">Belum ada proyek.</td></tr>'
+    $$('#moderation-body [data-act]').forEach((btn) => btn.addEventListener('click', async () => {
+      const id = btn.dataset.id
+      const name = btn.dataset.name
+      try {
+        if (btn.dataset.act === 'flag') {
+          const vals = await formDialog('Tandai proyek', [
+            { name: 'reason', label: 'Alasan penandaan', type: 'textarea', required: true, help: 'Alasan ini terlihat oleh admin lain di tabel moderasi.' },
+          ], {})
+          if (!vals || !String(vals.reason || '').trim()) return
+          await api(`/api/admin/projects/${encodeURIComponent(id)}/flag`, { method: 'POST', body: JSON.stringify({ reason: vals.reason }) })
+          toast(`Proyek "${name}" ditandai.`)
+        } else if (btn.dataset.act === 'unflag') {
+          const ok = await confirmDialog('Hapus tanda', `Hapus tanda pada proyek "${name}"?`, 'Ya, hapus tanda')
+          if (!ok) return
+          await api(`/api/admin/projects/${encodeURIComponent(id)}/flag`, { method: 'DELETE' })
+          toast('Tanda dihapus.')
+        } else if (btn.dataset.act === 'suspend') {
+          const ok = await confirmDialog('Tangguhkan proyek', `Tangguhkan proyek "${name}"? Preview yang sedang berjalan dihentikan. Catatan: preview/publish di jalur publik belum diblokir otomatis sampai penegakan dibangun.`, 'Ya, tangguhkan')
+          if (!ok) return
+          await api(`/api/admin/projects/${encodeURIComponent(id)}/suspend`, { method: 'POST' })
+          toast(`Proyek "${name}" ditangguhkan.`)
+        } else if (btn.dataset.act === 'unsuspend') {
+          await api(`/api/admin/projects/${encodeURIComponent(id)}/unsuspend`, { method: 'POST' })
+          toast(`Penangguhan proyek "${name}" dibuka.`)
+        }
+        loadModeration()
+      } catch (err) { toast(err.message, 'error') }
+    }))
+  }
+
+  /* ---------- FITUR 6 — domain kustom ---------- */
+  async function loadDomains() {
+    const [data, projectsData] = await Promise.all([api('/api/admin/domains'), api('/api/admin/projects')])
+    $('#domains-subtitle').textContent = `${fmtNum(data.domains.length)} domain terdaftar · target CNAME ${esc(data.expectedCname)} · SSL: ${esc(data.ssl)}`
+    $('#domain-project').innerHTML = projectsData.projects.map((p) => `<option value="${esc(p.id)}">${esc(p.name)} (${esc(p.id)})</option>`).join('')
+    $('#domains-body').innerHTML = data.domains.length
+      ? data.domains.map((d) => `<tr>
+          <td><strong class="font-monospace">${esc(d.domain)}</strong></td>
+          <td>${esc(d.project_name || d.project_id)}<br><small class="text-muted font-monospace">${esc(d.project_id)}</small></td>
+          <td>${d.status === 'verified' ? '<span class="badge bg-success">Terverifikasi</span>' : '<span class="badge bg-warning text-dark">Menunggu verifikasi</span>'}</td>
+          <td>${esc(fmtDateShort(d.created_at))}</td>
+          <td>${d.verified_at ? esc(fmtDateShort(d.verified_at)) : '<span class="text-muted">–</span>'}</td>
+          <td class="text-end text-nowrap">
+            <button class="btn btn-sm btn-outline-primary" data-act="verify-domain" data-id="${esc(d.id)}" data-domain="${esc(d.domain)}">Periksa DNS</button>
+            <button class="btn btn-sm btn-outline-danger" data-act="delete-domain" data-id="${esc(d.id)}" data-domain="${esc(d.domain)}">Hapus</button>
+          </td>
+        </tr>`).join('')
+      : '<tr><td colspan="6" class="text-muted">Belum ada domain.</td></tr>'
+    $$('#domains-body [data-act]').forEach((btn) => btn.addEventListener('click', async () => {
+      const id = btn.dataset.id
+      const domain = btn.dataset.domain
+      try {
+        if (btn.dataset.act === 'verify-domain') {
+          const box = $('#dns-result')
+          box.innerHTML = '<div class="alert alert-info mb-0">Memeriksa DNS ' + esc(domain) + '…</div>'
+          const r = await api(`/api/admin/domains/${encodeURIComponent(id)}/verify`, { method: 'POST' })
+          box.innerHTML = `<div class="alert ${r.matched ? 'alert-success' : 'alert-warning'} mb-0">
+            <strong>${esc(r.domain)}</strong> — ${r.matched ? 'CNAME cocok dengan target platform.' : 'Belum cocok.'}<br>
+            <small>CNAME yang ditemukan: ${r.cnames.length ? esc(r.cnames.join(', ')) : (esc(r.cnameError || 'tidak ada'))}<br>
+            A yang ditemukan: ${r.addresses.length ? esc(r.addresses.join(', ')) : (esc(r.aError || 'tidak ada'))}<br>
+            Target yang diharapkan: CNAME ke <code>${esc(r.expectedCname)}</code><br>
+            ${esc(r.note)}<br>SSL: ${esc(r.ssl)}</small></div>`
+          loadDomains()
+        } else {
+          const ok = await confirmDialog('Hapus domain', `Hapus domain ${domain} dari daftar? Routing (bila sudah dipasang manual) tidak ikut dihapus.`, 'Ya, hapus')
+          if (!ok) return
+          await api(`/api/admin/domains/${encodeURIComponent(id)}`, { method: 'DELETE' })
+          toast(`Domain ${domain} dihapus.`)
+          loadDomains()
+        }
+      } catch (err) { toast(err.message, 'error') }
+    }))
+  }
+
+  const domainAddBtn = $('#domain-add-btn')
+  if (domainAddBtn) domainAddBtn.addEventListener('click', async () => {
+    const projectId = $('#domain-project').value
+    const domain = $('#domain-name').value.trim()
+    if (!domain) { toast('Isi dulu nama domainnya.', 'error'); return }
+    try {
+      await api('/api/admin/domains', { method: 'POST', body: JSON.stringify({ projectId, domain }) })
+      toast(`Domain ${domain} ditambahkan.`)
+      $('#domain-name').value = ''
+      loadDomains()
+    } catch (err) { toast(err.message, 'error') }
+  })
 
   async function loadUsage() {
     const data = await api('/api/admin/usage')
