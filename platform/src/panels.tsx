@@ -361,25 +361,25 @@ export function ChatPanel({
 
   return (
     <>
-      <div ref={scrollRef} className="vb-scroll flex-1 overflow-y-auto px-4 py-4">
+      <div ref={scrollRef} className="vb-scroll flex-1 overflow-y-auto px-3 py-4 md:px-5">
         {!messages.length ? (
           <Welcome onPick={(s) => setInput(s)} />
         ) : (
-          <div className="flex flex-col gap-4">
+          <div className="mx-auto flex max-w-[640px] flex-col gap-5">
             {messages.map((m, i) => (
               <Bubble key={m.id ?? i} role={m.role} content={m.content} />
             ))}
             {sending && (
-              <div className="vb-enter flex flex-col gap-2 text-[12px] text-quiet">
+              <div className="vb-enter flex flex-col gap-2.5 text-[12px] text-quiet">
                 {status && (
                   <div className="flex items-center gap-2"><Activity /><span>{status}</span></div>
                 )}
                 {plan && <PlanCard plan={plan} />}
                 {audit && <AuditCard audit={audit} />}
                 {streamText ? (
-                  <div className="border border-edge bg-surface px-3 py-3 text-[12.5px] leading-relaxed text-body">
-                    <p className="mb-1 text-[11px] font-medium text-accent">ASISTEN</p>
-                    <p className="whitespace-pre-wrap">{streamText}<span className="vb-caret ml-0.5 inline-block h-3 w-1.5 animate-pulse bg-accent align-middle" /></p>
+                  <div className="rounded-lg border border-edge bg-surface px-3.5 py-3 text-[13px] leading-relaxed text-body">
+                    <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-quiet">VibeBuilder</p>
+                    <p className="whitespace-pre-wrap">{streamText}<span className="vb-caret ml-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-accent align-middle" /></p>
                   </div>
                 ) : null}
               </div>
@@ -389,47 +389,49 @@ export function ChatPanel({
         )}
       </div>
 
-      <div className="vb-seam shrink-0 bg-surface px-3 py-3">
-        <div className="border border-edge bg-ink px-2 py-2 transition-colors focus-within:border-accent">
-          <label htmlFor="vb-prompt" className="sr-only">
-            Instruksi untuk agent
-          </label>
-          <textarea
-            id="vb-prompt"
-            ref={taRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                submit()
-              }
-            }}
-            rows={1}
-            placeholder="Apa yang harus dibangun atau diubah"
-            className="vb-scroll max-h-[168px] w-full resize-none bg-transparent px-1 py-1 text-[13px] leading-relaxed text-body outline-none placeholder:text-quiet"
-          />
-          <div className="mt-1 flex items-center justify-between gap-3 px-1">
-            <span className="hidden text-[11px] text-quiet sm:block">
-              Enter kirim, Shift+Enter baris baru
-            </span>
-            {sending ? (
-              <Button variant="outline" size="sm" onClick={onCancel} className="max-md:h-11">
-                <Icon name="stop" size={10} />
-                Hentikan
-              </Button>
-            ) : (
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={submit}
-                disabled={!input.trim()}
-                className="max-md:h-11"
-              >
-                <Icon name="arrow" size={11} />
-                Kirim
-              </Button>
-            )}
+      <div className="vb-seam shrink-0 bg-ink px-3 py-3 md:px-5 md:pb-4">
+        <div className="mx-auto max-w-[640px]">
+          <div className="rounded-xl border border-edge bg-surface px-3 py-2.5 shadow-sm transition-colors focus-within:border-accent">
+            <label htmlFor="vb-prompt" className="sr-only">
+              Instruksi untuk agent
+            </label>
+            <textarea
+              id="vb-prompt"
+              ref={taRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  submit()
+                }
+              }}
+              rows={1}
+              placeholder="Apa yang harus dibangun atau diubah"
+              className="vb-scroll max-h-[168px] w-full resize-none bg-transparent px-1 py-1 text-[13.5px] leading-relaxed text-body outline-none placeholder:text-quiet"
+            />
+            <div className="mt-1.5 flex items-center justify-between gap-3 px-1">
+              <span className="hidden text-[11px] text-quiet sm:block">
+                Enter kirim, Shift+Enter baris baru
+              </span>
+              {sending ? (
+                <Button variant="outline" size="sm" onClick={onCancel} className="max-md:h-11">
+                  <Icon name="stop" size={10} />
+                  Hentikan
+                </Button>
+              ) : (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={submit}
+                  disabled={!input.trim()}
+                  className="max-md:h-11"
+                >
+                  <Icon name="arrow" size={11} />
+                  Kirim
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -439,12 +441,12 @@ export function ChatPanel({
 
 function PlanCard({ plan }: { plan: ChatPlan }) {
   return (
-    <section aria-label="Rencana kerja AI" className="border border-edge bg-surface px-3 py-3 text-body">
-      <p className="text-[11px] font-medium text-accent">RENCANA KERJA</p>
-      <p className="mt-1 text-[12px] leading-relaxed">{plan.ringkasan}</p>
+    <section aria-label="Rencana kerja AI" className="rounded-lg border border-edge bg-surface px-3.5 py-3 text-body">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-quiet">Rencana kerja</p>
+      <p className="mt-1 text-[12.5px] leading-relaxed">{plan.ringkasan}</p>
       {!!plan.langkah.length && <ol className="mt-2 flex flex-col gap-1.5">
         {plan.langkah.map((step, i) => <li key={`${step.judul}-${i}`} className="flex gap-2 text-[11.5px] leading-relaxed">
-          <span className="flex h-4 w-4 shrink-0 items-center justify-center border border-edge font-mono text-[10px] text-accent">{i + 1}</span>
+          <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-edge font-mono text-[10px] text-accent">{i + 1}</span>
           <span><strong className="font-medium">{step.judul}</strong><span className="text-quiet"> — {step.detail}</span></span>
         </li>)}
       </ol>}
@@ -459,11 +461,11 @@ function AuditCard({ audit }: { audit: ChatAudit }) {
   const critical = audit.temuan.filter((x) => x.tingkat === 'kritis').length
   const important = audit.temuan.filter((x) => x.tingkat === 'penting').length
   return (
-    <section aria-label="Laporan tinjauan kode" className="border border-edge bg-surface px-3 py-3 text-body">
+    <section aria-label="Laporan tinjauan kode" className="rounded-lg border border-edge bg-surface px-3.5 py-3 text-body">
       <div className="flex items-center justify-between gap-2">
         <div>
           <div className="flex items-center gap-2">
-            <p className="text-[11px] font-medium text-accent">TINJAUAN KODE</p>
+            <p className="text-[11px] font-medium uppercase tracking-wide text-quiet">Tinjauan kode</p>
             <Badge variant={critical ? 'red' : 'green'}>{audit.nilai}/100</Badge>
           </div>
           <p className="mt-1 text-[11.5px] leading-relaxed">{audit.catatan}</p>
@@ -492,26 +494,30 @@ function Welcome({ onPick }: { onPick: (s: string) => void }) {
   ]
 
   return (
-    <div className="vb-enter pt-2">
-      <h2 className="font-display text-[19px] leading-snug text-body">
+    <div className="vb-enter mx-auto max-w-[640px] pt-6 md:pt-10">
+      <div className="inline-flex items-center gap-2 rounded-full border border-edge bg-surface px-2.5 py-1">
+        <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-hidden="true" />
+        <span className="text-[11px] font-medium text-quiet">VibeBuilder</span>
+      </div>
+      <h2 className="mt-3 text-[20px] font-semibold leading-snug tracking-tight text-body md:text-[24px]">
         Tulis satu kalimat, agent menulis aplikasinya
       </h2>
-      <p className="mt-2 max-w-[42ch] text-[12.5px] leading-relaxed text-quiet">
+      <p className="mt-2 max-w-[46ch] text-[13px] leading-relaxed text-quiet">
         File ditulis langsung ke workspace proyek, di-build, lalu tampil di panel kanan.
         Kalau permintaannya terlalu luas untuk ditebak, agent bertanya dulu.
       </p>
 
-      <div className="mt-5 border-t border-edge">
-        <p className="vb-seam-none pt-3 text-[11px] text-quiet">Mulai dari salah satu</p>
-        <div className="mt-2 flex flex-col">
+      <div className="mt-6">
+        <p className="text-[11px] font-medium uppercase tracking-wide text-quiet">Mulai dari salah satu</p>
+        <div className="mt-2.5 grid gap-2 sm:grid-cols-3">
           {samples.map((s) => (
             <button
               key={s.title}
               onClick={() => onPick(`Buat ${s.title.toLowerCase()}: ${s.body}.`)}
-              className="group flex min-h-[52px] flex-col justify-center border-b border-edge py-2 text-left transition-colors hover:bg-surface"
+              className="group flex min-h-[64px] flex-col justify-center rounded-lg border border-edge bg-surface px-3 py-2.5 text-left transition-colors hover:border-accent"
             >
-              <span className="text-[12.5px] text-body">{s.title}</span>
-              <span className="text-[11.5px] text-quiet">{s.body}</span>
+              <span className="text-[12.5px] font-medium text-body">{s.title}</span>
+              <span className="mt-0.5 text-[11.5px] leading-snug text-quiet">{s.body}</span>
             </button>
           ))}
         </div>
@@ -527,7 +533,7 @@ function Bubble({ role, content }: { role: string; content: string }) {
     return (
       <div className="vb-enter flex flex-col items-end gap-1">
         <span className="text-[11px] text-quiet">kamu</span>
-        <div className="max-w-[92%] bg-accent px-3.5 py-2 text-[13px] leading-relaxed text-ink">
+        <div className="max-w-[92%] rounded-xl rounded-br-sm bg-accent px-3.5 py-2.5 text-[13.5px] leading-relaxed text-white">
           {content}
         </div>
       </div>
@@ -536,9 +542,9 @@ function Bubble({ role, content }: { role: string; content: string }) {
 
   if (role === 'error') {
     return (
-      <div className="vb-enter border-l-2 border-accent bg-surface px-3 py-2">
-        <p className="text-[11px] text-accent">agent gagal</p>
-        <p className="mt-1 whitespace-pre-wrap text-[12.5px] leading-relaxed text-body">{content}</p>
+      <div className="vb-enter rounded-lg border border-edge border-l-2 border-l-accent bg-surface px-3.5 py-2.5">
+        <p className="text-[11px] font-medium text-accent">agent gagal</p>
+        <p className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-body">{content}</p>
       </div>
     )
   }
@@ -546,10 +552,10 @@ function Bubble({ role, content }: { role: string; content: string }) {
   return (
     <div className="vb-enter group">
       <div className="flex items-center gap-2">
-        <span className="flex h-5 w-5 items-center justify-center bg-accent font-mono text-[10px] font-bold text-ink" aria-hidden="true">V</span>
+        <span className="flex h-5 w-5 items-center justify-center rounded bg-accent font-mono text-[10px] font-bold text-white" aria-hidden="true">V</span>
         <span className="text-[11px] font-medium text-body">VibeBuilder</span>
       </div>
-      <div className="mt-1.5 whitespace-pre-wrap text-[13px] leading-relaxed text-body">{content}</div>
+      <div className="mt-1.5 whitespace-pre-wrap text-[13.5px] leading-relaxed text-body">{content}</div>
       <button
         onClick={() => copy(content)}
         className="mt-1 flex h-6 items-center gap-1 text-[11px] text-quiet opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"

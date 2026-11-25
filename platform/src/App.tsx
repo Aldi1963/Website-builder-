@@ -549,7 +549,7 @@ function Workspace({ projectId, onTitle }: { projectId: string; onTitle: (n: str
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-edge bg-surface px-3">
+      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-edge bg-ink px-3">
         <label htmlFor="vb-project-name" className="sr-only">
           Nama proyek
         </label>
@@ -559,32 +559,32 @@ function Workspace({ projectId, onTitle }: { projectId: string; onTitle: (n: str
           onChange={(e) => setName(e.target.value)}
           onBlur={rename}
           onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-          className="min-w-0 max-w-[240px] flex-1 border border-transparent bg-transparent px-1.5 py-1 text-[13px] text-body outline-none transition-colors hover:border-edge focus:border-edge"
+          className="min-w-0 max-w-[240px] flex-1 rounded border border-transparent bg-transparent px-1.5 py-1 text-[13px] font-medium text-body outline-none transition-colors hover:border-edge focus:border-edge"
         />
 
-        <div className="flex items-center border border-edge">
-          <Tabs
-            variant="segmented"
-            size="sm"
-            selectedValue={tab}
-            onValueChange={(v) => setTab(v as Tab)}
-            tabs={[
-              { value: 'chat', label: 'Chat' },
-              { value: 'code', label: 'Kode' },
-            ]}
-          />
-        </div>
+        <Tabs
+          variant="segmented"
+          size="sm"
+          selectedValue={tab}
+          onValueChange={(v) => setTab(v as Tab)}
+          tabs={[
+            { value: 'chat', label: 'Chat' },
+            { value: 'code', label: 'Kode' },
+          ]}
+        />
 
         <div className="ml-auto flex items-center gap-2">
-          <button
+          <Button
             onClick={() => setSettingsOpen(true)}
             aria-label="Buka pengaturan sesi"
-            className="flex h-7 max-md:h-11 items-center gap-1.5 border border-edge px-2.5 text-[11.5px] text-body transition-colors hover:border-quiet"
+            variant="outline"
+            size="sm"
+            className="h-7 max-md:h-11"
           >
             <Icon name="rule" size={10} />
             <span className="max-sm:hidden">{model === 'auto' ? 'Model: Auto' : model.replace(/^[a-z]+\//, '')}</span>
             <span className="sm:hidden">Setelan</span>
-          </button>
+          </Button>
           {status && (
             <span className="hidden items-center gap-1.5 text-[11.5px] text-quiet lg:flex">
               <Spinner />
@@ -608,23 +608,20 @@ function Workspace({ projectId, onTitle }: { projectId: string; onTitle: (n: str
                 target="_blank"
                 rel="noreferrer"
                 title={pubUrl ?? undefined}
-                className="flex h-7 max-w-[240px] items-center gap-1.5 border border-accent px-2.5 text-[11.5px] text-accent transition-opacity hover:opacity-80"
+                className="flex h-7 max-w-[240px] items-center gap-1.5 rounded border border-accent px-2.5 text-[11.5px] font-medium text-accent transition-opacity hover:opacity-80"
               >
                 <Icon name="open" size={10} />
                 <span className="truncate">{publicLabel(pubUrl, slug)}</span>
               </a>
-              <button
-                onClick={unpublish}
-                className="h-7 px-1.5 text-[11px] text-quiet transition-colors hover:text-body"
-              >
+              <Button onClick={unpublish} variant="ghost" size="xs" className="text-quiet">
                 Tarik
-              </button>
+              </Button>
             </div>
           ) : (
             <Button
               onClick={publish}
               disabled={publishing || !files.length}
-              variant="outline"
+              variant="primary"
               size="sm"
               className="hidden h-7 md:flex"
             >
@@ -637,21 +634,23 @@ function Workspace({ projectId, onTitle }: { projectId: string; onTitle: (n: str
               href={`http://127.0.0.1:${previewPort}/`}
               target="_blank"
               rel="noreferrer"
-              className="hidden h-7 items-center gap-1.5 border border-edge px-2.5 text-[11.5px] text-body transition-colors hover:border-quiet md:flex"
+              className="hidden h-7 items-center gap-1.5 rounded border border-edge px-2.5 text-[11.5px] text-body transition-colors hover:border-quiet md:flex"
             >
               <Icon name="open" size={10} />
               Tab baru
             </a>
           )}
           {!!files.length && (
-            <button
+            <Button
               onClick={() => void exportProjectZip(projectId).catch(() => {})}
-              className="hidden h-7 items-center gap-1.5 border border-edge px-2.5 text-[11.5px] text-body transition-colors hover:border-quiet md:flex"
+              variant="outline"
+              size="sm"
+              className="hidden h-7 md:flex"
               title="Unduh seluruh file proyek sebagai ZIP"
             >
               <Icon name="download" size={10} />
               Export
-            </button>
+            </Button>
           )}
         </div>
       </header>

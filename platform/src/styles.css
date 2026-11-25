@@ -4,7 +4,7 @@
 
 @theme {
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-display: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --font-display: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
 
   --color-ink: var(--vb-ink);
@@ -16,22 +16,23 @@
 }
 
 :root {
-  --vb-ink: #f5f2ec;
-  --vb-surface: #fffdf9;
-  --vb-edge: #e0dad0;
-  --vb-quiet: #6b655c;
-  --vb-body: #2a2723;
-  --vb-accent: #a3521f;
+  /* Cloudflare-style light: white canvas, cool gray seams, orange accent. */
+  --vb-ink: #ffffff;
+  --vb-surface: #f8fafc;
+  --vb-edge: #e2e8f0;
+  --vb-quiet: #64748b;
+  --vb-body: #1d1f20;
+  --vb-accent: #f36747;
   color-scheme: light;
 }
 
 .dark {
-  --vb-ink: #12110f;
-  --vb-surface: #191816;
-  --vb-edge: #2a2723;
-  --vb-quiet: #8b857c;
-  --vb-body: #ded8cd;
-  --vb-accent: #c0703f;
+  --vb-ink: #16181a;
+  --vb-surface: #1d2023;
+  --vb-edge: #2d3237;
+  --vb-quiet: #8b959f;
+  --vb-body: #e8ecef;
+  --vb-accent: #f36747;
   color-scheme: dark;
 }
 
