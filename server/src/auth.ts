@@ -1,5 +1,6 @@
 import { randomBytes, scryptSync, timingSafeEqual, createHash } from 'node:crypto'
 import { db } from './db.ts'
+import { insertWelcomeGrantIfAbsent } from './credits.ts'
 
 const SCRYPT_N = 16384
 const SCRYPT_r = 8
@@ -84,13 +85,27 @@ export function normalizeEmail(email: string) {
 export function createUser(email: string, name: string, password: string): User {
   const id = randomBytes(6).toString('hex')
   const now = Date.now()
-  db.prepare(`INSERT INTO users (id, email, name, password_hash, created_at) VALUES (?, ?, ?, ?, ?)`).run(
-    id,
-    normalizeEmail(email),
-    name.slice(0, 60),
-    hashPassword(password),
-    now,
-  )
+  /* User + credit gratis 100 (30 hari) lahir dalam satu transaksi: bila
+     salah satu gagal, keduanya batal. */
+  db.exec('BEGIN IMMEDIATE')
+  try {
+    db.prepare(`INSERT INTO users (id, email, name, password_hash, created_at) VALUES (?, ?, ?, ?, ?)`).run(
+      id,
+      normalizeEmail(email),
+      name.slice(0, 60),
+      hashPassword(password),
+      now,
+    )
+    insertWelcomeGrantIfAbsent(id, now)
+    db.exec('COMMIT')
+  } catch (e) {
+    try {
+      db.exec('ROLLBACK')
+    } catch {
+      /* abaikan */
+    }
+    throw e
+  }
   return { id, email: normalizeEmail(email), name: name.slice(0, 60), created_at: now }
 }
 

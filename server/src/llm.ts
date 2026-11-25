@@ -1,5 +1,7 @@
 import { BASE_SYSTEM } from './prompts.ts'
 import { db } from './db.ts'
+import { userById } from './auth.ts'
+import { deduct, getBalance, MIN_BALANCE_TO_CALL, type UsageInput } from './credits.ts'
 
 export type ChatMessage =
   | { role: 'system' | 'user' | 'assistant'; content: string; tool_calls?: ToolCall[] }
@@ -52,11 +54,17 @@ function trackUsage(u: unknown) {
 }
 
 /* Pencatatan token per pengguna (dipakai panel admin Plan/Usage).
-   Gagal catat tidak boleh menggagalkan chat. */
+   Gagal catat tidak boleh menggagalkan chat. User yang tidak ada
+   (akun dihapus) tidak dicatat — token_usage sudah punya 2 user_id
+   yatim dari sebelum guard ini, jangan tambah lagi. */
 function recordTokenUsage(userId: string, model: string, u: unknown) {
   const o = u as { prompt_tokens?: number; completion_tokens?: number } | undefined
   if (!o || typeof o !== 'object') return
   try {
+    if (!userById(userId)) {
+      console.error(`[llm] token_usage dilewati: user ${userId} tidak ada`)
+      return
+    }
     db.prepare(
       'INSERT INTO token_usage (user_id, model, prompt_tokens, completion_tokens, created_at) VALUES (?, ?, ?, ?, ?)',
     ).run(userId, model, Number(o.prompt_tokens ?? 0), Number(o.completion_tokens ?? 0), Date.now())
@@ -109,6 +117,22 @@ function parseSse(raw: string, noteUsage: (u: unknown) => void = trackUsage): { 
   return { choices: [{ message }], usage }
 }
 
+/* ---- Gate + metering credit (fase 1) ----
+   Panggilan DENGAN userId (chat builder + review): saldo dicek SEBELUM
+   fetch (minimal 10 credit) dan usage final dipotong tepat sekali sesudah
+   respons — juga saat LLM error setelah usage sebagian diterima. Panggilan
+   TANPA userId (mis. /api/discovery): tanpa gate, tanpa potong (biaya
+   sistem, ditanggung owner). noteUsage bisa terpanggil berkali-kali
+   (tiap chunk SSE yang membawa usage); yang dipakai hanya usage TERAKHIR
+   (= total final dari upstream), dan deduct() dipanggil tepat sekali. */
+export function creditHabisError(balance: number): Error {
+  const err = new Error(
+    `Credit habis — saldo ${balance.toFixed(1)} credit, minimal ${MIN_BALANCE_TO_CALL} credit untuk memakai AI. Top up credit untuk melanjutkan.`,
+  )
+  ;(err as Error & { code: string }).code = 'CREDIT_HABIS'
+  return err
+}
+
 export async function complete(
   messages: ChatMessage[],
   opts: { model?: string; tools?: unknown[]; temperature?: number; maxTokens?: number; onDelta?: (text: string) => void | Promise<void>; userId?: string } = {},
@@ -118,10 +142,33 @@ export async function complete(
   const endpoint = effectiveEndpoint()
   const apiKey = effectiveKey()
   const model = opts.model ?? effectiveModel()
+
+  /* Gate: cek saldo dulu — JANGAN lakukan panggilan LLM bila saldo kurang. */
+  if (opts.userId) {
+    const bal = getBalance(opts.userId)
+    if (bal.total < MIN_BALANCE_TO_CALL) throw creditHabisError(bal.total)
+  }
+
+  /* Usage final (terakhir yang diterima) — dipotong tepat sekali. */
+  let finalUsage: UsageInput | undefined
+  const settle = () => {
+    if (!opts.userId || !finalUsage) return
+    try {
+      deduct(opts.userId, model, finalUsage)
+    } catch (e) {
+      /* Gagal catat tidak boleh menggagalkan chat yang sudah berhasil. */
+      console.error('[credits] deduct gagal:', e)
+    }
+  }
   const noteUsage = (u: unknown) => {
     trackUsage(u)
     if (opts.userId) recordTokenUsage(opts.userId, model, u)
+    const o = u as UsageInput | undefined
+    if (o && typeof o === 'object' && (typeof o.prompt_tokens === 'number' || typeof o.completion_tokens === 'number')) {
+      finalUsage = o
+    }
   }
+  try {
   const body: Record<string, unknown> = {
     model,
     messages,
@@ -195,6 +242,7 @@ export async function complete(
     const message: any = { role: 'assistant', content: full }
     if (calls.length) message.tool_calls = calls
     if (!full && !calls.length) throw new Error('LLM stream mengembalikan konten kosong')
+    settle()
     return { message, usage }
   }
 
@@ -218,7 +266,13 @@ export async function complete(
     const finish = (json.choices?.[0] as any)?.finish_reason ?? 'unknown'
     throw new Error(`LLM mengembalikan konten kosong (finish_reason=${finish}); coba model lain atau naikkan max_tokens.`)
   }
+  settle()
   return { message, usage: json.usage }
+  } catch (err) {
+    /* LLM error setelah usage sebagian diterima: potong usage itu. */
+    settle()
+    throw err
+  }
 }
 
 export async function completeText(prompt: string, model = FAST_MODEL, system = BASE_SYSTEM, userId?: string) {

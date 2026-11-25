@@ -87,6 +87,56 @@ CREATE TABLE IF NOT EXISTS token_usage (
 CREATE INDEX IF NOT EXISTS idx_token_usage_user ON token_usage(user_id, created_at);
 `)
 
+/* ---- Credit (fase 1): saldo dua bucket + riwayat pemakaian per panggilan ----
+   1 credit = $0,001 biaya LLM. Saldo boleh pecahan (REAL). Bucket free
+   (gratis, ada expiry + cap harian) dipotong dulu, lalu purchased, lalu
+   plan_credits (jatah bulanan plan, dipakai fase 4). Tarif + cost_usd
+   disimpan per panggilan supaya repricing tidak menulis ulang riwayat. */
+db.exec(`
+CREATE TABLE IF NOT EXISTS credits (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  free_balance REAL NOT NULL DEFAULT 0,
+  free_expires_at INTEGER,
+  purchased_balance REAL NOT NULL DEFAULT 0,
+  purchased_expires_at INTEGER,
+  plan_credits REAL NOT NULL DEFAULT 0,
+  plan_credits_expires_at INTEGER,
+  plan_credits_reset_at INTEGER,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS credit_transactions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  bucket TEXT,
+  amount REAL NOT NULL,
+  balance_after REAL NOT NULL,
+  reason TEXT NOT NULL DEFAULT '',
+  order_id TEXT,
+  created_at INTEGER NOT NULL,
+  UNIQUE(user_id, order_id)
+);
+
+CREATE TABLE IF NOT EXISTS credit_usage (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  model TEXT NOT NULL DEFAULT '',
+  prompt_tokens INTEGER NOT NULL DEFAULT 0,
+  completion_tokens INTEGER NOT NULL DEFAULT 0,
+  rate_in REAL NOT NULL DEFAULT 0,
+  rate_out REAL NOT NULL DEFAULT 0,
+  cost_usd REAL NOT NULL DEFAULT 0,
+  credit REAL NOT NULL DEFAULT 0,
+  shortfall_credit REAL NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_credit_usage_user ON credit_usage(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_credit_tx_user ON credit_transactions(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_credit_tx_free_day ON credit_transactions(user_id, bucket, kind, created_at);
+`)
+
 /* Publish state lives on the project row. The column is added in place so an
    existing database keeps working without a migration tool. */
 try {
