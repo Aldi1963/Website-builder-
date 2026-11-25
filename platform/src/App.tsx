@@ -734,6 +734,7 @@ function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle:
             activity={activity}
             onSend={send}
             onCancel={() => abortRef.current?.abort()}
+            onOpenSettings={() => setSettingsOpen(true)}
           />
         </section>
 

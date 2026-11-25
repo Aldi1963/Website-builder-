@@ -334,6 +334,7 @@ export function ChatPanel({
   activity,
   onSend,
   onCancel,
+  onOpenSettings,
 }: {
   messages: ChatItem[]
   sending: boolean
@@ -344,10 +345,18 @@ export function ChatPanel({
   activity?: ActivityEntry[]
   onSend: (text: string) => void
   onCancel: () => void
+  onOpenSettings: () => void
 }) {
   const [input, setInput] = useState('')
+  const [attached, setAttached] = useState<{ name: string; content: string }[]>([])
+  const [expanded, setExpanded] = useState(false)
+  const [recording, setRecording] = useState(false)
   const scrollRef = useAutoScroll(messages.length + (streamText?.length ?? 0) + (activity?.length ?? 0))
   const taRef = useRef<HTMLTextAreaElement>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const speechRef = useRef<{ stop: () => void } | null>(null)
+
+  useEffect(() => () => speechRef.current?.stop(), [])
 
   useEffect(() => {
     const ta = taRef.current
@@ -357,9 +366,48 @@ export function ChatPanel({
   }, [input])
 
   const submit = () => {
-    if (!input.trim() || sending) return
-    onSend(input.trim())
+    if ((!input.trim() && !attached.length) || sending) return
+    const fileContext = attached.map((f) => `\n\n--- Attached file: ${f.name} ---\n${f.content}`).join('')
+    onSend(`${input.trim()}${fileContext}`.trim())
     setInput('')
+    setAttached([])
+  }
+
+  const addFiles = async (files: FileList | null) => {
+    if (!files?.length) return
+    const allowed = new Set(['txt', 'md', 'mdx', 'json', 'csv', 'ts', 'tsx', 'js', 'jsx', 'css', 'html', 'xml', 'yaml', 'yml', 'sql', 'py', 'go', 'rs', 'sh', 'toml', 'env', 'log'])
+    const next: { name: string; content: string }[] = []
+    for (const file of Array.from(files)) {
+      const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
+      if (!allowed.has(ext) || file.size > 256 * 1024) continue
+      next.push({ name: file.name, content: await file.text() })
+    }
+    if (next.length) setAttached((prev) => [...prev, ...next].slice(0, 5))
+  }
+
+  const toggleVoice = () => {
+    const w = window as Window & { SpeechRecognition?: new () => any; webkitSpeechRecognition?: new () => any }
+    if (recording) {
+      speechRef.current?.stop()
+      speechRef.current = null
+      setRecording(false)
+      return
+    }
+    const Recognition = w.SpeechRecognition ?? w.webkitSpeechRecognition
+    if (!Recognition) return
+    const rec = new Recognition()
+    rec.lang = 'id-ID'
+    rec.interimResults = true
+    rec.continuous = false
+    rec.onresult = (event: any) => {
+      const transcript = Array.from(event.results as ArrayLike<any>).map((r: any) => r[0]?.transcript ?? '').join('')
+      setInput((prev) => `${prev}${prev ? ' ' : ''}${transcript}`)
+    }
+    rec.onend = () => { speechRef.current = null; setRecording(false) }
+    rec.onerror = () => { speechRef.current = null; setRecording(false) }
+    speechRef.current = rec
+    setRecording(true)
+    rec.start()
   }
 
   return (
@@ -393,12 +441,35 @@ export function ChatPanel({
         )}
       </div>
 
-      <div className="vb-seam shrink-0 bg-ink px-3 py-3 md:px-5 md:pb-4">
-        <div className="mx-auto max-w-[640px]">
-          <div className="rounded-xl border border-edge bg-surface px-3 py-2.5 shadow-sm transition-colors focus-within:border-accent">
-            <label htmlFor="vb-prompt" className="sr-only">
-              Instruksi untuk agent
-            </label>
+      <div className="shrink-0 bg-ink px-3 pb-[max(10px,env(safe-area-inset-bottom))] pt-2.5 md:px-5 md:pb-4">
+        <div className="mx-auto max-w-[720px]">
+          <div className="overflow-hidden rounded-[22px] border border-edge bg-surface shadow-[0_8px_28px_rgba(15,23,42,0.08)] transition-colors focus-within:border-accent focus-within:ring-1 focus-within:ring-accent/20">
+            <div className="flex items-center gap-2 border-b border-edge/70 px-3 py-2">
+              <button type="button" onClick={() => setExpanded((v) => !v)} aria-expanded={expanded} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-accent/10 text-accent"><Icon name="bolt" size={13} /></span>
+                <span className="truncate text-[11.5px] font-medium text-body">Some feature enhancements</span>
+              </button>
+              <button type="button" onClick={() => setExpanded((v) => !v)} aria-label={expanded ? 'Ciutkan composer' : 'Perluas composer'} title={expanded ? 'Ciutkan' : 'Perluas'} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-quiet hover:bg-ink">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d={expanded ? 'M8 3v5H3M16 21v-5h5M21 8h-5V3M3 16h5v5' : 'M8 3H3v5M16 3h5v5M21 16v5h-5M3 16v5h5'} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              </button>
+            </div>
+            {expanded && (
+              <div className="flex items-center justify-between gap-3 border-b border-edge/70 bg-ink px-3 py-2 text-[11px] text-quiet">
+                <span>Tambahkan konteks atau pilih model untuk instruksi ini.</span>
+                <button type="button" onClick={onOpenSettings} className="shrink-0 font-medium text-accent hover:underline">Model &amp; mode</button>
+              </div>
+            )}
+            {attached.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 px-3 pt-2">
+                {attached.map((file, i) => (
+                  <span key={`${file.name}-${i}`} className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-edge bg-ink px-2 py-1 text-[10.5px] text-body">
+                    <Icon name="file" size={11} /><span className="max-w-[150px] truncate">{file.name}</span>
+                    <button type="button" aria-label={`Hapus ${file.name}`} onClick={() => setAttached((prev) => prev.filter((_, n) => n !== i))} className="text-quiet hover:text-body">×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <label htmlFor="vb-prompt" className="sr-only">Instruksi untuk agent</label>
             <textarea
               id="vb-prompt"
               ref={taRef}
@@ -410,33 +481,29 @@ export function ChatPanel({
                   submit()
                 }
               }}
-              rows={1}
-              placeholder={sending ? 'Menunggu pesan berikutnya…' : 'Apa yang harus dibangun atau diubah'}
-              className="vb-scroll max-h-[168px] w-full resize-none bg-transparent px-1 py-1 text-[13.5px] leading-relaxed text-body outline-none placeholder:text-quiet"
+              rows={expanded ? 4 : 2}
+              placeholder={sending ? 'Waiting for your next message' : 'Tanyakan apa saja atau jelaskan perubahan yang kamu inginkan…'}
+              className={`vb-scroll w-full resize-none bg-transparent px-4 py-3 text-[14px] leading-relaxed text-body outline-none placeholder:text-quiet ${expanded ? 'max-h-[300px]' : 'max-h-[168px]'}`}
+              aria-label="Pesan untuk agent"
             />
-            <div className="mt-1.5 flex items-center justify-between gap-3 px-1">
-              <span className="hidden text-[11px] text-quiet sm:block">
-                Enter kirim, Shift+Enter baris baru
-              </span>
-              {sending ? (
-                <Button variant="outline" size="sm" onClick={onCancel} className="max-md:h-11">
-                  <Icon name="stop" size={10} />
-                  Hentikan
-                </Button>
-              ) : (
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={submit}
-                  disabled={!input.trim()}
-                  className="max-md:h-11"
-                >
-                  <Icon name="arrow" size={11} />
-                  Kirim
-                </Button>
-              )}
+            <input ref={fileRef} type="file" multiple hidden accept=".txt,.md,.mdx,.json,.csv,.ts,.tsx,.js,.jsx,.css,.html,.xml,.yaml,.yml,.sql,.py,.go,.rs,.sh,.toml,.env,.log" onChange={(e) => { void addFiles(e.currentTarget.files); e.currentTarget.value = '' }} />
+            <div className="flex items-center justify-between gap-2 px-2.5 pb-2.5">
+              <div className="flex items-center gap-0.5">
+                <button type="button" onClick={() => fileRef.current?.click()} disabled={sending || attached.length >= 5} aria-label="Lampirkan file teks atau kode" title="Lampirkan file teks/kode (maks. 5 file, 256 KB per file)" className="flex h-9 w-9 items-center justify-center rounded-full text-quiet hover:bg-ink hover:text-body disabled:opacity-40"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m8 12.5 6.2-6.2a3.2 3.2 0 0 1 4.5 4.5l-8.4 8.4a5 5 0 0 1-7.1-7.1l8.3-8.3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg></button>
+                <button type="button" onClick={onOpenSettings} aria-label="Setelan sesi dan model" title="Setelan sesi dan model" className="flex h-9 w-9 items-center justify-center rounded-full text-quiet hover:bg-ink hover:text-body"><Icon name="rule" size={15} /></button>
+                <span className="hidden pl-1 text-[10.5px] text-quiet sm:inline">Enter kirim · Shift+Enter baris baru</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button type="button" onClick={toggleVoice} disabled={sending || !(('SpeechRecognition' in window) || ('webkitSpeechRecognition' in window))} aria-label={recording ? 'Hentikan dikte' : 'Dikte suara'} title={(('SpeechRecognition' in window) || ('webkitSpeechRecognition' in window)) ? (recording ? 'Hentikan dikte' : 'Dikte suara') : 'Dikte suara tidak didukung browser ini'} className={`flex h-9 w-9 items-center justify-center rounded-full text-quiet hover:bg-ink hover:text-body disabled:opacity-35 ${recording ? 'bg-red-50 text-red-600' : ''}`}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="9" y="3" width="6" height="12" rx="3" stroke="currentColor" strokeWidth="1.8"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 18v3m-4 0h8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg></button>
+                {sending ? (
+                  <Button variant="outline" size="sm" onClick={onCancel} aria-label="Hentikan proses agent" className="h-9 rounded-full px-3"><Icon name="stop" size={10} /> Hentikan</Button>
+                ) : (
+                  <Button variant="primary" size="sm" shape="circle" onClick={submit} disabled={!input.trim() && !attached.length} aria-label="Kirim pesan" title="Kirim pesan" className="h-9 w-9 min-w-9 rounded-full p-0"><Icon name="arrow" size={15} /></Button>
+                )}
+              </div>
             </div>
           </div>
+          {attached.length > 0 && <p className="px-2 pt-1 text-[10px] text-quiet">File teks/kode akan ikut dikirim sebagai konteks prompt.</p>}
         </div>
       </div>
     </>
