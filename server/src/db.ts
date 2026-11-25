@@ -100,7 +100,9 @@ try {
    1 credit = $0,001 biaya LLM. Saldo boleh pecahan (REAL). Bucket free
    (gratis, ada expiry + cap harian) dipotong dulu, lalu purchased, lalu
    plan_credits (jatah bulanan plan, dipakai fase 4). Tarif + cost_usd
-   disimpan per panggilan supaya repricing tidak menulis ulang riwayat. */
+   disimpan per panggilan supaya repricing tidak menulis ulang riwayat.
+   Kolom provider (registry LLM, 25 Nov 2026): provider yang melayani
+   panggilan itu — tarif selalu per (provider, model). */
 db.exec(`
 CREATE TABLE IF NOT EXISTS credits (
   user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -145,6 +147,14 @@ CREATE INDEX IF NOT EXISTS idx_credit_usage_user ON credit_usage(user_id, create
 CREATE INDEX IF NOT EXISTS idx_credit_tx_user ON credit_transactions(user_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_credit_tx_free_day ON credit_transactions(user_id, bucket, kind, created_at);
 `)
+
+/* Provider per panggilan LLM (registry, 25 Nov 2026). Kolom ditambah di
+   tempat supaya DB yang sudah ada tetap jalan tanpa alat migrasi. */
+try {
+  db.exec(`ALTER TABLE credit_usage ADD COLUMN provider TEXT NOT NULL DEFAULT ''`)
+} catch {
+  /* sudah ada */
+}
 
 /* ---- Credit (fase 2): order top-up QRIS + jejak webhook ----
    credit_orders: satu baris per order top-up. status: pending (menunggu

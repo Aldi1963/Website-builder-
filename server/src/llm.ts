@@ -2,6 +2,7 @@ import { BASE_SYSTEM } from './prompts.ts'
 import { db } from './db.ts'
 import { userById } from './auth.ts'
 import { checkCallRate, checkDailyCap, deduct, getBalance, minBalanceToCall, type UsageInput } from './credits.ts'
+import { resolveProviderModel, withGaterLimits, type ResolvedModel } from './providers.ts'
 
 export type ChatMessage =
   | { role: 'system' | 'user' | 'assistant'; content: string; tool_calls?: ToolCall[] }
@@ -247,11 +248,17 @@ export async function complete(
     kind?: 'chat' | 'review'
   } = {},
 ): Promise<{ message: ChatMessage & { role: 'assistant' }; usage?: unknown }> {
-  /* Konfigurasi diselesaikan per panggilan supaya perubahan dari panel admin
-     berlaku tanpa restart server. */
-  const endpoint = effectiveEndpoint()
-  const apiKey = effectiveKey()
+  /* Resolusi registry (provider, model): endpoint + key + tarif.
+     Menolak SEBELUM panggilan LLM bila provider/model nonaktif, model
+     hanya /messages, tanpa tarif, atau key belum terpasang — tanpa
+     biaya, error jelas (kode MODEL_NONAKTIF / MODEL_MESSAGES_ONLY /
+     MODEL_TANPA_TARIF / MODEL_TANPA_KEY). Model tak dikenal di registry
+     fallback ke endpoint 9router tapi tetap ditolak karena tanpa tarif
+     (anti-rugi: tidak ada fallback tarif luna). */
   const model = opts.model ?? effectiveModel()
+  const resolved = resolveProviderModel(model)
+  const endpoint = resolved.endpoint
+  const apiKey = resolved.apiKey
 
   /* Gate: cek saldo dulu — JANGAN lakukan panggilan LLM bila saldo kurang. */
   if (opts.userId) {
@@ -270,7 +277,7 @@ export async function complete(
     /* Fase 5: review maks. 1× per run (bila runId diteruskan pemanggil).
        Di dalam try supaya guard dilepas bila registrasi ini menolak. */
     if (opts.userId && opts.kind === 'review' && opts.runId) registerReviewCall(opts.runId)
-    return await completeInner(messages, opts, endpoint, apiKey, model)
+    return await completeInner(messages, opts, endpoint, apiKey, model, resolved)
   } finally {
     if (guarded) activeRuns.delete(opts.userId as string)
   }
@@ -282,14 +289,16 @@ async function completeInner(
   endpoint: string,
   apiKey: string,
   model: string,
+  resolved: ResolvedModel,
 ): Promise<{ message: ChatMessage & { role: 'assistant' }; usage?: unknown }> {
 
-  /* Usage final (terakhir yang diterima) — dipotong tepat sekali. */
+  /* Usage final (terakhir yang diterima) — dipotong tepat sekali,
+     dengan provider + tarif registry yang dipakai panggilan ini. */
   let finalUsage: UsageInput | undefined
   const settle = () => {
     if (!opts.userId || !finalUsage) return
     try {
-      deduct(opts.userId, model, finalUsage)
+      deduct(opts.userId, model, finalUsage, resolved.providerId)
     } catch (e) {
       /* Gagal catat tidak boleh menggagalkan chat yang sudah berhasil. */
       console.error('[credits] deduct gagal:', e)
@@ -316,16 +325,33 @@ async function completeInner(
     body.tool_choice = 'auto'
   }
 
-  const res = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      accept: 'application/json',
-      ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
-    },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(180_000),
-  })
+  const payload = JSON.stringify(body)
+  const attempt = () =>
+    fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json',
+        ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
+      },
+      body: payload,
+      signal: AbortSignal.timeout(180_000),
+    })
+  /* Gater: pembatas konservatif (maks 5 bersamaan + ~40 RPM) + satu
+     retry ringan bila 429/503. Provider lain: langsung. */
+  let res: Response
+  if (resolved.isGater) {
+    res = await withGaterLimits(async () => {
+      let r = await attempt()
+      if (r.status === 429 || r.status === 503) {
+        await new Promise((rr) => setTimeout(rr, 1000))
+        r = await attempt()
+      }
+      return r
+    })
+  } else {
+    res = await attempt()
+  }
 
   if (!res.ok) {
     const text = await res.text().catch(() => '')

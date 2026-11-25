@@ -1,15 +1,19 @@
 import { db } from './db.ts'
+import { findModel, ratesForProviderModel, type ProviderModel } from './providers.ts'
 
 /* ---- Sistem credit VibeBuilder (fase 1) ----
-   1 credit = $0,001 biaya LLM. Tarif per 1 juta token:
-   luna   input $1    / output $6
-   review input $2,50 / output $15
-   Model peninjau dikenali dari nama yang mengandung 'review'; selain itu
-   tarif luna (fallback aman, juga untuk model override admin).
-   Saldo boleh pecahan (REAL, tampil 1 desimal). Bucket free dipotong dulu
-   (yang paling cepat kedaluwarsa), lalu purchased, lalu plan_credits
-   (jatah bulanan plan — dipakai fase 4). Saldo TIDAK PERNAH negatif:
-   potongan dibatasi sisa saldo, kekurangannya dicatat di credit_usage. */
+   1 credit = $0,001 biaya LLM. Tarif per 1 juta token diambil dari
+   REGISTRY provider (server/src/providers.ts) berdasarkan pasangan
+   (provider, model) — BUKAN dari nama model. Model TANPA tarif di
+   registry = TIDAK BOLEH dipakai: ratesForModel() mengembalikan null
+   dan priceFor()/deduct() menolak — JANGAN fallback ke tarif luna
+   (sebelumnya: nama mengandung 'review' → $2,50/$15, sisanya luna
+   $1/$6 — hardcode itu yang membuat model mahal bisa dipotong murah,
+   diperbaiki 25 Nov 2026). Saldo boleh pecahan (REAL, tampil 1 desimal).
+   Bucket free dipotong dulu (yang paling cepat kedaluwarsa), lalu
+   purchased, lalu plan_credits (jatah bulanan plan — dipakai fase 4).
+   Saldo TIDAK PERNAH negatif: potongan dibatasi sisa saldo,
+   kekurangannya dicatat di credit_usage. */
 
 export const CREDIT_USD = 0.001
 export const FREE_GRANT_CREDITS = 100
@@ -188,23 +192,48 @@ export const LUNA_RATE_IN = 1
 export const LUNA_RATE_OUT = 6
 export const REVIEW_RATE_IN = 2.5
 export const REVIEW_RATE_OUT = 15
+/* Konstanta di atas dipertahankan untuk kompatibilitas (nilai seed
+   registry 9router); JANGAN dipakai sebagai fallback tarif. */
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
 /* Bulatkan ke 6 desimal supaya pecahan REAL tidak menumpuk debu float. */
 const r6 = (n: number) => Math.round(n * 1e6) / 1e6
 
-export function ratesForModel(model: string): { rateIn: number; rateOut: number } {
-  if (model.toLowerCase().includes('review')) return { rateIn: REVIEW_RATE_IN, rateOut: REVIEW_RATE_OUT }
-  return { rateIn: LUNA_RATE_IN, rateOut: LUNA_RATE_OUT }
+/* Tarif registry untuk satu model. provider yang diketahui dipakai
+   dulu (ID model bisa sama antar provider); tanpa provider, cari di
+   semua provider (9router didahulukan). null = model tidak ada di
+   registry ATAU tanpa tarif → panggilan HARUS ditolak sebelum LLM
+   (llm.ts/resolveProviderModel melakukan itu). TIDAK ADA fallback. */
+export function ratesForModel(
+  model: string,
+  provider?: string,
+): { rateIn: number; rateOut: number } | null {
+  if (provider) return ratesForProviderModel(provider, model)
+  const found = findModel(model)
+  if (!found) return null
+  const m: ProviderModel = found.model
+  if (m.rateInUsdPer1M === null || m.rateOutUsdPer1M === null) return null
+  return { rateIn: m.rateInUsdPer1M, rateOut: m.rateOutUsdPer1M }
+}
+
+export function noRateError(model: string): Error {
+  const err = new Error(
+    `Model tanpa tarif — ${model} belum punya harga per token di registry provider, jadi belum bisa dipakai. Admin harus mengisi tarifnya dulu.`,
+  )
+  ;(err as Error & { code: string }).code = 'MODEL_TANPA_TARIF'
+  return err
 }
 
 export function priceFor(
   model: string,
   promptTokens: number,
   completionTokens: number,
+  provider?: string,
 ): { rateIn: number; rateOut: number; costUsd: number; credit: number } {
-  const { rateIn, rateOut } = ratesForModel(model)
+  const rates = ratesForModel(model, provider)
+  if (!rates) throw noRateError(model)
+  const { rateIn, rateOut } = rates
   const costUsd = (promptTokens * rateIn + completionTokens * rateOut) / 1_000_000
   return { rateIn, rateOut, costUsd, credit: costUsd / CREDIT_USD }
 }
@@ -532,13 +561,17 @@ export type DeductResult = {
    Urutan: free (dibatasi cap 50/hari) -> purchased -> plan_credits.
    Bucket kedaluwarsa dianggap 0 dan dinolkan di DB. credit_usage +
    credit_transactions dicatat dalam SATU transaksi dengan pemotongan.
-   Bila biaya melebihi sisa saldo: potong sisanya, catat kekurangannya
-   (shortfall) di baris usage, saldo akhir 0 — tidak pernah negatif. */
-export function deduct(userId: string, model: string, usage: UsageInput): DeductResult {
+   Provider + tarif yang dipakai TERCATAT di credit_usage (kolom
+   provider, rate_in, rate_out). Bila biaya melebihi sisa saldo: potong
+   sisanya, catat kekurangannya (shortfall) di baris usage, saldo akhir
+   0 — tidak pernah negatif. Model tanpa tarif DITOLAK di sini
+   (priceFor lempar MODEL_TANPA_TARIF) — llm.ts sudah menolak lebih
+   dulu sebelum panggilan, jadi ini jaring pengaman terakhir. */
+export function deduct(userId: string, model: string, usage: UsageInput, provider = ''): DeductResult {
   maybeMigrate()
   const prompt = Number(usage?.prompt_tokens ?? 0)
   const completion = Number(usage?.completion_tokens ?? 0)
-  const { rateIn, rateOut, costUsd, credit } = priceFor(model, prompt, completion)
+  const { rateIn, rateOut, costUsd, credit } = priceFor(model, prompt, completion, provider || undefined)
   const now = Date.now()
 
   if (credit <= 0) return { charged: 0, shortfall: 0, costUsd, credit, balance: getBalance(userId) }
@@ -591,12 +624,12 @@ export function deduct(userId: string, model: string, usage: UsageInput): Deduct
     const charged = r6(credit - remaining)
     const shortfall = r6(remaining)
 
-    /* Simpan pemakaian (tarif + cost tercatat agar repricing tidak
-       menulis ulang riwayat). */
+    /* Simpan pemakaian (provider + tarif + cost tercatat agar repricing
+       tidak menulis ulang riwayat). */
     db.prepare(
-      `INSERT INTO credit_usage (user_id, model, prompt_tokens, completion_tokens, rate_in, rate_out, cost_usd, credit, shortfall_credit, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(userId, model, prompt, completion, rateIn, rateOut, costUsd, charged, shortfall, now)
+      `INSERT INTO credit_usage (user_id, model, provider, prompt_tokens, completion_tokens, rate_in, rate_out, cost_usd, credit, shortfall_credit, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(userId, model, provider, prompt, completion, rateIn, rateOut, costUsd, charged, shortfall, now)
 
     if (row) {
       /* Bucket kedaluwarsa dinolkan; total berjalan untuk balance_after. */

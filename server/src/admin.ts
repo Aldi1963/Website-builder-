@@ -24,6 +24,7 @@ import {
 } from './llm.ts'
 import { ROOT } from './paths.ts'
 import { registerBilling } from './billing.ts'
+import { registerProviderRoutes } from './providers.ts'
 import {
   getBalance,
   getUserPlan,
@@ -69,7 +70,7 @@ function currentAdminUser(c: Context): User | undefined {
   return user
 }
 
-async function requireAdmin(c: Context<AdminEnv>, next: Next) {
+export async function requireAdmin(c: Context<AdminEnv>, next: Next) {
   const user = userByToken(readCookie(c.req.header('cookie'), SESSION_COOKIE))
   if (!user) return c.json({ error: 'Belum masuk.' }, 401)
   if (!isAdmin(user)) return c.json({ error: 'Bukan admin.' }, 403)
@@ -220,6 +221,10 @@ export function registerAdmin(app: Hono<AdminEnv>) {
      BOLEH disentuh. Bila app.ts sudah stabil, pindahkan pemanggilan
      satu baris ini ke app.ts di samping registerAdmin(app). */
   registerBilling(app)
+  /* Registry provider LLM (providers.ts): GET /api/llm/models publik +
+     endpoint admin /api/admin/llm/providers. Pola sama seperti billing
+     di atas — app.ts TIDAK disentuh. */
+  registerProviderRoutes(app, requireAdmin)
   ensureDefaultPlan()
   /* FITUR 3 — Moderasi proyek: tanda (flag) + penangguhan.
      Penangguhan TIDAK memakai nilai status (idle/working/building/error)
