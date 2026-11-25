@@ -71,6 +71,7 @@ const PATHS: Record<string, string> = {
   open: 'M14 4h6v6M20 4l-8 8M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5',
   monitor: 'M3 5h18v12H3zM8 21h8M12 17v4',
   copy: 'M9 9h10v10H9zM5 15V5h10',
+  download: 'M12 4v11M7 11l5 5 5-5M4 19h16',
   check: 'M4 12.5 9 17.5 20 6.5',
   menu: 'M4 7h16M4 12h16M4 17h16',
   sun: 'M12 4V2M12 22v-2M4 12H2M22 12h-2M5.6 5.6 4.2 4.2M19.8 19.8l-1.4-1.4M18.4 5.6l1.4-1.4M4.2 19.8l1.4-1.4M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z',

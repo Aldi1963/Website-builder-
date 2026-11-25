@@ -25,6 +25,7 @@ import {
   userOwnsProject,
 } from './db.ts'
 import { listVersions, getVersionDiff, restoreVersion, snapshotVersion, diffLines } from './versions.ts'
+import { projectZip } from './export.ts'
 import {
   ensureWorkspace,
   buildProject,
@@ -502,6 +503,22 @@ app.get('/api/projects/:id/file/diff', (c) => {
   const before = c.req.query('before') ?? ''
   const after = getFile(r.project.id, path) ?? readProjectFile(r.project.id, path) ?? ''
   return c.json({ path, diff: diffLines(before, after).slice(0, 400) })
+})
+
+/* ---------- export seluruh proyek sebagai ZIP ---------- */
+
+app.get('/api/projects/:id/export', (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  const zip = projectZip(r.project.id)
+  if (!zip) return c.json({ error: 'belum ada file untuk diekspor' }, 400)
+  const safeName = (r.project.name || r.project.id).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || r.project.id
+  return new Response(new Uint8Array(zip), {
+    headers: {
+      'content-type': 'application/zip',
+      'content-disposition': `attachment; filename="${safeName}.zip"`,
+    },
+  })
 })
 
 app.post('/api/projects/:id/messages', async (c) => {

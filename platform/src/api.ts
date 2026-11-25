@@ -117,6 +117,28 @@ export type ChatHandlers = {
   onDone?: () => void
 }
 
+/** Unduh seluruh file proyek sebagai ZIP. */
+export async function exportProjectZip(projectId: string): Promise<void> {
+  const res = await fetch(`/api/projects/${projectId}/export`)
+  if (!res.ok) {
+    let msg = `Gagal mengekspor (${res.status}).`
+    try {
+      const parsed = (await res.json()) as { error?: string }
+      if (parsed?.error) msg = parsed.error
+    } catch { /* bukan JSON */ }
+    throw new Error(msg)
+  }
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'proyek.zip'
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
 export async function chatStream(projectId: string, message: string, h: ChatHandlers, signal?: AbortSignal) {
   const res = await fetch(`/api/projects/${projectId}/chat`, {
     method: 'POST',

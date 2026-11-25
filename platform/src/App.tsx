@@ -3,6 +3,7 @@ import { Icon, Spinner, Wordmark } from './ui'
 import { api, auth, ChatHandlers, chatStream, Project, type User } from './api'
 import { AuthGate, UserBar } from './auth'
 import { ChatPanel, CodePane, PreviewPane, type ChatAudit, type ChatPlan } from './panels'
+import { exportProjectZip } from './api'
 
 /* Theme is a real choice here: the shell is used for long sessions next to an
    arbitrary generated app, so both modes ship and both are verified. */
@@ -615,6 +616,16 @@ function Workspace({ projectId, onTitle }: { projectId: string; onTitle: (n: str
               <Icon name="open" size={10} />
               Tab baru
             </a>
+          )}
+          {!!files.length && (
+            <button
+              onClick={() => void exportProjectZip(projectId).catch(() => {})}
+              className="hidden h-7 items-center gap-1.5 border border-edge px-2.5 text-[11.5px] text-body transition-colors hover:border-quiet md:flex"
+              title="Unduh seluruh file proyek sebagai ZIP"
+            >
+              <Icon name="download" size={10} />
+              Export
+            </button>
           )}
         </div>
       </header>
