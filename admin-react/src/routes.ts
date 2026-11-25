@@ -2,7 +2,6 @@ import { lazy, type ComponentType, type LazyExoticComponent } from 'react'
 import {
   Archive,
   ArrowSquareOut,
-  Award,
   ChartLine,
   ChatText,
   ClockCounterClockwise,
@@ -17,6 +16,7 @@ import {
   Heartbeat,
   Key,
   Link as LinkIcon,
+  Medal,
   Megaphone,
   Plug,
   Robot,
@@ -38,7 +38,60 @@ export interface AdminRoute {
   component: LazyExoticComponent<ComponentType>
 }
 
-const page = (slug: string) => lazy(() => import(`./pages/${slug}`))
+/* Impor lazy eksplisit per halaman: Vite tidak bisa membundel
+   import() dinamis dengan template tanpa ekstensi di bagian statis
+   (peringatan vite-dynamic-import-vars), jadi jangan pakai
+   lazy(() => import(`./pages/${slug}`)). */
+const page = (slug: string) => {
+  switch (slug) {
+    case 'dashboard':
+      return lazy(() => import('./pages/dashboard'))
+    case 'users':
+      return lazy(() => import('./pages/users'))
+    case 'projects':
+      return lazy(() => import('./pages/projects'))
+    case 'moderasi':
+      return lazy(() => import('./pages/moderasi'))
+    case 'domain':
+      return lazy(() => import('./pages/domain'))
+    case 'plans':
+      return lazy(() => import('./pages/plans'))
+    case 'credits':
+      return lazy(() => import('./pages/credits'))
+    case 'usage':
+      return lazy(() => import('./pages/usage'))
+    case 'biaya':
+      return lazy(() => import('./pages/biaya'))
+    case 'providers':
+      return lazy(() => import('./pages/providers'))
+    case 'billing':
+      return lazy(() => import('./pages/billing'))
+    case 'builds':
+      return lazy(() => import('./pages/builds'))
+    case 'messages':
+      return lazy(() => import('./pages/messages'))
+    case 'pengumuman':
+      return lazy(() => import('./pages/pengumuman'))
+    case 'sessions':
+      return lazy(() => import('./pages/sessions'))
+    case 'health':
+      return lazy(() => import('./pages/health'))
+    case 'cadangan':
+      return lazy(() => import('./pages/cadangan'))
+    case 'pembersihan':
+      return lazy(() => import('./pages/pembersihan'))
+    case 'audit':
+      return lazy(() => import('./pages/audit'))
+    case 'pemeliharaan':
+      return lazy(() => import('./pages/pemeliharaan'))
+    case 'ai-settings':
+      return lazy(() => import('./pages/ai-settings'))
+    case 'settings':
+      return lazy(() => import('./pages/settings'))
+    default:
+      throw new Error(`Halaman tidak dikenal: ${slug}`)
+  }
+}
 
 export const ROUTES: AdminRoute[] = [
   { slug: 'dashboard', path: '/admin', title: 'Dashboard', icon: Gauge, component: page('dashboard') },
@@ -46,7 +99,7 @@ export const ROUTES: AdminRoute[] = [
   { slug: 'projects', path: '/admin/projects', title: 'Proyek', icon: Cube, component: page('projects') },
   { slug: 'moderasi', path: '/admin/moderasi', title: 'Moderasi', icon: Flag, component: page('moderasi') },
   { slug: 'domain', path: '/admin/domain', title: 'Domain', icon: LinkIcon, component: page('domain') },
-  { slug: 'plans', path: '/admin/plans', title: 'Plan', icon: Award, component: page('plans') },
+  { slug: 'plans', path: '/admin/plans', title: 'Plan', icon: Medal, component: page('plans') },
   { slug: 'credits', path: '/admin/credits', title: 'Kelola Credit', icon: Coins, component: page('credits') },
   { slug: 'usage', path: '/admin/usage', title: 'Penggunaan', icon: ChartLine, component: page('usage') },
   { slug: 'biaya', path: '/admin/biaya', title: 'Biaya LLM', icon: CurrencyDollar, component: page('biaya') },

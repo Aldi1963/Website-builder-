@@ -12,10 +12,10 @@ export class ApiError extends Error {
   }
 }
 
-type BodyInit = BodyInit | Record<string, unknown> | unknown[]
+type RequestBody = globalThis.BodyInit | Record<string, unknown> | unknown[]
 
 interface RequestOptions extends Omit<RequestInit, 'body'> {
-  body?: BodyInit
+  body?: RequestBody
 }
 
 function isFormData(body: unknown): body is FormData {
@@ -59,10 +59,10 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
 
 export const api = {
   get: <T>(path: string) => request<T>(path, { method: 'GET' }),
-  post: <T>(path: string, body?: BodyInit) => request<T>(path, { method: 'POST', body }),
-  put: <T>(path: string, body?: BodyInit) => request<T>(path, { method: 'PUT', body }),
-  patch: <T>(path: string, body?: BodyInit) => request<T>(path, { method: 'PATCH', body }),
-  del: <T>(path: string, body?: BodyInit) => request<T>(path, { method: 'DELETE', body }),
+  post: <T>(path: string, body?: RequestBody) => request<T>(path, { method: 'POST', body }),
+  put: <T>(path: string, body?: RequestBody) => request<T>(path, { method: 'PUT', body }),
+  patch: <T>(path: string, body?: RequestBody) => request<T>(path, { method: 'PATCH', body }),
+  del: <T>(path: string, body?: RequestBody) => request<T>(path, { method: 'DELETE', body }),
 }
 
 /** Unduh file lewat blob (dipakai mis. ekspor CSV). */
