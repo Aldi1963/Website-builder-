@@ -35,6 +35,14 @@
        menu selebar layar dan biarkan teks melipat. */
     #notifications-menu { max-width: min(360px, calc(100vw - 24px)); }
     #notifications-menu .dropdown-item { white-space: normal; overflow-wrap: break-word; }
+    /* Sidebar: template Metis memberi .admin-sidebar tinggi tetap TANPA
+       overflow — menu 23 item terpotong di bawah layar dan tidak bisa
+       di-scroll. Beri scroll sendiri; di HP (mode off-canvas) sidebar
+       mentok ke atas layar, setinggi layar penuh. */
+    .admin-sidebar { overflow-y: auto; overscroll-behavior: contain; }
+    @media (max-width: 991.98px) {
+      .admin-sidebar { top: 0; height: 100vh; height: 100dvh; }
+    }
   </style>
 </head>
 
