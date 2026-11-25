@@ -143,6 +143,32 @@ export const api = {
     }),
   deleteSecret: (id: string, key: string) =>
     req<{ ok: boolean }>(`/api/projects/${id}/secrets/${encodeURIComponent(key)}`, { method: 'DELETE' }),
+  setGithub: (id: string, repo: string, token: string, branch: string) =>
+    req<{ ok: boolean; repo: string; branch: string; tokenSaved: boolean }>(`/api/projects/${id}/github`, {
+      method: 'PUT',
+      body: JSON.stringify({ repo, token, branch }),
+    }),
+  syncGithub: (id: string, repo: string, branch: string, token: string) =>
+    req<{ ok: boolean; repo: string; branch: string; pushed: number; skipped: number; error?: string; commitUrl?: string }>(
+      `/api/projects/${id}/github/sync`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ repo, branch, token }),
+      },
+    ),
+  marketplace: (category?: string) =>
+    req<{ listings: MarketplaceListing[]; categories: string[] }>(
+      `/api/marketplace${category ? `?category=${encodeURIComponent(category)}` : ''}`,
+    ),
+  publishToMarketplace: (id: string, title: string, description: string, category: string) =>
+    req<{ ok: boolean; listing: MarketplaceListing }>(`/api/projects/${id}/marketplace`, {
+      method: 'PUT',
+      body: JSON.stringify({ title, description, category }),
+    }),
+  unpublishFromMarketplace: (id: string) =>
+    req<{ ok: boolean }>(`/api/projects/${id}/marketplace`, { method: 'DELETE' }),
+  forkListing: (listingId: number) =>
+    req<{ ok: boolean; projectId: string; name: string }>(`/api/marketplace/${listingId}/fork`, { method: 'POST' }),
   usage: () => req<{ requests: number; promptTokens: number; completionTokens: number }>('/api/usage'),
 }
 
@@ -150,6 +176,17 @@ export type ProjectSettings = {
   customDomain: string
   secrets: { key: string; hint: string }[]
   overview: { name: string; status: string; slug: string | null; files: number; createdAt: number }
+}
+
+export type MarketplaceListing = {
+  id: number
+  project_id: string
+  title: string
+  description: string
+  category: string
+  owner_id: string | null
+  fork_count: number
+  created_at: number
 }
 
 export type ChatHandlers = {

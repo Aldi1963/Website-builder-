@@ -30,9 +30,11 @@ import {
   projectByDomain,
 } from './db.ts'
 import { db } from './db.ts'
+import type { Project } from './db.ts'
 import { getPendingPlan, clearPendingPlan } from './pending-plan.ts'
 import { listVersions, getVersionDiff, restoreVersion, snapshotVersion, diffLines } from './versions.ts'
 import { projectZip } from './export.ts'
+import { syncToGitHub, saveGitHubConfig } from './github-sync.ts'
 import {
   ensureWorkspace,
   buildProject,
@@ -94,6 +96,15 @@ function buildHostSubdomain(host: string): string | null {
   return sub
 }
 
+function projectByCustomDomain(host: string): Project | undefined {
+  const name = host.split(':')[0].toLowerCase()
+  if (!name || name === PUBLIC_ORIGIN.replace(/^https?:\/\//, '')) return undefined
+  return projectByDomain(name)
+}
+
+/* Caddy meminta validasi hostname sebelum menerbitkan sertifikat. */
+const DOMAIN_RE_LAX = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i
+
 async function forward(port: number, request: Request): Promise<Response> {
   const url = new URL(request.url)
   const target = `http://127.0.0.1:${port}${url.pathname}${url.search}`
@@ -120,10 +131,9 @@ async function forward(port: number, request: Request): Promise<Response> {
 app.use('*', async (c, next) => {
   const host = c.req.header('host') ?? ''
   const slug = buildHostSubdomain(host)
-  if (!slug) return next()
+  const project = slug ? projectBySlug(slug) : projectByCustomDomain(host)
+  if (!project) return next()
 
-  const project = projectBySlug(slug)
-  if (!project) return c.text(`Tidak ada aplikasi terbit di ${host}.`, 404)
   let port: number
   try {
     port = await startPreview(project.id)
@@ -134,6 +144,20 @@ app.use('*', async (c, next) => {
 })
 
 purgeExpiredSessions()
+
+/* ---------- on-demand TLS (Caddy) ----------
+   Caddy menanyakan endpoint ini sebelum menerbitkan sertifikat untuk
+   sebuah hostname custom domain. Balas 200 hanya jika hostname terdaftar
+   di tabel custom_domains dengan status 'verified'. */
+app.get('/api/on-demand-tls-ask', (c) => {
+  const domain = (c.req.query('domain') ?? '').trim().toLowerCase()
+  if (!DOMAIN_RE_LAX.test(domain)) return c.text('bukan domain valid', 400)
+  const row = db
+    .prepare(`SELECT id FROM custom_domains WHERE LOWER(domain) = ? AND status = 'verified' LIMIT 1`)
+    .get(domain)
+  if (!row) return c.text('domain tidak terdaftar', 403)
+  return c.text('ok', 200)
+})
 
 /* ---------- auth ---------- */
 
@@ -273,6 +297,34 @@ app.put('/api/projects/:id/secrets', async (c) => {
   if (!value) return c.json({ error: 'Nilai secret kosong.' }, 400)
   setSetting(r.project.id, `secret_${key}`, value)
   return c.json({ ok: true, key })
+})
+
+/* ---------- GitHub sync ---------- */
+
+app.put('/api/projects/:id/github', async (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  const body = (await c.req.json().catch(() => ({}))) as { repo?: string; token?: string; branch?: string }
+  const repo = (body.repo ?? '').trim()
+  const branch = (body.branch ?? 'main').trim() || 'main'
+  if (repo && !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)) {
+    return c.json({ error: 'Repo harus format owner/repo.' }, 400)
+  }
+  if (repo) setSetting(r.project.id, 'github_repo', repo)
+  if (branch) setSetting(r.project.id, 'github_branch', branch)
+  if (body.token) setSetting(r.project.id, 'secret_GITHUB_TOKEN', body.token.trim())
+  return c.json({ ok: true, repo, branch, tokenSaved: Boolean(body.token) })
+})
+
+app.post('/api/projects/:id/github/sync', async (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  const body = (await c.req.json().catch(() => ({}))) as { repo?: string; branch?: string; token?: string }
+  if (body.repo || body.branch || body.token) {
+    saveGitHubConfig(r.project.id, (body.repo ?? '').trim(), (body.token ?? '').trim(), (body.branch ?? '').trim())
+  }
+  const result = await syncToGitHub(r.project.id, { repo: body.repo, branch: body.branch })
+  return c.json(result, result.ok ? 200 : 400)
 })
 
 app.delete('/api/projects/:id/secrets/:key', (c) => {
@@ -631,6 +683,64 @@ app.get('/api/projects/:id/export', (c) => {
       'content-disposition': `attachment; filename="${safeName}.zip"`,
     },
   })
+})
+
+/* ---------- marketplace ---------- */
+
+import {
+  listMarketplace,
+  publishListing,
+  unpublishListing,
+  forkListing,
+  marketplaceCategories,
+  listMyListings,
+} from './marketplace.ts'
+
+/* Galeri publik — boleh diakses tanpa login. */
+app.get('/api/marketplace', (c) => {
+  const category = c.req.query('category')
+  return c.json({ listings: listMarketplace(category), categories: marketplaceCategories() })
+})
+
+/* Listing milik pengguna. */
+app.get('/api/marketplace/mine', (c) => {
+  const user = currentUser(c)
+  if (!user) return c.json({ error: 'Belum masuk.' }, 401)
+  return c.json({ listings: listMyListings(user.id) })
+})
+
+/* Publikasikan / perbarui proyek sebagai template galeri. */
+app.put('/api/projects/:id/marketplace', async (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  const body = (await c.req.json().catch(() => ({}))) as { title?: string; description?: string; category?: string }
+  const listing = publishListing(
+    r.project.id,
+    r.project.owner_id,
+    body.title ?? r.project.name,
+    body.description ?? '',
+    body.category ?? 'umum',
+  )
+  return c.json({ ok: true, listing })
+})
+
+/* Tarik listing dari galeri. */
+app.delete('/api/projects/:id/marketplace', (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  const removed = unpublishListing(r.project.id)
+  return c.json({ ok: removed })
+})
+
+/* Fork template jadi proyek baru milik pengguna. */
+app.post('/api/marketplace/:listingId/fork', (c) => {
+  const user = currentUser(c)
+  if (!user) return c.json({ error: 'Belum masuk.' }, 401)
+  const listingId = Number(c.req.param('listingId'))
+  if (!Number.isFinite(listingId)) return c.json({ error: 'ID template tidak valid.' }, 400)
+  const out = forkListing(listingId, user.id)
+  if ('error' in out) return c.json(out, 404)
+  return c.json({ ok: true, projectId: out.project.id, name: out.project.name })
 })
 
 app.post('/api/projects/:id/messages', async (c) => {

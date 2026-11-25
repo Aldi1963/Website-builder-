@@ -175,6 +175,41 @@ export function SettingsSheet({
     }
   }
 
+  /* ---------- GitHub sync ---------- */
+  const [ghRepo, setGhRepo] = useState('')
+  const [ghToken, setGhToken] = useState('')
+  const [ghBranch, setGhBranch] = useState('main')
+  const [ghBusy, setGhBusy] = useState(false)
+
+  const saveGh = async () => {
+    setMsg('')
+    try {
+      await api.setGithub(projectId, ghRepo.trim(), ghToken.trim(), ghBranch.trim() || 'main')
+      setGhToken('')
+      setMsg(ghRepo ? `Repo GitHub disimpan (${ghRepo}).` : 'Repo GitHub dihapus.')
+    } catch (e) {
+      setMsg((e as Error).message)
+    }
+  }
+
+  const syncGh = async () => {
+    setMsg('')
+    setGhBusy(true)
+    try {
+      const r = await api.syncGithub(projectId, ghRepo.trim(), ghBranch.trim() || 'main', ghToken.trim())
+      setGhToken('')
+      setMsg(
+        r.ok
+          ? `Sinkron ke ${r.repo} (${r.branch}): ${r.pushed} file dikirim${r.skipped ? `, ${r.skipped} dilewati` : ''}.`
+          : `Gagal sinkron: ${r.error ?? 'tidak diketahui'}`,
+      )
+    } catch (e) {
+      setMsg((e as Error).message)
+    } finally {
+      setGhBusy(false)
+    }
+  }
+
   const addSecret = async () => {
     setMsg('')
     try {
@@ -340,6 +375,50 @@ export function SettingsSheet({
                 <Button variant="outline" size="sm" onClick={saveDomain} className="shrink-0">
                   Simpan
                 </Button>
+              </div>
+            </section>
+
+            <section className="border-b border-edge py-3">
+              <p className="text-[11px] font-medium text-accent">GITHUB</p>
+              <p className="mt-1 text-[11px] leading-relaxed text-quiet">
+                Sinkronkan seluruh file proyek ke repo GitHub. Format repo <code>owner/repo</code>; token PAT butuh scope <code>repo</code>. Repo dibuat otomatis bila belum ada.
+              </p>
+              <div className="mt-2 flex flex-col gap-2">
+                <Input
+                  value={ghRepo}
+                  onChange={(e) => setGhRepo(e.target.value)}
+                  placeholder="username/nama-repo"
+                  aria-label="Repo GitHub"
+                  size="sm"
+                  className="w-full font-mono"
+                />
+                <div className="flex items-end gap-2">
+                  <Input
+                    value={ghBranch}
+                    onChange={(e) => setGhBranch(e.target.value)}
+                    placeholder="main"
+                    aria-label="Branch"
+                    size="sm"
+                    className="min-w-0 w-24"
+                  />
+                  <Input
+                    type="password"
+                    value={ghToken}
+                    onChange={(e) => setGhToken(e.target.value)}
+                    placeholder={settings?.secrets.some((s) => s.key === 'GITHUB_TOKEN') ? 'token tersimpan ••••' : 'token PAT'}
+                    aria-label="Token GitHub"
+                    size="sm"
+                    className="min-w-0 flex-1 font-mono"
+                  />
+                </div>
+                <div className="flex items-end gap-2">
+                  <Button variant="outline" size="sm" onClick={saveGh} disabled={!ghRepo.trim()}>
+                    Simpan
+                  </Button>
+                  <Button variant="primary" size="sm" onClick={syncGh} disabled={!ghRepo.trim() || ghBusy}>
+                    {ghBusy ? 'Menyinkron…' : 'Sinkron'}
+                  </Button>
+                </div>
               </div>
             </section>
 

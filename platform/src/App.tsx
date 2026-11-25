@@ -11,6 +11,7 @@ import { MODEL_AUTO, getPickerModels, isSelectionAvailable, modelIdForServer } f
    (kotor, belum commit) — perubahan di bawah ini MINIMAL + aditif dan TIDAK
    di-commit oleh trek ini; komponennya sendiri ada di billing-ui.tsx. */
 import { CreditChip, UsagePage, notifyBalanceChanged } from './billing-ui'
+import { MarketplacePage } from './marketplace-ui'
 
 /* Right-side session menu (Emergent-style): a single 3-dot button in the chat
    header that opens a small dropdown with the actions that used to clutter the
@@ -605,6 +606,7 @@ export default function App() {
   const projectRoute = matchPath('/proyek/:id', path)
   const profileRoute = matchPath('/profil', path)
   const usageRoute = matchPath('/penggunaan', path)
+  const marketRoute = matchPath('/marketplace', path)
   const activeId = projectRoute?.id ?? null
 
   useEffect(() => {
@@ -751,6 +753,22 @@ export default function App() {
     )
   }
 
+  /* Fase 3: galeri marketplace (/marketplace) — publik, tanpa perlu login. */
+  if (marketRoute) {
+    return (
+      <MarketplacePage
+        user={user}
+        onCreate={async () => {
+          if (!user) {
+            navigate('/')
+            return
+          }
+          await createProject()
+        }}
+      />
+    )
+  }
+
   return (
     <div className="flex h-dvh overflow-hidden bg-ink text-body">
       <Sidebar
@@ -858,6 +876,12 @@ function HomePage({
               className="flex h-9 max-md:h-11 items-center border border-edge px-3 text-[12.5px] text-body hover:bg-surface"
             >
               Profil akun
+            </a>
+            <a
+              href="/marketplace"
+              className="flex h-9 max-md:h-11 items-center border border-edge px-3 text-[12.5px] text-body hover:bg-surface"
+            >
+              Marketplace
             </a>
           </div>
 
