@@ -381,7 +381,7 @@
         <td>${u.plan_name ? `<span class="badge bg-info">${esc(u.plan_name)}</span>` : '<span class="text-muted">–</span>'}</td>
         <td>${esc(timeAgo(u.last_seen))}</td>
         <td>${status}</td>
-        <td class="text-end">
+        <td class="text-end text-nowrap">
           ${isSelf ? '<span class="text-muted small">akun ini</span>' : `
           <button class="btn btn-sm btn-outline-warning" data-act="toggle-disable" data-id="${esc(u.id)}" data-disabled="${u.disabled ? 0 : 1}" data-email="${esc(u.email)}">${u.disabled ? 'Aktifkan' : 'Nonaktifkan'}</button>
           <button class="btn btn-sm btn-outline-danger" data-act="delete-user" data-id="${esc(u.id)}" data-email="${esc(u.email)}">Hapus</button>`}
@@ -427,7 +427,7 @@
       <td>${fmtNum(p.files)}</td>
       <td>${p.slug ? `<a href="/p/${esc(p.slug)}" target="_blank" rel="noopener">${esc(p.slug)}</a>` : '<span class="text-muted">–</span>'}</td>
       <td>${esc(fmtDateShort(p.updated_at))}</td>
-      <td class="text-end">
+      <td class="text-end text-nowrap">
         <a class="btn btn-sm btn-outline-primary" href="/proyek/${esc(p.id)}">Buka</a>
         <button class="btn btn-sm btn-outline-danger" data-act="delete-project" data-id="${esc(p.id)}" data-name="${esc(p.name)}">Hapus</button>
       </td>
@@ -480,7 +480,7 @@
           <td>Rp ${fmtNum(p.price_idr)}</td>
           <td>${fmtNum(p.users)}</td>
           <td>${esc(p.description || '–')}</td>
-          <td class="text-end">
+          <td class="text-end text-nowrap">
             <button class="btn btn-sm btn-outline-primary" data-act="edit-plan" data-id="${esc(p.id)}">Ubah</button>
             <button class="btn btn-sm btn-outline-danger" data-act="delete-plan" data-id="${esc(p.id)}" data-name="${esc(p.name)}">Hapus</button>
           </td>
