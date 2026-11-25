@@ -60,34 +60,63 @@ function statusLabel(text: string): string {
 }
 
 export function ActivityFeed({ entries }: { entries: ActivityEntry[] }) {
+  // Ala Emergent: saat agent bekerja hanya satu baris "berpikir" yang terlihat
+  // (langkah terakhir), riwayat lengkapnya tersimpan di balik satu ketukan.
+  // Sebelumnya semua langkah (s.d. 40 baris) tampil sekaligus dan memenuhi chat.
+  const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const el = ref.current
     if (el) el.scrollTop = el.scrollHeight
-  }, [entries.length])
+  }, [entries.length, open])
   if (!entries.length) return null
+  const last = entries[entries.length - 1]
+  const current =
+    last.kind === 'status'
+      ? { label: statusLabel(last.text), text: last.text }
+      : last.kind === 'file'
+        ? { label: 'agent file', text: `${last.action === 'delete' ? 'rm' : 'write'} ${last.path}` }
+        : { label: 'terminal', text: last.title }
   return (
-    <div ref={ref} className="vb-scroll vb-enter flex max-h-[46dvh] flex-col gap-2 overflow-y-auto" aria-label="Aktivitas agent">
-      {entries.map((e, i) => {
-        if (e.kind === 'terminal') {
-          return <TerminalBlock key={i} title={e.title} log={e.log} ok={e.ok} />
-        }
-        if (e.kind === 'file') {
-          const cmd = e.action === 'delete' ? `rm ${e.path}` : `write ${e.path}`
-          return (
-            <div key={i} className="rounded-md border border-[#2d3237] bg-[#16181a] px-3 py-1.5 font-mono text-[11px] text-[#8b959f]">
-              <span className="text-emerald-400">$</span> <span className="text-[#c8d0d8]">{cmd}</span>
-            </div>
-          )
-        }
-        return (
-          <div key={i} className="flex items-center gap-2 text-[11.5px] text-quiet">
-            <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-accent" aria-hidden="true" />
-            <span className="font-mono text-[10.5px] text-quiet">{statusLabel(e.text)}</span>
-            <span className="min-w-0 truncate text-body/80">{e.text}</span>
-          </div>
-        )
-      })}
+    <div className="flex flex-col gap-2">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        title={open ? 'Sembunyikan langkah-langkah' : 'Lihat semua langkah'}
+        className="flex w-full items-center gap-2 rounded-md px-1 py-0.5 text-left text-[11.5px] text-quiet hover:bg-ink"
+      >
+        <span className="inline-block h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-accent" aria-hidden="true" />
+        <span className="shrink-0 font-mono text-[10.5px] text-quiet">{current.label}</span>
+        <span className="min-w-0 flex-1 truncate text-body/80">{current.text}</span>
+        <span className="shrink-0 font-mono text-[10.5px] text-quiet">
+          {entries.length} langkah · {open ? 'tutup' : 'lihat'}
+        </span>
+      </button>
+      {open && (
+        <div ref={ref} className="vb-scroll vb-enter flex max-h-[46dvh] flex-col gap-2 overflow-y-auto" aria-label="Aktivitas agent">
+          {entries.map((e, i) => {
+            if (e.kind === 'terminal') {
+              return <TerminalBlock key={i} title={e.title} log={e.log} ok={e.ok} />
+            }
+            if (e.kind === 'file') {
+              const cmd = e.action === 'delete' ? `rm ${e.path}` : `write ${e.path}`
+              return (
+                <div key={i} className="rounded-md border border-[#2d3237] bg-[#16181a] px-3 py-1.5 font-mono text-[11px] text-[#8b959f]">
+                  <span className="text-emerald-400">$</span> <span className="text-[#c8d0d8]">{cmd}</span>
+                </div>
+              )
+            }
+            return (
+              <div key={i} className="flex items-center gap-2 text-[11.5px] text-quiet">
+                <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-accent" aria-hidden="true" />
+                <span className="font-mono text-[10.5px] text-quiet">{statusLabel(e.text)}</span>
+                <span className="min-w-0 truncate text-body/80">{e.text}</span>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
