@@ -20,6 +20,7 @@ const pages = [
   { id: 'sessions', title: 'Sesi', file: 'sessions.html' },
   { id: 'health', title: 'Kesehatan Sistem', file: 'health.html' },
   { id: 'ai-settings', title: 'Pengaturan AI', file: 'ai-settings.html' },
+  { id: 'audit', title: 'Log Audit', file: 'audit.html' },
   { id: 'settings', title: 'Pengaturan', file: 'settings.html' },
 ]
 

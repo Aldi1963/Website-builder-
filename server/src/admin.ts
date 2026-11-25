@@ -1,6 +1,6 @@
 import type { Hono, Context, Next } from 'hono'
-import { statSync } from 'node:fs'
-import { join } from 'node:path'
+import { statSync, statfsSync } from 'node:fs'
+import { join, dirname } from 'node:path'
 import { db, deleteProject } from './db.ts'
 import { stopPreview, runningPreviews } from './workspace.ts'
 import { SESSION_COOKIE, readCookie, tokenHash, userByToken, type User } from './auth.ts'
@@ -86,6 +86,61 @@ function count(sql: string, ...params: unknown[]): number {
   return (db.prepare(sql).get(...(params as never[])) as { n: number }).n
 }
 
+/* ------------------------------------------------------------------ */
+/* FITUR 1 — Log audit admin                                           */
+/* Tabel audit_logs dibuat di awal registerAdmin (di bawah), bukan di  */
+/* db.ts, supaya perubahan trek ini tetap di dalam server/src/admin.ts */
+/* ------------------------------------------------------------------ */
+
+function ensureAuditLogTable() {
+  db.exec(`CREATE TABLE IF NOT EXISTS audit_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    admin_email TEXT NOT NULL DEFAULT '',
+    action TEXT NOT NULL,
+    target_type TEXT NOT NULL DEFAULT '',
+    target_id TEXT NOT NULL DEFAULT '',
+    detail TEXT NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL
+  )`)
+}
+
+/* Tulis satu baris log audit. Email admin diambil dari user yang sudah
+   diautentikasi requireAdmin. Gagal menulis log tidak boleh menggagalkan
+   aksi admin yang sedang berjalan. */
+function logAdmin(c: Context<AdminEnv>, action: string, targetType: string, targetId: string, detail: string) {
+  try {
+    const me = c.get('user') as User | undefined
+    db.prepare(
+      `INSERT INTO audit_logs (admin_email, action, target_type, target_id, detail, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run(me?.email ?? '', action, targetType, targetId, detail.slice(0, 500), now())
+  } catch {
+    /* abaikan */
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* FITUR 10 — Ambang peringatan kesehatan                              */
+/* Tersimpan di admin_settings key 'alert_thresholds' (JSON); bila     */
+/* belum ada dipakai default di bawah.                                 */
+/* ------------------------------------------------------------------ */
+
+function alertThresholds(): { buildFailCount: number; buildFailPct: number; diskPct: number } {
+  const defaults = { buildFailCount: 3, buildFailPct: 50, diskPct: 85 }
+  try {
+    const raw = adminSetting('alert_thresholds')
+    if (!raw) return defaults
+    const parsed = JSON.parse(raw) as Partial<typeof defaults>
+    return {
+      buildFailCount: Math.max(1, Math.floor(Number(parsed.buildFailCount) || defaults.buildFailCount)),
+      buildFailPct: Math.min(100, Math.max(1, Math.floor(Number(parsed.buildFailPct) || defaults.buildFailPct))),
+      diskPct: Math.min(99, Math.max(50, Math.floor(Number(parsed.diskPct) || defaults.diskPct))),
+    }
+  } catch {
+    return defaults
+  }
+}
+
 /* Plan bawaan pertama kali — hanya dibuat bila tabel plans masih kosong. */
 function ensureDefaultPlan() {
   if (count(`SELECT count(*) AS n FROM plans`) === 0) {
@@ -126,6 +181,7 @@ function aiSettingsView() {
 
 export function registerAdmin(app: Hono<AdminEnv>) {
   ensureDefaultPlan()
+  ensureAuditLogTable()
   app.use('/api/admin/*', requireAdmin)
 
   app.get('/api/admin/overview', (c) => {
@@ -254,6 +310,7 @@ export function registerAdmin(app: Hono<AdminEnv>) {
     if (typeof body.disabled !== 'boolean') return c.json({ error: 'Field disabled wajib boolean.' }, 400)
     db.prepare(`UPDATE users SET disabled = ? WHERE id = ?`).run(body.disabled ? 1 : 0, id)
     if (body.disabled) db.prepare(`DELETE FROM sessions WHERE user_id = ?`).run(id)
+    logAdmin(c, body.disabled ? 'user.disable' : 'user.enable', 'user', id, `${target.email} → ${body.disabled ? 'nonaktif' : 'aktif'}`)
     return c.json({ ok: true, id, disabled: body.disabled })
   })
 
@@ -276,6 +333,7 @@ export function registerAdmin(app: Hono<AdminEnv>) {
     }
     db.prepare(`DELETE FROM sessions WHERE user_id = ?`).run(id)
     db.prepare(`DELETE FROM users WHERE id = ?`).run(id)
+    logAdmin(c, 'user.delete', 'user', id, `${target.email} (${owned.length} proyek ikut terhapus)`)
     return c.json({ ok: true, deletedProjects: owned.length })
   })
 
@@ -295,7 +353,9 @@ export function registerAdmin(app: Hono<AdminEnv>) {
 
   app.delete('/api/admin/projects/:id', (c) => {
     const id = c.req.param('id')
-    const row = db.prepare(`SELECT id FROM projects WHERE id = ?`).get(id)
+    const row = db.prepare(`SELECT id, name FROM projects WHERE id = ?`).get(id) as
+      | { id: string; name: string }
+      | undefined
     if (!row) return c.json({ error: 'Proyek tidak ditemukan.' }, 404)
     try {
       stopPreview(id)
@@ -303,6 +363,7 @@ export function registerAdmin(app: Hono<AdminEnv>) {
       /* preview tidak jalan, lanjut hapus */
     }
     deleteProject(id)
+    logAdmin(c, 'project.delete', 'project', id, row.name)
     return c.json({ ok: true })
   })
 
@@ -496,6 +557,17 @@ export function registerAdmin(app: Hono<AdminEnv>) {
       const err = setOrClear(key, v, validate)
       if (err) return c.json({ error: err }, 400)
     }
+    /* Log audit: hanya nama field yang diubah, TIDAK PERNAH nilai key. */
+    const changed = [
+      ['llm.model', body.model],
+      ['llm.model_strong', body.modelStrong],
+      ['llm.model_audit', body.modelAudit],
+      ['llm.url', body.endpoint],
+      ['llm.key', body.key],
+    ]
+      .filter(([, v]) => v !== undefined)
+      .map(([k]) => k)
+    logAdmin(c, 'ai_settings.update', 'ai_settings', 'llm', changed.length ? `diubah: ${changed.join(', ')}` : 'disimpan (tanpa perubahan)')
     return c.json({ ok: true, ...aiSettingsView() })
   })
 
@@ -544,12 +616,15 @@ export function registerAdmin(app: Hono<AdminEnv>) {
       `INSERT INTO plans (id, name, token_limit, price_idr, description, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
     ).run(id, name, tokenLimit, priceIdr, description, now(), now())
+    logAdmin(c, 'plan.create', 'plan', id, `${name} (Rp ${priceIdr})`)
     return c.json({ ok: true, id })
   })
 
   app.patch('/api/admin/plans/:id', async (c) => {
     const id = c.req.param('id')
-    const row = db.prepare(`SELECT id FROM plans WHERE id = ?`).get(id)
+    const row = db.prepare(`SELECT id, name FROM plans WHERE id = ?`).get(id) as
+      | { id: string; name: string }
+      | undefined
     if (!row) return c.json({ error: 'Plan tidak ditemukan.' }, 404)
     const body = (await c.req.json().catch(() => ({}))) as {
       name?: string
@@ -581,15 +656,19 @@ export function registerAdmin(app: Hono<AdminEnv>) {
     sets.push('updated_at = ?')
     params.push(now())
     db.prepare(`UPDATE plans SET ${sets.join(', ')} WHERE id = ?`).run(...(params as never[]), id)
+    logAdmin(c, 'plan.update', 'plan', id, row.name)
     return c.json({ ok: true })
   })
 
   app.delete('/api/admin/plans/:id', (c) => {
     const id = c.req.param('id')
-    const row = db.prepare(`SELECT id FROM plans WHERE id = ?`).get(id)
+    const row = db.prepare(`SELECT id, name FROM plans WHERE id = ?`).get(id) as
+      | { id: string; name: string }
+      | undefined
     if (!row) return c.json({ error: 'Plan tidak ditemukan.' }, 404)
     db.prepare(`DELETE FROM user_plans WHERE plan_id = ?`).run(id)
     db.prepare(`DELETE FROM plans WHERE id = ?`).run(id)
+    logAdmin(c, 'plan.delete', 'plan', id, row.name)
     return c.json({ ok: true })
   })
 
@@ -609,6 +688,7 @@ export function registerAdmin(app: Hono<AdminEnv>) {
     } else {
       db.prepare(`DELETE FROM user_plans WHERE user_id = ?`).run(id)
     }
+    logAdmin(c, 'user.assign_plan', 'user', id, planId ? `plan ${planId}` : 'tanpa plan')
     return c.json({ ok: true, planId })
   })
 
@@ -669,8 +749,110 @@ export function registerAdmin(app: Hono<AdminEnv>) {
     if (myToken && tokenHash(myToken) === row.token_hash) {
       return c.json({ error: 'Sesi sendiri tidak boleh dicabut dari sini (pakai Logout).' }, 400)
     }
+    const owner = db.prepare(
+      `SELECT u.email FROM sessions s LEFT JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?`,
+    ).get(row.token_hash) as { email: string | null } | undefined
     db.prepare(`DELETE FROM sessions WHERE token_hash = ?`).run(row.token_hash)
+    logAdmin(c, 'session.revoke', 'session', hash, owner?.email ?? hash)
     return c.json({ ok: true })
+  })
+
+  /* ---------------------------------------------------------------- */
+  /* FITUR 1 — Log audit admin (baca)                                  */
+  /* FITUR 10 — Peringatan kesehatan (hitung live dari data nyata)     */
+  /* ---------------------------------------------------------------- */
+
+  app.get('/api/admin/audit', (c) => {
+    const limit = Math.min(200, Math.max(1, Number(c.req.query('limit') ?? 100) || 100))
+    const q = (c.req.query('q') ?? '').trim()
+    const action = (c.req.query('action') ?? '').trim()
+    const where: string[] = []
+    const params: unknown[] = []
+    if (q) {
+      where.push(`(admin_email LIKE ? OR action LIKE ? OR target_id LIKE ? OR detail LIKE ?)`)
+      params.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`)
+    }
+    if (action) {
+      where.push(`action = ?`)
+      params.push(action)
+    }
+    const rows = db
+      .prepare(
+        `SELECT id, admin_email, action, target_type, target_id, detail, created_at FROM audit_logs
+         ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+         ORDER BY id DESC LIMIT ?`,
+      )
+      .all(...(params as never[]), limit)
+    return c.json({ logs: rows })
+  })
+
+  app.get('/api/admin/alerts', async (c) => {
+    const t = now()
+    const thresholds = alertThresholds()
+    const alerts: { level: 'warning' | 'critical'; kind: string; message: string; at: number }[] = []
+
+    /* (a) LLM — bila key belum dikonfigurasi, laporkan "tidak
+       dikonfigurasi", BUKAN "mati". Baru bila key ada tapi endpoint tidak
+       menjawab, laporkan LLM tidak terjangkau. */
+    if (!effectiveKeyConfigured()) {
+      alerts.push({
+        level: 'warning',
+        kind: 'llm_not_configured',
+        message: 'LLM belum dikonfigurasi: API key belum dipasang di Pengaturan AI.',
+        at: t,
+      })
+    } else {
+      try {
+        await fetch(effectiveEndpoint(), { method: 'GET', signal: AbortSignal.timeout(3000) })
+      } catch (err) {
+        alerts.push({
+          level: 'critical',
+          kind: 'llm_down',
+          message: `LLM tidak terjangkau: ${(err as Error).message.slice(0, 120)}`,
+          at: t,
+        })
+      }
+    }
+
+    /* (b) Error build melonjak dalam 1 jam terakhir vs ambang admin. */
+    const buildRow = db.prepare(
+      `SELECT count(*) AS total, coalesce(sum(CASE WHEN ok = 0 THEN 1 ELSE 0 END), 0) AS failed
+       FROM builds WHERE created_at >= ?`,
+    ).get(t - 3600_000) as { total: number; failed: number }
+    if (buildRow.total > 0) {
+      const pct = Math.round((buildRow.failed / buildRow.total) * 100)
+      if (buildRow.failed >= thresholds.buildFailCount || pct > thresholds.buildFailPct) {
+        alerts.push({
+          level: pct >= 80 ? 'critical' : 'warning',
+          kind: 'build_fail_spike',
+          message: `Build gagal melonjak: ${buildRow.failed} dari ${buildRow.total} build gagal dalam 1 jam terakhir (${pct}%).`,
+          at: t,
+        })
+      }
+    }
+
+    /* (c) Disk hampir penuh (statfs pada direktori data). */
+    try {
+      const dbPath = process.env.VB_DB ?? join(ROOT, 'data', 'vibebuilder.db')
+      const fs = statfsSync(dirname(dbPath))
+      const total = fs.bsize * fs.blocks
+      const avail = fs.bsize * fs.bavail
+      if (total > 0) {
+        const usedPct = Math.round(((total - avail) / total) * 100)
+        if (usedPct > thresholds.diskPct) {
+          alerts.push({
+            level: usedPct >= 95 ? 'critical' : 'warning',
+            kind: 'disk_full',
+            message: `Disk hampir penuh: ${usedPct}% terpakai (ambang ${thresholds.diskPct}%).`,
+            at: t,
+          })
+        }
+      }
+    } catch {
+      /* statfs tidak tersedia — lewati cek disk */
+    }
+
+    return c.json({ alerts, thresholds })
   })
 
   /* ---------------------------------------------------------------- */
@@ -692,6 +874,7 @@ export function registerAdmin(app: Hono<AdminEnv>) {
     sessions: 'sessions.html',
     health: 'health.html',
     'ai-settings': 'ai-settings.html',
+    audit: 'audit.html',
     settings: 'settings.html',
   }
   const ADMIN_ASSET_TYPES: Record<string, string> = {

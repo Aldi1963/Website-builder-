@@ -230,6 +230,7 @@
     { title: 'Pesan', url: '/admin/messages', type: 'halaman' },
     { title: 'Sesi', url: '/admin/sessions', type: 'halaman' },
     { title: 'Kesehatan Sistem', url: '/admin/health', type: 'halaman' },
+    { title: 'Log Audit', url: '/admin/audit', type: 'halaman' },
     { title: 'Pengaturan AI', url: '/admin/ai-settings', type: 'halaman' },
     { title: 'Pengaturan', url: '/admin/settings', type: 'halaman' },
   ]
@@ -284,6 +285,7 @@
     else if (name === 'messages') await loadMessages()
     else if (name === 'sessions') await loadSessions()
     else if (name === 'health') await loadHealth()
+    else if (name === 'audit') await loadAudit()
     else if (name === 'ai-settings') await loadAiSettings()
     else if (name === 'settings') await loadSettings()
   }
@@ -295,16 +297,30 @@
     if (p) p.textContent = fmtNum(ov.projects.total)
   }
 
-  function fillNotifications(ov) {
+  /* Peringatan kesehatan aktif (FITUR 10) tampil di atas daftar aktivitas;
+     badge lonceng menghitung peringatan + aktivitas. Gagal memuat alert
+     tidak boleh menghilangkan notifikasi aktivitas. */
+  async function fillNotifications(ov) {
     const menu = $('#notifications-menu')
     const badge = $('#notif-badge')
     if (!menu) return
     const items = (ov.recent || []).slice(0, 5)
+    let alerts = []
+    try {
+      const data = await api('/api/admin/alerts')
+      alerts = data.alerts || []
+    } catch { /* abaikan — aktivitas tetap tampil */ }
+    const total = alerts.length + items.length
     if (badge) {
-      badge.textContent = String(items.length)
-      badge.classList.toggle('d-none', items.length === 0)
+      badge.textContent = String(total)
+      badge.classList.toggle('d-none', total === 0)
     }
-    menu.innerHTML = '<li><h6 class="dropdown-header">Notifikasi</h6></li>' +
+    const alertHtml = alerts.length
+      ? '<li><h6 class="dropdown-header text-warning"><i class="bi bi-exclamation-triangle me-1"></i>Peringatan</h6></li>' +
+        alerts.map((a) => `<li><a class="dropdown-item" href="/admin/health"><i class="bi bi-exclamation-triangle me-2 ${a.level === 'critical' ? 'text-danger' : 'text-warning'}"></i>${esc(a.message)}<br><small class="text-muted">${esc(timeAgo(a.at))}</small></a></li>`).join('') +
+        '<li><hr class="dropdown-divider"></li>'
+      : ''
+    menu.innerHTML = '<li><h6 class="dropdown-header">Notifikasi</h6></li>' + alertHtml +
       (items.length
         ? items.map((r) => {
             const icon = r.kind === 'user' ? 'bi-person-plus' : r.kind === 'project' ? 'bi-box' : 'bi-hammer'
@@ -668,6 +684,49 @@
   const msgSearch = $('#messages-search')
   if (msgSearch) msgSearch.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); runMessagesSearch() } })
 
+  /* ---------- log audit (FITUR 1) ---------- */
+  let auditQuery = ''
+  let auditAction = ''
+  let auditActionsCache = []
+  async function loadAudit() {
+    const params = new URLSearchParams({ limit: '100' })
+    if (auditQuery) params.set('q', auditQuery)
+    if (auditAction) params.set('action', auditAction)
+    const data = await api(`/api/admin/audit?${params.toString()}`)
+    const logs = data.logs || []
+    $('#audit-subtitle').textContent = `${fmtNum(logs.length)} entri log`
+    /* Daftar aksi di-cache dari muatan tanpa filter, supaya dropdown tidak
+       menyusut jadi satu opsi saat sedang memfilter per aksi. */
+    const actions = [...new Set(logs.map((l) => l.action))].sort()
+    if (!auditAction && actions.length) auditActionsCache = actions
+    const options = auditActionsCache.length ? auditActionsCache : actions
+    const filter = $('#audit-action-filter')
+    if (filter) {
+      filter.innerHTML = '<option value="">Semua aksi</option>' + options.map((a) => `<option value="${esc(a)}"${a === auditAction ? ' selected' : ''}>${esc(a)}</option>`).join('')
+    }
+    $('#audit-body').innerHTML = logs.length
+      ? logs.map((l) => `<tr>
+          <td class="text-nowrap">${esc(fmtDate(l.created_at))}</td>
+          <td>${esc(l.admin_email || '–')}</td>
+          <td><span class="badge bg-secondary">${esc(l.action)}</span></td>
+          <td>${esc(l.target_type)}${l.target_id ? `<br><small class="text-muted font-monospace">${esc(l.target_id)}</small>` : ''}</td>
+          <td class="text-break" style="min-width: 220px">${esc(l.detail || '–')}</td>
+        </tr>`).join('')
+      : '<tr><td colspan="5" class="text-muted">Tidak ada log yang cocok.</td></tr>'
+  }
+
+  function runAuditSearch() {
+    auditQuery = $('#audit-search').value.trim()
+    auditAction = $('#audit-action-filter').value
+    loadAudit()
+  }
+  const auditSearchBtn = $('#audit-search-btn')
+  if (auditSearchBtn) auditSearchBtn.addEventListener('click', runAuditSearch)
+  const auditSearch = $('#audit-search')
+  if (auditSearch) auditSearch.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); runAuditSearch() } })
+  const auditFilter = $('#audit-action-filter')
+  if (auditFilter) auditFilter.addEventListener('change', runAuditSearch)
+
   /* ---------- sesi ---------- */
   async function loadSessions() {
     const data = await api('/api/admin/sessions')
@@ -723,6 +782,21 @@
     $('#previews-body').innerHTML = entries.length
       ? `<div class="table-responsive"><table class="table table-hover mb-0"><thead class="table-light"><tr><th>Proyek</th><th>Port</th></tr></thead><tbody>${entries.map(([id, port]) => `<tr><td class="font-monospace">${esc(id)}</td><td>${esc(port)}</td></tr>`).join('')}</tbody></table></div>`
       : '<p class="text-muted mb-0">Tidak ada preview yang berjalan saat ini.</p>'
+
+    /* Ambang peringatan (FITUR 10): tampil sebagai teks di halaman ini. */
+    try {
+      const alertsData = await api('/api/admin/alerts')
+      const th = alertsData.thresholds || {}
+      const box = $('#alert-thresholds-body')
+      if (box) {
+        const active = alertsData.alerts || []
+        box.innerHTML = `<dl class="row mb-0">
+          <dt class="col-sm-6">Build gagal (1 jam)</dt><dd class="col-sm-6">${esc(th.buildFailCount ?? 3)} gagal atau &gt;${esc(th.buildFailPct ?? 50)}% gagal</dd>
+          <dt class="col-sm-6">Disk penuh</dt><dd class="col-sm-6">&gt;${esc(th.diskPct ?? 85)}% terpakai</dd>
+          <dt class="col-sm-6">Peringatan aktif</dt><dd class="col-sm-6">${active.length ? active.map((a) => `<span class="badge ${a.level === 'critical' ? 'bg-danger' : 'bg-warning text-dark'} me-1">${esc(a.kind)}</span>`).join('') : '<span class="badge bg-success">Tidak ada</span>'}</dd>
+        </dl><p class="text-muted small mb-0 mt-2">Ambang tersimpan di pengaturan admin (key alert_thresholds).</p>`
+      }
+    } catch { /* ambang gagal dimuat — kartu kesehatan lain tetap tampil */ }
 
     const badge = $('#nav-health-badge')
     if (badge) {
