@@ -45,6 +45,7 @@ import {
   writeProjectFile,
 } from './workspace.ts'
 import { captureScreenshot, listScreenshots, readScreenshot } from './screenshots.ts'
+import { dropProjectDb } from './managed-db.ts'
 import {
   SESSION_COOKIE,
   sessionCookie,
@@ -340,10 +341,11 @@ app.patch('/api/projects/:id', async (c) => {
   return c.json({ project: getProject(r.project.id) })
 })
 
-app.delete('/api/projects/:id', (c) => {
+app.delete('/api/projects/:id', async (c) => {
   const r = owned(c)
   if ('error' in r) return c.json({ error: r.error }, r.status)
   stopPreview(r.project.id)
+  try { await dropProjectDb(r.project.id) } catch { /* DB terkelola opsional */ }
   deleteProject(r.project.id)
   return c.json({ ok: true })
 })

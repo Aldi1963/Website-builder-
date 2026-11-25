@@ -192,6 +192,13 @@ export async function dropProjectDb(projectId: string): Promise<{ ok: boolean; e
     }
     poolCache.get(projectId)?.pool.end().catch(() => {})
     poolCache.delete(projectId)
+    // hapus catatan kredensial proyek di platform DB.
+    try {
+      const { db } = await import('./db.ts')
+      db.prepare(`DELETE FROM project_databases WHERE project_id = ?`).run(projectId)
+    } catch {
+      /* tabel platform belum ada, abaikan */
+    }
     return { ok: true }
   } catch (err) {
     return { ok: false, error: (err as Error).message }

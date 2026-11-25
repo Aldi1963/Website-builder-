@@ -8,6 +8,7 @@ import { Readable } from 'node:stream'
 import { randomBytes } from 'node:crypto'
 import { db, deleteProject } from './db.ts'
 import { stopPreview, runningPreviews } from './workspace.ts'
+import { dropProjectDb } from './managed-db.ts'
 import { SESSION_COOKIE, readCookie, tokenHash, userByToken, type User } from './auth.ts'
 import {
   llmUsage,
@@ -406,7 +407,7 @@ export function registerAdmin(app: Hono<AdminEnv>) {
     return c.json({ ok: true, id, disabled: body.disabled })
   })
 
-  app.delete('/api/admin/users/:id', (c) => {
+  app.delete('/api/admin/users/:id', async (c) => {
     const me = c.get('user')
     const id = c.req.param('id')
     const target = db.prepare(`SELECT id, email FROM users WHERE id = ?`).get(id) as
@@ -421,6 +422,7 @@ export function registerAdmin(app: Hono<AdminEnv>) {
       } catch {
         /* preview tidak jalan, lanjut hapus */
       }
+      try { await dropProjectDb(p.id) } catch { /* DB terkelola opsional */ }
       deleteProject(p.id)
     }
     db.prepare(`DELETE FROM sessions WHERE user_id = ?`).run(id)
@@ -443,7 +445,7 @@ export function registerAdmin(app: Hono<AdminEnv>) {
     return c.json({ projects: rows })
   })
 
-  app.delete('/api/admin/projects/:id', (c) => {
+  app.delete('/api/admin/projects/:id', async (c) => {
     const id = c.req.param('id')
     const row = db.prepare(`SELECT id, name FROM projects WHERE id = ?`).get(id) as
       | { id: string; name: string }
@@ -454,6 +456,7 @@ export function registerAdmin(app: Hono<AdminEnv>) {
     } catch {
       /* preview tidak jalan, lanjut hapus */
     }
+    try { await dropProjectDb(id) } catch { /* DB terkelola opsional */ }
     deleteProject(id)
     logAdmin(c, 'project.delete', 'project', id, row.name)
     return c.json({ ok: true })
