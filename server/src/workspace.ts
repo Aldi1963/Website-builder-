@@ -95,7 +95,10 @@ export async function buildProject(projectId: string) {
 /**
  * TanStack Start hashes src/styles.css separately for the client and SSR graphs,
  * so the SSR chunk can reference /assets/styles-<hash>.css that the client build
- * never emitted. Map every dangling /assets/* reference onto the closest real file.
+ * never emitted. Map dangling CSS references onto the closest real client file.
+ * JS chunk references must be left alone: the SSR graph emits its own chunks into
+ * dist/server/assets, and rewriting those imports to client chunks breaks the
+ * server bundle (client chunk never exists under dist/server/assets).
  */
 function reconcileAssets(dir: string) {
   const clientAssets = join(dir, 'dist', 'client', 'assets')
@@ -111,13 +114,12 @@ function reconcileAssets(dir: string) {
   for (const file of walk(serverDir)) {
     let src = readFileSync(file, 'utf8')
     let changed = false
-    for (const m of new Set(src.match(/\/assets\/[A-Za-z0-9._-]+/g) ?? [])) {
+    for (const m of new Set(src.match(/\/assets\/[A-Za-z0-9._-]+\.css/g) ?? [])) {
       const name = m.slice('/assets/'.length)
       if (real.includes(name)) continue
-      const ext = name.slice(name.lastIndexOf('.'))
       const base = name.slice(0, name.lastIndexOf('.'))
       const prefix = base.split('-')[0]
-      const candidates = real.filter((f) => f.startsWith(`${prefix}-`) && f.endsWith(ext))
+      const candidates = real.filter((f) => f.startsWith(`${prefix}-`) && f.endsWith('.css'))
       if (candidates.length !== 1) continue
       src = src.split(m).join(`/assets/${candidates[0]}`)
       changed = true
