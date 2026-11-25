@@ -1973,11 +1973,39 @@ export function registerAdmin(app: Hono<AdminEnv>) {
   }
 
   const ADMIN_HTML = 'text/html; charset=utf-8'
+  /* Panel lama (Metis) dipertahankan sebagai fallback di /admin-legacy/*.
+     Panel baru (React SPA) disajikan di /admin/*. */
   for (const [slug, file] of Object.entries(ADMIN_PAGES)) {
-    const path = slug === '' ? '/admin' : `/admin/${slug}`
+    const path = slug === '' ? '/admin-legacy' : `/admin-legacy/${slug}`
     app.get(path, (c) => serveAdminFile(c, `pages/${file}`, ADMIN_HTML))
   }
+  app.get('/admin-legacy/', (c) => c.redirect('/admin-legacy', 302))
   app.get('/admin/', (c) => c.redirect('/admin', 302))
+  /* SPA admin baru (React, admin-react/dist): index.html untuk /admin dan
+     tiap /admin/<slug>; aset JS/CSS di /admin-app/*. */
+  const REACT_DIR = new URL('../../admin-react/dist/', import.meta.url).pathname
+  const serveReactFile = async (c: Context, rel: string, contentType: string) => {
+    const fs = await import('node:fs/promises')
+    const body = await fs.readFile(`${REACT_DIR}${rel}`).catch(() => null)
+    if (body === null) return c.text('File admin tidak ditemukan.', 404)
+    c.header('Cache-Control', 'no-store')
+    c.header('Content-Type', contentType)
+    return c.body(body)
+  }
+  app.get('/admin', (c) => serveReactFile(c, 'index.html', ADMIN_HTML))
+  for (const slug of Object.keys(ADMIN_PAGES)) {
+    if (slug === '') continue
+    app.get(`/admin/${slug}`, (c) => serveReactFile(c, 'index.html', ADMIN_HTML))
+  }
+  app.get('/admin-app/*', (c) => {
+    const rest = decodeURIComponent(c.req.path).replace(/^\/admin-app\//, '')
+    if (!rest || rest.includes('..') || rest.startsWith('/')) return c.text('Tidak ditemukan.', 404)
+    const dot = rest.lastIndexOf('.')
+    const ext = dot >= 0 ? rest.slice(dot) : ''
+    const type = ADMIN_ASSET_TYPES[ext]
+    if (!type) return c.text('Tidak ditemukan.', 404)
+    return serveReactFile(c, rest, type)
+  })
   app.get('/admin/assets/admin.js', (c) => serveAdminFile(c, 'admin.js', 'text/javascript; charset=utf-8'))
   app.get('/admin/assets/admin-icons.css', (c) => serveAdminFile(c, 'admin-icons.css', 'text/css; charset=utf-8'))
   app.get('/admin/assets/*', (c) => {
