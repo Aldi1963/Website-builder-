@@ -6,6 +6,7 @@ import { AuthGate, UserBar } from './auth'
 import { matchPath, navigate, usePath } from './router'
 import { ChatPanel, CodePane, PreviewPane, SettingsSheet, type ChatAudit, type ChatPlan, type InlineEvent } from './panels'
 import { useActivity } from './activity'
+import { MODEL_AUTO, getPickerModels, isSelectionAvailable, modelIdForServer } from './models'
 /* Fase 3 (UI credit): chip saldo + halaman Penggunaan. File ini milik Hermes
    (kotor, belum commit) — perubahan di bawah ini MINIMAL + aditif dan TIDAK
    di-commit oleh trek ini; komponennya sendiri ada di billing-ui.tsx. */
@@ -13,9 +14,11 @@ import { CreditChip, UsagePage, notifyBalanceChanged } from './billing-ui'
 
 /* Right-side session menu (Emergent-style): a single 3-dot button in the chat
    header that opens a small dropdown with the actions that used to clutter the
-   header row. */
+   header row. Setelan sengaja TIDAK ada di sini — buka lewat tombol setelan
+   di kolom input chat (onOpenSettings di composer). */
 function SessionMenu({
-  onOpenSettings,
+  onShowFiles,
+  onShowDatabase,
   onRun,
   runLabel,
   running,
@@ -29,7 +32,8 @@ function SessionMenu({
   published,
   onUnpublish,
 }: {
-  onOpenSettings: () => void
+  onShowFiles: () => void
+  onShowDatabase: () => void
   onRun: () => void
   runLabel: string
   running: boolean
@@ -92,8 +96,11 @@ function SessionMenu({
               </p>
             </div>
           )}
-          <button className={item} onClick={() => { setOpen(false); onOpenSettings() }} role="menuitem">
-            <Icon name="rule" size={13} /> Setelan &amp; model
+          <button className={item} onClick={() => { setOpen(false); onShowFiles() }} role="menuitem">
+            <Icon name="file" size={13} /> Lihat file
+          </button>
+          <button className={item} onClick={() => { setOpen(false); onShowDatabase() }} role="menuitem">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3" stroke="currentColor" strokeWidth="1.7" /><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" stroke="currentColor" strokeWidth="1.7" /></svg> Lihat database
           </button>
           <button className={item} onClick={() => { setOpen(false); onRun() }} disabled={running} role="menuitem">
             <Icon name="run" size={13} /> {running ? 'Sedang build…' : runLabel}
@@ -115,6 +122,434 @@ function SessionMenu({
           </button>
         </div>
       )}
+    </div>
+  )
+}
+
+/* ---------- Penampil database aplikasi hasil generate ----------
+   Client-side saja, tanpa endpoint baru: isi dibaca dari file proyek yang
+   sudah ada di workspace (biasanya src/lib/db.server.ts) lewat
+   GET /api/projects/:id/file yang sudah ada. Parser ini TIDAK memakai eval:
+   CREATE TABLE diambil untuk skema, array seed (const ... = [{...}]) diambil
+   untuk baris, lalu dipasangkan lewat INSERT INTO + loop .run(...) bila ada.
+   Tabel tanpa seed yang terbaca menampilkan skemanya + catatan jujur — isi
+   TIDAK pernah dikarang. Catatan in-memory juga ditampilkan di penampil:
+   data yang masuk lewat preview (mis. saran fitur) hilang saat restart. */
+
+type DbTableView = {
+  name: string
+  columns: string[]
+  rows: Record<string, string | number>[]
+  note?: string
+}
+
+/* Pindai kurung berimbang dari posisi buka; hormati string ' " `. */
+function scanBalanced(src: string, openIdx: number, openCh: string, closeCh: string): number {
+  let depth = 0
+  let quote: string | null = null
+  let escaped = false
+  for (let i = openIdx; i < src.length; i++) {
+    const ch = src[i]
+    if (quote) {
+      if (escaped) { escaped = false; continue }
+      if (ch === '\\') { escaped = true; continue }
+      if (ch === quote) quote = null
+      continue
+    }
+    if (ch === "'" || ch === '"' || ch === '`') { quote = ch; continue }
+    if (ch === openCh) depth++
+    else if (ch === closeCh) {
+      depth--
+      if (depth === 0) return i
+    }
+  }
+  return -1
+}
+
+function splitTopLevel(s: string, sep: string): string[] {
+  const parts: string[] = []
+  let depth = 0
+  let quote: string | null = null
+  let cur = ''
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i]
+    if (quote) {
+      cur += ch
+      if (ch === quote) quote = null
+      continue
+    }
+    if (ch === "'" || ch === '"' || ch === '`') { quote = ch; cur += ch; continue }
+    if (ch === '(' || ch === '[' || ch === '{') depth++
+    if (ch === ')' || ch === ']' || ch === '}') depth--
+    if (ch === sep && depth === 0) { parts.push(cur); cur = ''; continue }
+    cur += ch
+  }
+  if (cur) parts.push(cur)
+  return parts
+}
+
+type JsValue = string | number | boolean | null | JsValue[] | { [k: string]: JsValue }
+
+/* Parser nilai literal JS secukupnya (string, angka, boolean, null, array,
+   object) — cukup untuk array seed; template literal ${...} ditolak. */
+function parseJsValue(src: string, i: number): { value: JsValue; next: number } | null {
+  while (i < src.length && /\s/.test(src[i])) i++
+  if (i >= src.length) return null
+  const ch = src[i]
+  if (ch === "'" || ch === '"' || ch === '`') {
+    let out = ''
+    i++
+    while (i < src.length) {
+      const c = src[i]
+      if (ch === '`' && c === '$' && src[i + 1] === '{') return null
+      if (c === '\\' && i + 1 < src.length) {
+        const n = src[i + 1]
+        out += n === 'n' ? '\n' : n === 't' ? '\t' : n === 'r' ? '\r' : n
+        i += 2
+        continue
+      }
+      if (c === ch) return { value: out, next: i + 1 }
+      out += c
+      i++
+    }
+    return null
+  }
+  if (ch === '[') {
+    const arr: JsValue[] = []
+    i++
+    for (;;) {
+      while (i < src.length && /\s/.test(src[i])) i++
+      if (src[i] === ']') return { value: arr, next: i + 1 }
+      const v = parseJsValue(src, i)
+      if (!v) return null
+      arr.push(v.value)
+      i = v.next
+      while (i < src.length && /\s/.test(src[i])) i++
+      if (src[i] === ',') { i++; continue }
+      if (src[i] === ']') return { value: arr, next: i + 1 }
+      return null
+    }
+  }
+  if (ch === '{') {
+    const obj: Record<string, JsValue> = {}
+    i++
+    for (;;) {
+      while (i < src.length && /\s/.test(src[i])) i++
+      if (src[i] === '}') return { value: obj, next: i + 1 }
+      let key = ''
+      if (src[i] === "'" || src[i] === '"') {
+        const k = parseJsValue(src, i)
+        if (!k || typeof k.value !== 'string') return null
+        key = k.value
+        i = k.next
+      } else {
+        const m = /^[A-Za-z_$][\w$]*/.exec(src.slice(i))
+        if (!m) return null
+        key = m[0]
+        i += m[0].length
+      }
+      while (i < src.length && /\s/.test(src[i])) i++
+      if (src[i] !== ':') return null
+      i++
+      const v = parseJsValue(src, i)
+      if (!v) return null
+      obj[key] = v.value
+      i = v.next
+      while (i < src.length && /\s/.test(src[i])) i++
+      if (src[i] === ',') { i++; continue }
+      if (src[i] === '}') return { value: obj, next: i + 1 }
+      return null
+    }
+  }
+  const m = /^(true|false|null|-?\d+(?:\.\d+)?)/.exec(src.slice(i))
+  if (m) {
+    const t = m[1]
+    return { value: t === 'true' ? true : t === 'false' ? false : t === 'null' ? null : Number(t), next: i + t.length }
+  }
+  return null
+}
+
+function extractTables(src: string): { name: string; columns: string[] }[] {
+  const tables: { name: string; columns: string[] }[] = []
+  const re = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?["'`]?([\w$]+)["'`]?\s*\(/gi
+  let m: RegExpExecArray | null
+  while ((m = re.exec(src)) !== null) {
+    const openIdx = src.indexOf('(', m.index)
+    const closeIdx = scanBalanced(src, openIdx, '(', ')')
+    if (closeIdx < 0) continue
+    const inner = src.slice(openIdx + 1, closeIdx)
+    const columns = splitTopLevel(inner, ',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((seg) => {
+        const km = /^["'`]?([\w$]+)["'`]?/.exec(seg)
+        return km ? km[1] : ''
+      })
+      .filter((name) => name && !/^(PRIMARY|FOREIGN|UNIQUE|CHECK|CONSTRAINT|KEY)$/i.test(name))
+    tables.push({ name: m[1], columns })
+  }
+  return tables
+}
+
+function extractSeedArrays(src: string): { varName: string; items: Record<string, JsValue>[] }[] {
+  const out: { varName: string; items: Record<string, JsValue>[] }[] = []
+  const re = /const\s+([\w$]+)(?::\s*[^=]+?)?=\s*\[/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(src)) !== null) {
+    /* Kurung buka array = '[' terakhir dari match (bukan '[' pertama sesudah
+       'const' — anotasi tipe seperti Recipe[] juga mengandung '['). */
+    const bracketIdx = m.index + m[0].lastIndexOf('[')
+    const closeIdx = scanBalanced(src, bracketIdx, '[', ']')
+    if (closeIdx < 0) continue
+    const body = src.slice(bracketIdx + 1, closeIdx)
+    const items: Record<string, JsValue>[] = []
+    let ok = true
+    let j = 0
+    while (j < body.length) {
+      const o = body.indexOf('{', j)
+      if (o < 0) break
+      const c = scanBalanced(body, o, '{', '}')
+      if (c < 0) { ok = false; break }
+      const v = parseJsValue(body, o)
+      if (!v || typeof v.value !== 'object' || v.value === null || Array.isArray(v.value)) { ok = false; break }
+      items.push(v.value as Record<string, JsValue>)
+      j = c + 1
+    }
+    if (ok && items.length) out.push({ varName: m[1], items })
+  }
+  return out
+}
+
+const toSnake = (s: string) => s.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase()
+const normName = (s: string) => s.toLowerCase().replace(/_/g, '')
+
+function parseAppDatabase(source: string): DbTableView[] {
+  const tables = extractTables(source)
+  if (!tables.length) return []
+  const seeds = extractSeedArrays(source)
+
+  /* INSERT INTO <tabel> [(kolom...)] VALUES ... + loop for..of <array>
+     <stmt>.run(<item>.f1, JSON.stringify(<item>.f2), ...) — posisi argumen
+     = posisi kolom. */
+  const inserts: { table: string; columns: string[] | null; varName: string }[] = []
+  const insRe = /const\s+([\w$]+)\s*=\s*[\w$.]+\.prepare\(\s*['"]INSERT\s+INTO\s+["'`]?([\w$]+)["'`]?\s*(?:\(([^)]*)\))?\s*VALUES/gi
+  let im: RegExpExecArray | null
+  while ((im = insRe.exec(source)) !== null) {
+    inserts.push({
+      varName: im[1],
+      table: im[2],
+      columns: im[3] ? im[3].split(',').map((c) => c.trim().replace(/["'`]/g, '')).filter(Boolean) : null,
+    })
+  }
+  const runs: { arrayVar: string; stmtVar: string; fields: string[] }[] = []
+  const runRe = /for\s*\(\s*const\s+([\w$]+)\s+of\s+([\w$]+)\s*\)\s*([\w$]+)\.run\(/g
+  let rm: RegExpExecArray | null
+  while ((rm = runRe.exec(source)) !== null) {
+    const openIdx = source.indexOf('(', rm.index + rm[0].length - 1)
+    const closeIdx = scanBalanced(source, openIdx, '(', ')')
+    if (closeIdx < 0) continue
+    const args = splitTopLevel(source.slice(openIdx + 1, closeIdx), ',')
+      .map((a) => {
+        /* Ambil pasangan kata.field TERAKHIR: 'recipe.id' -> 'id', tapi
+           'JSON.stringify(recipe.ingredients)' -> 'ingredients' (bukan
+           'stringify'). */
+        const all = [...a.trim().matchAll(/[\w$]+\.([\w$]+)/g)]
+        return all.length ? all[all.length - 1][1] : ''
+      })
+    runs.push({ arrayVar: rm[2], stmtVar: rm[3], fields: args })
+  }
+
+  const displayValue = (v: JsValue): string | number => {
+    if (Array.isArray(v)) return v.map((x) => (typeof x === 'object' ? JSON.stringify(x) : String(x))).join(', ')
+    if (v === null) return ''
+    if (typeof v === 'object') return JSON.stringify(v)
+    if (typeof v === 'boolean') return v ? 'true' : 'false'
+    return v
+  }
+
+  return tables.map((t) => {
+    const columns = t.columns
+    let rows: Record<string, string | number>[] = []
+    /* Jalur 1: INSERT + for..of — pemetaan posisi paling setia. */
+    const ins = inserts.find((x) => normName(x.table) === normName(t.name))
+    const run = ins ? runs.find((r) => r.stmtVar === ins.varName) : undefined
+    const seed = run ? seeds.find((s) => s.varName === run.arrayVar) : undefined
+    if (ins && run && seed && run.fields.length) {
+      const cols = ins.columns ?? columns
+      rows = seed.items.map((item) => {
+        const row: Record<string, string | number> = {}
+        cols.forEach((col, i) => {
+          const field = run.fields[i]
+          row[col] = field && field in item ? displayValue(item[field]) : ''
+        })
+        return row
+      })
+    } else {
+      /* Jalur 2: nama array seed sama dengan nama tabel — petakan kunci
+         camelCase ke kolom snake_case. */
+      const byName = seeds.find((s) => normName(s.varName) === normName(t.name))
+      if (byName) {
+        rows = byName.items.map((item) => {
+          const row: Record<string, string | number> = {}
+          columns.forEach((col) => {
+            const key = Object.keys(item).find((k) => toSnake(k) === col || normName(k) === normName(col))
+            row[col] = key ? displayValue(item[key]) : ''
+          })
+          return row
+        })
+      }
+    }
+    return {
+      name: t.name,
+      columns,
+      rows,
+      note: rows.length
+        ? undefined
+        : 'Tidak ada baris seed yang bisa dibaca dari file proyek. Baris tabel ini hanya terbentuk dari input pengguna di preview (tersimpan di memori, bukan di file) — jadi isinya tidak bisa ditampilkan di sini, dan tabel ini bukan berarti kosong.',
+    }
+  })
+}
+
+function DatabaseViewer({
+  open,
+  onClose,
+  projectId,
+  files,
+}: {
+  open: boolean
+  onClose: () => void
+  projectId: string
+  files: { path: string }[]
+}) {
+  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [dbFile, setDbFile] = useState('')
+  const [tables, setTables] = useState<DbTableView[]>([])
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [open, onClose])
+
+  useEffect(() => {
+    if (!open) return
+    let alive = true
+    setStatus('loading')
+    setError('')
+    setTables([])
+    setDbFile('')
+    const candidates = [
+      ...files.filter((f) => /(^|\/)db\.server\.ts$/.test(f.path)).map((f) => f.path),
+      ...files.filter((f) => /\.server\.ts$/.test(f.path) && !/(^|\/)db\.server\.ts$/.test(f.path)).map((f) => f.path),
+      ...files.filter((f) => /db/i.test(f.path) && !/\.server\.ts$/.test(f.path)).map((f) => f.path),
+    ]
+    const load = async () => {
+      for (const path of candidates.slice(0, 4)) {
+        try {
+          const r = await api.file(projectId, path)
+          const parsed = parseAppDatabase(r.content)
+          if (!parsed.length) continue
+          if (!alive) return
+          setDbFile(path)
+          setTables(parsed)
+          setStatus('ready')
+          return
+        } catch {
+          /* file hilang / gagal dibaca — coba kandidat berikutnya */
+        }
+      }
+      if (!alive) return
+      setError(
+        candidates.length
+          ? 'Tidak ditemukan pernyataan CREATE TABLE di file database proyek ini.'
+          : 'Tidak ditemukan file database di proyek ini.',
+      )
+      setStatus('error')
+    }
+    void load()
+    return () => {
+      alive = false
+    }
+  }, [open, projectId, files])
+
+  if (!open) return null
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/55 p-3" onClick={onClose} role="dialog" aria-label="Database aplikasi">
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="vb-enter flex max-h-[86dvh] w-full max-w-[720px] flex-col border border-edge bg-surface px-4 pb-5 pt-4 max-md:px-3"
+      >
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="font-display text-[16px] text-body">Database aplikasi</h2>
+          <button onClick={onClose} aria-label="Tutup database" className="flex h-8 w-8 items-center justify-center text-quiet hover:text-body">
+            <Icon name="close" size={14} />
+          </button>
+        </div>
+        <p className="mb-3 border-l-2 border-accent pl-2 text-[12px] leading-relaxed text-body">
+          Database aplikasi ini SQLite in-memory (:memory:) — dibuat ulang setiap preview dijalankan. Data yang
+          dimasukkan lewat preview (mis. saran fitur) tidak tersimpan permanen dan hilang saat preview restart.
+          Isi di bawah dibaca dari file proyek (skema + data seed), bukan dari memori preview yang sedang berjalan.
+        </p>
+        {dbFile && (
+          <p className="mb-3 font-mono text-[11px] text-quiet">Sumber: {dbFile}</p>
+        )}
+        <div className="vb-scroll min-h-0 flex-1 overflow-y-auto">
+          {status === 'loading' && <p className="text-[12px] text-quiet">Membaca database…</p>}
+          {status === 'error' && <p className="border-l-2 border-accent pl-2 text-[12px] text-body">{error}</p>}
+          {status === 'ready' &&
+            tables.map((t) => (
+              <section key={t.name} className="mb-4">
+                <p className="text-[12.5px] font-medium text-body">
+                  {t.name}{' '}
+                  <span className="font-normal text-quiet">
+                    · {t.columns.length} kolom · {t.rows.length} baris{t.rows.length ? ' (dari seed)' : ''}
+                  </span>
+                </p>
+                {t.rows.length > 0 ? (
+                  <div className="vb-scroll mt-2 overflow-x-auto">
+                    <table className="w-full border-collapse text-[12px]">
+                      <thead>
+                        <tr>
+                          {t.columns.map((c) => (
+                            <th key={c} className="whitespace-nowrap border border-edge bg-ink px-2 py-1.5 text-left font-medium text-body">
+                              {c}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {t.rows.map((row, i) => (
+                          <tr key={i}>
+                            {t.columns.map((c) => (
+                              <td key={c} className="max-w-[260px] break-words border border-edge px-2 py-1.5 align-top text-body">
+                                {row[c] ?? ''}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="mt-2">
+                    <div className="flex flex-wrap gap-1.5">
+                      {t.columns.map((c) => (
+                        <span key={c} className="border border-edge bg-ink px-2 py-1 font-mono text-[11px] text-body">
+                          {c}
+                        </span>
+                      ))}
+                    </div>
+                    {t.note && <p className="mt-2 text-[11.5px] leading-relaxed text-quiet">{t.note}</p>}
+                  </div>
+                )}
+              </section>
+            ))}
+        </div>
+      </div>
     </div>
   )
 }
@@ -802,6 +1237,7 @@ type Tab = 'chat' | 'code'
 function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle: (n: string) => void; onMenu: () => void }) {
   const { dark, toggle } = useTheme()
   const [tab, setTab] = useState<Tab>('chat')
+  const [dbOpen, setDbOpen] = useState(false)
   const [messages, setMessages] = useState<{ role: string; content: string; id?: number }[]>([])
   const [pendingDiscovery, setPendingDiscovery] = useState<string | null>(null)
   const [streamText, setStreamText] = useState('')
@@ -828,6 +1264,30 @@ function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle:
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [usage, setUsage] = useState<{ requests: number; promptTokens: number; completionTokens: number } | null>(null)
   const [model, setModel] = useState(() => localStorage.getItem('vb-model') ?? 'auto')
+  const [modelNotice, setModelNotice] = useState('')
+
+  /* Validasi pilihan tersimpan saat builder dibuka: bila model sudah tidak
+     aktif lagi (dimatikan admin), fallback ke 'auto' + pesan jelas — jangan
+     kirim model mati ke server. SettingsSheet mengulang validasi ini tiap
+     dibuka (daftar segar); di sini cukup sekali saat mount. */
+  useEffect(() => {
+    let alive = true
+    getPickerModels()
+      .then(({ options, fromFallback }) => {
+        if (!alive || fromFallback) return
+        setModel((cur) => {
+          if (isSelectionAvailable(cur, options)) return cur
+          localStorage.setItem('vb-model', MODEL_AUTO)
+          setModelNotice(`Model tersimpan (${cur}) sudah tidak aktif — kembali ke Auto.`)
+          window.setTimeout(() => alive && setModelNotice(''), 15000)
+          return MODEL_AUTO
+        })
+      })
+      .catch(() => { /* fallback: biarkan pilihan apa adanya */ })
+    return () => {
+      alive = false
+    }
+  }, [])
   const [planMode, setPlanMode] = useState(false)
   const [pendingPlan, setPendingPlan] = useState<{ prompt: string } | null>(null)
   const [awaitingConfirm, setAwaitingConfirm] = useState(false)
@@ -968,7 +1428,10 @@ function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle:
     }
 
     try {
-      await chatStream(projectId, text, handlers, ctrl.signal, { model: model === 'auto' ? undefined : model, planMode, confirmPlan: true, confirmed: optsConfirmed })
+      /* Wire ke server HANYA bare model id (auto → undefined = default
+         server). Prefix provider dari pilihan dilepas di sini — server
+         belum punya format wire untuk provider (lihat models.ts). */
+      await chatStream(projectId, text, handlers, ctrl.signal, { model: modelIdForServer(model), planMode, confirmPlan: true, confirmed: optsConfirmed })
     } catch (err) {
       setMessages((m) => [...m, { role: 'error', content: (err as Error).message }])
     } finally {
@@ -1103,7 +1566,8 @@ function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle:
               lewat notifyBalanceChanged() di onDone/onError di bawah. */}
           <CreditChip />
           <SessionMenu
-            onOpenSettings={() => setSettingsOpen(true)}
+            onShowFiles={() => setTab('code')}
+            onShowDatabase={() => setDbOpen(true)}
             onRun={startPreview}
             runLabel={previewOn ? 'Build ulang' : 'Jalankan'}
             running={booting}
@@ -1193,9 +1657,22 @@ function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle:
         onPlanMode={setPlanMode}
       />
 
+      <DatabaseViewer
+        open={dbOpen}
+        onClose={() => setDbOpen(false)}
+        projectId={projectId}
+        files={files}
+      />
+
       {publishMsg && (
         <p className="shrink-0 border-t border-edge bg-surface px-3 py-1.5 text-[11px] text-accent">
           {publishMsg}
+        </p>
+      )}
+
+      {modelNotice && (
+        <p className="shrink-0 border-t border-edge bg-surface px-3 py-1.5 text-[11px] text-accent">
+          {modelNotice}
         </p>
       )}
 

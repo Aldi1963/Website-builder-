@@ -116,6 +116,9 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ prompt }),
     }),
+  /* Daftar model LLM yang boleh dipakai (publik, tanpa auth). Dipakai
+     picker model — lihat platform/src/models.ts untuk cache + fallback. */
+  llmModels: () => req<{ models: import('./models').PublicModel[] }>('/api/llm/models'),
   screenshot: (id: string) =>
     req<{ ok: boolean; screenshot: { name: string; url: string; created_at: number; bytes: number } }>(`/api/projects/${id}/screenshots`, { method: 'POST' }),
   screenshots: (id: string) =>

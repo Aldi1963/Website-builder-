@@ -95,6 +95,7 @@ export type AgentEvent =
   | { type: 'assistant'; text: string }
   | { type: 'screenshot'; url: string; name: string }
   | { type: 'awaiting_confirmation'; ringkasan: string }
+  | { type: 'done' }
   | { type: 'error'; text: string }
 
 const MAX_STEPS = Number(process.env.VB_MAX_STEPS ?? 30)
@@ -147,16 +148,40 @@ export async function runAgent(
   // Saat confirmed=true, user sudah menyetujui rencana — lewati klasifikasi & regenerasi
   // plan, langsung eksekusi. History sudah memuat "Rencana kerja" dari run sebelumnya.
   let quickEdit = false
+  let consult = false
   if (!opts?.confirmed && !forcePlanMode && history.length > 1 && listFiles(projectId).length > 0) {
     try {
+      // Tiga jalur: kecil (edit cepat) / konsultasi (pertanyaan analitik, tak menulis kode) /
+      // pekerjaan penuh (buat fitur/struktur/halaman baru). Tanpa jalur konsultasi, pertanyaan
+      // seperti "apa kekurangan web ini" jatuh ke pekerjaan penuh lalu memicu rencana + audit.
       const cls = await complete([
-        { role: 'system', content: 'Klasifikasi permintaan. Balas HANYA JSON: {"kecil": true|false}. Kecil=true bila permintaan hanya mengubah satu bagian kecil yang sudah ada (teks, warna, komponen tunggal, perbaikan kecil). Kecil=false bila menambah fitur, mengubah struktur data, atau membuat halaman/flow baru.' },
+        { role: 'system', content: 'Klasifikasi permintaan. Balas HANYA JSON: {"jenis": "kecil"|"konsultasi"|"penuh"}. "kecil" bila permintaan hanya mengubah satu bagian kecil yang sudah ada (teks, warna, komponen tunggal, perbaikan kecil). "konsultasi" bila user bertanya/meminta saran/opini/penjelasan/analisis tentang proyek (contoh: "apa kekurangan web ini", "saran fitur", "kenapa error X", "bagaimana cara kerja") dan TIDAK meminta kode ditulis. "penuh" bila menambah fitur, mengubah struktur data, atau membuat halaman/flow baru. Default "penuh" bila ragu.' },
         { role: 'user', content: userPrompt },
       ], { model, temperature: 0, maxTokens: 100, userId: opts?.userId })
       const raw = typeof cls.message.content === 'string' ? cls.message.content : ''
       const jsonText = raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1)
-      quickEdit = JSON.parse(jsonText).kecil === true
+      const jenis = JSON.parse(jsonText).jenis
+      quickEdit = jenis === 'kecil'
+      consult = jenis === 'konsultasi'
     } catch { /* default: jalur penuh */ }
+  }
+
+  // Jalur konsultasi: pertanyaan analitik dijawab langsung sebagai chat — tanpa rencana,
+  // tanpa menulis file, tanpa audit. User cuma minta saran/penjelasan, bukan implementasi.
+  if (consult) {
+    await emit({ type: 'status', text: 'Menyusun jawaban…' })
+    let streamed = ''
+    let answer = ''
+    await complete(
+      [...messages, { role: 'user', content: `${userPrompt}\n\nPENTING: Ini pertanyaan/permintaan saran. Jawab HANYA dalam bentuk penjelasan/saran di chat. JANGAN menulis file, JANGAN menjalankan build/audit, JANGAN membuat rencana kerja. Baca kode proyek bila relevan lalu beri jawaban langsung.` }],
+      {
+        model, temperature: 0.3, maxTokens: 2500, userId: opts?.userId,
+        onDelta: async (d) => { streamed += d; await emit({ type: 'assistant_delta', text: d }) },
+      },
+    )
+    answer = streamed.trim()
+    if (answer) addMessage(projectId, 'assistant', answer)
+    return
   }
 
   // Saat confirmed, user sudah menyetujui rencana pada run sebelumnya — jangan

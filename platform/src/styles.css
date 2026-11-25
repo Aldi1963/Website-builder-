@@ -51,6 +51,14 @@ body {
   outline-offset: 2px;
 }
 
+/* Composer chat: jangan pakai outline oranye global di textarea-nya —
+   container sudah punya indikator fokus sendiri (focus-within ring abu-abu),
+   dan outline textarea hanya terlihat sebagai garis oranye di bawah kolom
+   input karena ketiga sisinya terpotong oleh overflow-hidden container. */
+#vb-prompt:focus-visible {
+  outline: none;
+}
+
 button, [role="button"], summary, label[for], a[href] {
   cursor: pointer;
 }

@@ -8,6 +8,15 @@ import { Dialog } from '@cloudflare/kumo/components/dialog'
 import { Icon, Activity, useAutoScroll, useCopy } from './ui'
 import { ActivityFeed, TerminalBlock, type ActivityEntry } from './activity'
 import { api, type AuditFinding, type PlanStep, type ProjectSettings } from './api'
+import {
+  FALLBACK_MODEL_CATALOG,
+  MODEL_AUTO,
+  classifyModelError,
+  getPickerModels,
+  isSelectionAvailable,
+  parseSelection,
+  type ModelOption,
+} from './models'
 
 export type ChatItem = { role: string; content: string; id?: number }
 
@@ -46,17 +55,13 @@ export function InlineEvents({ events, onOpenFile }: { events: InlineEvent[]; on
 export type ChatPlan = { ringkasan: string; langkah: PlanStep[]; berkas: string[]; asumsi: string[] }
 export type ChatAudit = { nilai: number; temuan: AuditFinding[]; catatan: string }
 
-/* Katalog model untuk picker gaya "Select model". Id benar diverifikasi terhadap
-   /v1/models gateway; 'auto' berarti server memakai default-nya. */
-export type ModelOption = { id: string; name: string; note: string; available?: boolean }
+/* Katalog model untuk picker gaya "Select model". Daftar ASLI diambil dari
+   GET /api/llm/models (lihat models.ts — hanya model aktif bertarif, tanpa
+   model review internal); konstanta ini HANYA fallback bila endpoint gagal,
+   supaya builder tidak mati total. 'auto' berarti server memakai default-nya. */
+export type { ModelOption } from './models'
 
-export const MODEL_CATALOG: ModelOption[] = [
-  { id: 'auto', name: 'Auto', note: 'Selalu pilih model terbaik', available: true },
-  { id: 'ag/claude-opus-5-5', name: 'Claude Opus 5.5', note: 'Model paling cerdas Anthropic', available: false },
-  { id: 'ag/claude-sonnet-5-5', name: 'Claude Sonnet 5.5', note: 'Seimbang untuk kerja harian', available: false },
-  { id: 'cx/gpt-6-luna', name: 'GPT-6 Luna', note: 'Kuat untuk coding & penalaran', available: true },
-  { id: 'cx/gpt-5.6-luna', name: 'GPT-5.6 Luna', note: 'Cepat dan andal', available: true },
-]
+export const MODEL_CATALOG: ModelOption[] = FALLBACK_MODEL_CATALOG
 
 export function SettingsSheet({
   open,
@@ -87,6 +92,48 @@ export function SettingsSheet({
   const [llmBaseUrl, setLlmBaseUrl] = useState('')
   const [llmModel, setLlmModel] = useState('')
   const [msg, setMsg] = useState('')
+  /* Picker model dinamis: daftar dari GET /api/llm/models (cache 60 dtk,
+     fallback katalog lama bila endpoint gagal — lihat models.ts). */
+  const [modelOptions, setModelOptions] = useState<ModelOption[]>(MODEL_CATALOG)
+  const [modelsFallback, setModelsFallback] = useState(false)
+  const [modelsLoading, setModelsLoading] = useState(false)
+  const [modelNotice, setModelNotice] = useState('')
+  const validatedRef = useRef('')
+
+  const loadModels = async () => {
+    setModelsLoading(true)
+    try {
+      const r = await getPickerModels()
+      setModelOptions(r.options)
+      setModelsFallback(r.fromFallback)
+    } finally {
+      setModelsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!open) return
+    void loadModels()
+  }, [open])
+
+  useEffect(() => {
+    if (!open || section !== 'model') return
+    void loadModels()
+  }, [open, section])
+
+  /* Bila model tersimpan sudah tidak ada di daftar aktif (dimatikan admin),
+     kembalikan ke 'auto' dengan pesan jelas — jangan kirim model mati ke
+     server. Hanya saat daftar dari endpoint (bukan fallback). */
+  useEffect(() => {
+    if (!open || modelsFallback) return
+    const key = `${model}|${modelOptions.map((o) => o.id).join(',')}`
+    if (validatedRef.current === key) return
+    validatedRef.current = key
+    if (!isSelectionAvailable(model, modelOptions)) {
+      onModel(MODEL_AUTO)
+      setModelNotice(`Model tersimpan (${model}) sudah tidak aktif — kembali ke Auto.`)
+    }
+  }, [open, modelsFallback, model, modelOptions, onModel])
 
   useEffect(() => {
     if (!open) return
@@ -110,7 +157,15 @@ export function SettingsSheet({
   }, [open, section, projectId])
 
   if (!open) return null
-  const current = MODEL_CATALOG.find((m) => m.id === model) ?? MODEL_CATALOG[0]
+  /* Cocokkan pilihan tersimpan: komposit 'provider:id' dulu, lalu bare id
+     lama (legacy) — bila tak ada yang cocok, pakai Auto. */
+  const parsedModel = parseSelection(model)
+  const current =
+    modelOptions.find((m) => m.id === model) ??
+    (parsedModel.kind === 'model'
+      ? modelOptions.find((m) => m.modelId === parsedModel.id)
+      : undefined) ??
+    modelOptions[0]
 
   const saveDomain = async () => {
     setMsg('')
@@ -242,15 +297,23 @@ export function SettingsSheet({
 
         {section === 'model' && (
           <div className="vb-scroll overflow-y-auto">
+            {modelNotice && <p className="mb-2 border-l-2 border-accent pl-2 text-[12px] text-body">{modelNotice}</p>}
+            {modelsFallback && (
+              <p className="mb-2 border-l-2 border-edge pl-2 text-[12px] text-quiet">
+                Daftar model gagal dimuat — menampilkan daftar terakhir.
+              </p>
+            )}
+            {modelsLoading && <p className="mb-2 text-[11.5px] text-quiet">Memuat daftar model…</p>}
             <div className="flex flex-col">
-              {MODEL_CATALOG.map((m) => {
-                const active = m.id === model
+              {modelOptions.map((m) => {
+                const active = m.id === model || (parsedModel.kind === 'model' && m.modelId === parsedModel.id)
                 const disabled = m.available === false
                 return (
                   <button
                     key={m.id}
                     disabled={disabled}
                     onClick={() => {
+                      setModelNotice('')
                       onModel(m.id)
                       setSection('menu')
                     }}
@@ -577,6 +640,7 @@ export function ChatPanel({
                 isLast={i === messages.length - 1}
                 previewOpen={previewOpen}
                 previewUrl={previewUrl}
+                onOpenSettings={onOpenSettings}
               />
             ))}
             {sending && (
@@ -624,7 +688,7 @@ export function ChatPanel({
 
       <div className="shrink-0 bg-ink px-3 pb-[max(10px,env(safe-area-inset-bottom))] pt-2.5 md:px-5 md:pb-4">
         <div className="mx-auto max-w-[720px]">
-          <div className="overflow-hidden rounded-[22px] border border-edge bg-surface shadow-[0_8px_28px_rgba(15,23,42,0.08)] transition-colors focus-within:border-quiet focus-within:ring-1 focus-within:ring-edge">
+          <div className="overflow-hidden rounded-[22px] border border-edge bg-surface transition-colors focus-within:border-quiet focus-within:ring-1 focus-within:ring-edge">
             {expanded && (
               <div className="flex items-center justify-between gap-3 bg-ink px-3 py-2 text-[11px] text-quiet">
                 <span>Instruksi lebih panjang. Atur model atau mode dari setelan.</span>
@@ -810,12 +874,14 @@ function Bubble({
   isLast = false,
   previewOpen = false,
   previewUrl = '',
+  onOpenSettings,
 }: {
   role: string
   content: string
   isLast?: boolean
   previewOpen?: boolean
   previewUrl?: string
+  onOpenSettings?: () => void
 }) {
   const { copied, copy } = useCopy()
   const [zoomed, setZoomed] = useState(false)
@@ -834,21 +900,32 @@ function Bubble({
   }
 
   if (role === 'error') {
-    /* Fase 3: error CREDIT_HABIS (gate fase 1, saldo < 10) tampil berbeda
-       dari error biasa — pesan jelas + tombol Top-up, tanpa stack trace
-       (teks error dari server sudah berupa kalimat, bukan trace). */
-    const creditHabis = content.includes('Credit habis')
+    /* Error LLM sampai ke UI hanya sebagai TEKS — cocokkan substring
+       (classifyModelError di models.ts): 'Credit habis' + empat pesan
+       model baru dari server (nonaktif / tanpa tarif / messages-only /
+       key provider belum terpasang). */
+    const info = classifyModelError(content)
     return (
       <div className="vb-enter rounded-lg border border-edge border-l-2 border-l-accent bg-surface px-3.5 py-2.5">
-        <p className="text-[11px] font-medium text-accent">{creditHabis ? 'credit habis' : 'agent gagal'}</p>
+        <p className="text-[11px] font-medium text-accent">{info?.title ?? 'agent gagal'}</p>
         <p className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-body">{content}</p>
-        {creditHabis && (
+        {info?.hint && <p className="mt-1 text-[12px] leading-relaxed text-quiet">{info.hint}</p>}
+        {info?.action === 'topup' && (
           <a
             href="/topup"
             className="mt-2.5 inline-flex h-8 items-center gap-1.5 rounded-full bg-accent px-3.5 text-[12px] font-medium text-white transition-opacity hover:opacity-90"
           >
             Top-up credit
           </a>
+        )}
+        {info?.action === 'settings' && onOpenSettings && (
+          <button
+            type="button"
+            onClick={onOpenSettings}
+            className="mt-2.5 inline-flex h-8 items-center gap-1.5 rounded-full bg-accent px-3.5 text-[12px] font-medium text-white transition-opacity hover:opacity-90"
+          >
+            Pilih model lain
+          </button>
         )}
       </div>
     )
