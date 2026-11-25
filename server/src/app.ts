@@ -649,6 +649,9 @@ app.post('/api/projects/:id/screenshots', async (c) => {
   const r = owned(c)
   if ('error' in r) return c.json({ error: r.error }, r.status)
   try {
+    // Build first so the screenshot reflects the current workspace, not stale dist.
+    const build = await buildProject(r.project.id)
+    if (build.code !== 0) return c.json({ ok: false, error: 'Screenshot gagal: build belum lolos', log: build.output.slice(-2000) }, 400)
     const screenshot = await captureScreenshot(r.project.id)
     return c.json({ ok: true, screenshot })
   } catch (err) {

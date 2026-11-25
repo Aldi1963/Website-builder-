@@ -119,12 +119,14 @@ export async function runAgent(
   ]
 
   let lastBuildFailed = false
+  let buildSucceeded = false
+  let touchedUi = false
   let screenshotSent = false
 
-  /* Setelah perubahan UI selesai, ambil screenshot preview dan simpan sebagai
-     pesan assistant. Kegagalan screenshot dilaporkan, bukan didiamkan. */
+  /* Setelah perubahan UI selesai dan build lolos, ambil screenshot preview dan
+     simpan sebagai pesan assistant. Kegagalan screenshot dilaporkan apa adanya. */
   const sendScreenshot = async () => {
-    if (screenshotSent || !didWrite || lastBuildFailed) return
+    if (screenshotSent || !touchedUi || !buildSucceeded) return
     screenshotSent = true
     try {
       await emit({ type: 'status', text: 'Mengambil screenshot preview…' })
@@ -279,6 +281,7 @@ export async function runAgent(
         try {
           const path = writeProjectFile(projectId, String(args.path ?? ''), String(args.content ?? ''))
           putFile(projectId, path, String(args.content ?? ''))
+          if (/(^|\/)(src|app|pages|components|routes)\//.test(path) && /\.(tsx|jsx|css|html)$/i.test(path)) touchedUi = true
           await emit({ type: 'file', path, action: 'write' })
           stepDidWrite = true
           didWrite = true
@@ -351,6 +354,7 @@ export async function runAgent(
         await emit({ type: 'status', text: 'Build…' })
         const r = await buildProject(projectId)
         lastBuildFailed = r.code !== 0
+        buildSucceeded = r.code === 0
         await emit({ type: 'build', ok: r.code === 0, log: r.output.slice(-4000) })
         result = `exit=${r.code}\n${r.output.slice(-6000)}${r.code === 0 ? '' : '\nPERBAIKI ERROR DI ATAS.'}`
       } else {
