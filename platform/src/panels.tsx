@@ -461,6 +461,9 @@ export function ChatPanel({
               </div>
             )}
             {!sending && audit && <AuditCard audit={audit} />}
+            {!sending && audit && audit.temuan.length > 0 && (
+              <SuggestionsCard audit={audit} onSend={onSend} />
+            )}
           </div>
         )}
       </div>
@@ -468,13 +471,8 @@ export function ChatPanel({
       <div className="shrink-0 bg-ink px-3 pb-[max(10px,env(safe-area-inset-bottom))] pt-2.5 md:px-5 md:pb-4">
         <div className="mx-auto max-w-[720px]">
           <div className="overflow-hidden rounded-[22px] border border-edge bg-surface shadow-[0_8px_28px_rgba(15,23,42,0.08)] transition-colors focus-within:border-accent focus-within:ring-1 focus-within:ring-accent/20">
-            <div className="flex items-center justify-end border-b border-edge/70 px-3 py-1.5">
-              <button type="button" onClick={() => setExpanded((v) => !v)} aria-expanded={expanded} aria-label={expanded ? 'Ciutkan composer' : 'Perluas composer'} title={expanded ? 'Ciutkan' : 'Perluas'} className="flex h-7 w-7 items-center justify-center rounded-md text-quiet hover:bg-ink">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d={expanded ? 'M8 3v5H3M16 21v-5h5M21 8h-5V3M3 16h5v5' : 'M8 3H3v5M16 3h5v5M21 16v5h-5M3 16v5h5'} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
-              </button>
-            </div>
             {expanded && (
-              <div className="flex items-center justify-between gap-3 border-b border-edge/70 bg-ink px-3 py-2 text-[11px] text-quiet">
+              <div className="flex items-center justify-between gap-3 bg-ink px-3 py-2 text-[11px] text-quiet">
                 <span>Instruksi lebih panjang. Atur model atau mode dari setelan.</span>
                 <button type="button" onClick={onOpenSettings} className="shrink-0 font-medium text-accent hover:underline">Model &amp; mode</button>
               </div>
@@ -511,7 +509,9 @@ export function ChatPanel({
               <div className="flex items-center gap-0.5">
                 <button type="button" onClick={() => fileRef.current?.click()} disabled={sending || attached.length >= 5} aria-label="Lampirkan file teks atau kode" title="Lampirkan file teks/kode (maks. 5 file, 256 KB per file)" className="flex h-9 w-9 items-center justify-center rounded-full text-quiet hover:bg-ink hover:text-body disabled:opacity-40"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m8 12.5 6.2-6.2a3.2 3.2 0 0 1 4.5 4.5l-8.4 8.4a5 5 0 0 1-7.1-7.1l8.3-8.3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg></button>
                 <button type="button" onClick={onOpenSettings} aria-label="Setelan sesi dan model" title="Setelan sesi dan model" className="flex h-9 w-9 items-center justify-center rounded-full text-quiet hover:bg-ink hover:text-body"><Icon name="rule" size={15} /></button>
-                <span className="hidden pl-1 text-[10.5px] text-quiet sm:inline">Enter kirim · Shift+Enter baris baru</span>
+                <button type="button" onClick={() => setExpanded((v) => !v)} aria-expanded={expanded} aria-label={expanded ? 'Ciutkan composer' : 'Perluas composer'} title={expanded ? 'Ciutkan' : 'Perluas'} className="flex h-9 w-9 items-center justify-center rounded-full text-quiet hover:bg-ink hover:text-body">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d={expanded ? 'M8 3v5H3M16 21v-5h5M21 8h-5V3M3 16h5v5' : 'M8 3H3v5M16 3h5v5M21 16v5h-5M3 16v5h5'} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                </button>
               </div>
               <div className="flex items-center gap-1.5">
                 <button type="button" onClick={toggleVoice} disabled={sending || !(('SpeechRecognition' in window) || ('webkitSpeechRecognition' in window))} aria-label={recording ? 'Hentikan dikte' : 'Dikte suara'} title={(('SpeechRecognition' in window) || ('webkitSpeechRecognition' in window)) ? (recording ? 'Hentikan dikte' : 'Dikte suara') : 'Dikte suara tidak didukung browser ini'} className={`flex h-9 w-9 items-center justify-center rounded-full text-quiet hover:bg-ink hover:text-body disabled:opacity-35 ${recording ? 'bg-red-50 text-red-600' : ''}`}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="9" y="3" width="6" height="12" rx="3" stroke="currentColor" strokeWidth="1.8"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 18v3m-4 0h8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg></button>
@@ -527,6 +527,39 @@ export function ChatPanel({
         </div>
       </div>
     </>
+  )
+}
+
+function SuggestionsCard({ audit, onSend }: { audit: ChatAudit; onSend: (text: string) => void }) {
+  // Hanya muncul kalau AI punya saran lanjutan (temuan audit). Kalau tidak ada
+  // temuan, kartu ini tidak dirender sama sekali — bukan disembunyikan.
+  const order: Record<string, number> = { kritis: 0, penting: 1, ringan: 2 }
+  const items = [...audit.temuan]
+    .sort((a, b) => (order[a.tingkat] ?? 3) - (order[b.tingkat] ?? 3))
+    .slice(0, 3)
+  if (!items.length) return null
+  return (
+    <section aria-label="Saran lanjutan dari AI" className="rounded-lg border border-edge bg-surface px-3.5 py-3 text-body">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-quiet">Saran lanjutan</p>
+      <ul className="mt-2 flex flex-col gap-1">
+        {items.map((f, i) => (
+          <li key={`${f.berkas}-${f.baris}-${i}`}>
+            <button
+              type="button"
+              onClick={() => onSend(`Perbaiki: ${f.perbaikan} (${f.berkas}:${f.baris})`)}
+              title="Kirim sebagai instruksi berikutnya"
+              className="flex w-full items-start gap-2 rounded-md px-1 py-1.5 text-left hover:bg-ink"
+            >
+              <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-edge text-[14px] leading-none text-accent" aria-hidden="true">+</span>
+              <span className="min-w-0">
+                <span className="block text-[12.5px] leading-snug">{f.masalah}</span>
+                <span className="mt-0.5 block font-mono text-[10px] text-quiet">{f.berkas}:{f.baris} · {f.tingkat}</span>
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
 
