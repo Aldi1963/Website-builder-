@@ -1,4 +1,7 @@
-/* VibeBuilder Admin — logika halaman. Semua data dari /api/admin/* (nyata). */
+/* VibeBuilder Admin — logika halaman. Semua data dari /api/admin/* (nyata).
+   Satu halaman per route (body[data-page] menentukan halaman); shell
+   (header/sidebar/footer) mengikuti template Metis secara literal.
+   Interaksi header/sidebar/tema mengikuti perilaku template yang sama. */
 (function () {
   'use strict'
 
@@ -44,6 +47,7 @@
 
   function toast(msg, kind) {
     const box = $('#toast-container')
+    if (!box) return
     const el = document.createElement('div')
     el.className = `toast align-items-center text-bg-${kind === 'error' ? 'danger' : 'success'} border-0`
     el.setAttribute('role', 'alert')
@@ -65,32 +69,15 @@
       confirmResolve = (v) => { resolve(v); confirmResolve = null }
     })
   }
-  $('#confirm-yes').addEventListener('click', () => {
+  const confirmYes = $('#confirm-yes')
+  if (confirmYes) confirmYes.addEventListener('click', () => {
     bootstrap.Modal.getInstance($('#confirmModal')).hide()
     if (confirmResolve) confirmResolve(true)
   })
-  $('#confirmModal').addEventListener('hidden.bs.modal', () => {
+  const confirmModal = $('#confirmModal')
+  if (confirmModal) confirmModal.addEventListener('hidden.bs.modal', () => {
     if (confirmResolve) confirmResolve(false)
   })
-
-  /* ---------- tema & sidebar ---------- */
-  function applyTheme(theme) {
-    document.documentElement.setAttribute('data-bs-theme', theme)
-    $('#theme-icon-light').classList.toggle('d-none', theme !== 'light')
-    $('#theme-icon-dark').classList.toggle('d-none', theme !== 'dark')
-    try { localStorage.setItem('vb-admin-theme', theme) } catch { /* abaikan */ }
-  }
-  let savedTheme = 'light'
-  try { savedTheme = localStorage.getItem('vb-admin-theme') || 'light' } catch { /* abaikan */ }
-  applyTheme(savedTheme)
-  $('#theme-toggle').addEventListener('click', () => {
-    applyTheme(document.documentElement.getAttribute('data-bs-theme') === 'dark' ? 'light' : 'dark')
-  })
-  $('#sidebar-toggle').addEventListener('click', () => {
-    if (window.innerWidth < 992) document.body.classList.toggle('sidebar-open')
-    else document.body.classList.toggle('sidebar-collapsed')
-  })
-  $('#sidebar-backdrop').addEventListener('click', () => document.body.classList.remove('sidebar-open'))
 
   /* ---------- modal form generik ---------- */
   let formResolve = null
@@ -110,7 +97,8 @@
       formResolve = (v) => { resolve(v); formResolve = null }
     })
   }
-  $('#form-save').addEventListener('click', () => {
+  const formSave = $('#form-save')
+  if (formSave) formSave.addEventListener('click', () => {
     if (!formResolve) return
     const out = {}
     $$('#form-body input, #form-body textarea').forEach((el) => {
@@ -120,33 +108,155 @@
     bootstrap.Modal.getInstance($('#formModal')).hide()
     formResolve(out)
   })
-  $('#formModal').addEventListener('hidden.bs.modal', () => {
+  const formModal = $('#formModal')
+  if (formModal) formModal.addEventListener('hidden.bs.modal', () => {
     if (formResolve) formResolve(null)
   })
 
-  /* ---------- navigasi halaman ---------- */
-  const pages = ['dashboard', 'users', 'projects', 'plans', 'usage', 'builds', 'messages', 'sessions', 'health', 'ai-settings', 'settings']
-  const loaded = {}
-  function showPage(name) {
-    $$('section[data-page]').forEach((s) => s.classList.toggle('d-none', s.dataset.page !== name))
-    $$('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === name))
-    document.body.dataset.page = name
-    document.body.classList.remove('sidebar-open')
-    $('#global-search').value = ''
-    filterTables('')
-    if (!loaded[name]) { loaded[name] = true; loadPage(name) }
-    window.scrollTo(0, 0)
+  /* ---------- tema (ala ThemeManager template) ---------- */
+  function storedTheme() {
+    try {
+      return localStorage.getItem('theme') || localStorage.getItem('vb-admin-theme') || null
+    } catch { return null }
   }
-  $$('[data-nav]').forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); showPage(a.dataset.nav) }))
+  function applyTheme(theme) {
+    document.documentElement.setAttribute('data-bs-theme', theme)
+    try { localStorage.setItem('theme', theme) } catch { /* abaikan */ }
+  }
+  function toggleTheme() {
+    applyTheme(document.documentElement.getAttribute('data-bs-theme') === 'dark' ? 'light' : 'dark')
+  }
+  // Pengaman bila Alpine gagal dimuat: tombol tema tetap bekerja.
+  setTimeout(() => {
+    if (window.Alpine) return
+    const btn = document.querySelector('[x-data="themeSwitch"] button')
+    if (btn) btn.addEventListener('click', toggleTheme)
+  }, 1500)
 
-  /* ---------- filter pencarian ---------- */
-  function filterTables(q) {
-    const query = (q || '').trim().toLowerCase()
-    $$('table[data-filterable] tbody tr').forEach((tr) => {
-      tr.style.display = !query || tr.textContent.toLowerCase().includes(query) ? '' : 'none'
-    })
+  /* ---------- sidebar (ala SidebarManager template) ---------- */
+  const MOBILE_BP = 992
+  const wrapper = $('#admin-wrapper')
+  const sidebar = $('#admin-sidebar')
+  const sidebarToggle = document.querySelector('[data-sidebar-toggle]')
+  const backdrop = document.querySelector('.sidebar-backdrop')
+  function isMobile() { return window.innerWidth < MOBILE_BP }
+  function syncSidebarAria() {
+    if (!sidebarToggle || !sidebar) return
+    const expanded = isMobile()
+      ? sidebar.classList.contains('show')
+      : !wrapper.classList.contains('sidebar-collapsed')
+    sidebarToggle.setAttribute('aria-expanded', String(expanded))
   }
-  $('#global-search').addEventListener('input', (e) => filterTables(e.target.value))
+  function initSidebar() {
+    if (!wrapper || !sidebar || !sidebarToggle) return
+    if (!isMobile()) {
+      let collapsed = false
+      try { collapsed = localStorage.getItem('sidebar-collapsed') === 'true' } catch { /* abaikan */ }
+      if (collapsed) {
+        wrapper.classList.add('sidebar-collapsed')
+        sidebarToggle.classList.add('is-active')
+      }
+    }
+    sidebarToggle.addEventListener('click', () => {
+      if (isMobile()) {
+        if (sidebar.classList.contains('show')) closeMobileSidebar()
+        else {
+          sidebar.classList.add('show')
+          if (backdrop) backdrop.classList.add('show')
+          document.body.style.overflow = 'hidden'
+        }
+      } else {
+        const collapsed = wrapper.classList.toggle('sidebar-collapsed')
+        sidebarToggle.classList.toggle('is-active', collapsed)
+        try { localStorage.setItem('sidebar-collapsed', String(collapsed)) } catch { /* abaikan */ }
+      }
+      syncSidebarAria()
+    })
+    if (backdrop) backdrop.addEventListener('click', closeMobileSidebar)
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && isMobile() && sidebar.classList.contains('show')) closeMobileSidebar()
+    })
+    let resizeTimer = null
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimer)
+      resizeTimer = setTimeout(() => {
+        if (!isMobile()) {
+          sidebar.classList.remove('show')
+          if (backdrop) backdrop.classList.remove('show')
+          document.body.style.overflow = ''
+        }
+        syncSidebarAria()
+      }, 150)
+    })
+    syncSidebarAria()
+  }
+  function closeMobileSidebar() {
+    if (!sidebar) return
+    sidebar.classList.remove('show')
+    if (backdrop) backdrop.classList.remove('show')
+    document.body.style.overflow = ''
+    syncSidebarAria()
+  }
+  initSidebar()
+
+  /* ---------- fullscreen + Ctrl+K (ala main.js template) ---------- */
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-fullscreen-toggle]')
+    if (!btn) return
+    e.preventDefault()
+    try {
+      if (!document.fullscreenElement) document.documentElement.requestFullscreen()
+      else document.exitFullscreen()
+    } catch { /* abaikan */ }
+  })
+  document.addEventListener('keydown', (e) => {
+    const isSearch = (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey &&
+      (e.code === 'KeyK' || e.key === 'k' || e.key === 'K')
+    if (!isSearch) return
+    const input = document.querySelector('[data-search-input]')
+    if (!input) return
+    e.preventDefault()
+    input.focus()
+  })
+
+  /* ---------- komponen Alpine header (data nyata, bukan demo) ---------- */
+  const ADMIN_PAGES = [
+    { title: 'Dashboard', url: '/admin', type: 'halaman' },
+    { title: 'Pengguna', url: '/admin/users', type: 'halaman' },
+    { title: 'Proyek', url: '/admin/projects', type: 'halaman' },
+    { title: 'Plan', url: '/admin/plans', type: 'halaman' },
+    { title: 'Penggunaan', url: '/admin/usage', type: 'halaman' },
+    { title: 'Build', url: '/admin/builds', type: 'halaman' },
+    { title: 'Pesan', url: '/admin/messages', type: 'halaman' },
+    { title: 'Sesi', url: '/admin/sessions', type: 'halaman' },
+    { title: 'Kesehatan Sistem', url: '/admin/health', type: 'halaman' },
+    { title: 'Pengaturan AI', url: '/admin/ai-settings', type: 'halaman' },
+    { title: 'Pengaturan', url: '/admin/settings', type: 'halaman' },
+  ]
+  document.addEventListener('alpine:init', () => {
+    window.Alpine.data('searchComponent', () => ({
+      query: '',
+      results: [],
+      search() {
+        if (this.query.length < 2) { this.results = []; return }
+        const q = this.query.toLowerCase()
+        this.results = ADMIN_PAGES
+          .filter((p) => p.title.toLowerCase().includes(q))
+          .slice(0, 6)
+      },
+    }))
+    window.Alpine.data('themeSwitch', () => ({
+      currentTheme: 'light',
+      init() {
+        this.currentTheme = storedTheme() ||
+          (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+      },
+      toggle() {
+        this.currentTheme = this.currentTheme === 'light' ? 'dark' : 'light'
+        applyTheme(this.currentTheme)
+      },
+    }))
+  })
 
   /* ---------- grafik ---------- */
   const charts = {}
@@ -163,30 +273,50 @@
 
   /* ---------- pemuatan data ---------- */
   let overviewCache = null
-  let usageCache = null
 
-  async function loadPage(name) {
-    try {
-      if (name === 'dashboard') await loadDashboard()
-      else if (name === 'users') await loadUsers()
-      else if (name === 'projects') await loadProjects()
-      else if (name === 'plans') await loadPlans()
-      else if (name === 'usage') await loadUsage()
-      else if (name === 'builds') await loadBuilds()
-      else if (name === 'messages') await loadMessages()
-      else if (name === 'sessions') await loadSessions()
-      else if (name === 'health') await loadHealth()
-      else if (name === 'ai-settings') await loadAiSettings()
-      else if (name === 'settings') await loadSettings()
-    } catch (err) {
-      toast(err.message, 'error')
-    }
+  async function loadPage(name, ov) {
+    if (name === 'dashboard') await loadDashboard(ov)
+    else if (name === 'users') await loadUsers()
+    else if (name === 'projects') await loadProjects()
+    else if (name === 'plans') await loadPlans()
+    else if (name === 'usage') await loadUsage()
+    else if (name === 'builds') await loadBuilds()
+    else if (name === 'messages') await loadMessages()
+    else if (name === 'sessions') await loadSessions()
+    else if (name === 'health') await loadHealth()
+    else if (name === 'ai-settings') await loadAiSettings()
+    else if (name === 'settings') await loadSettings()
   }
 
-  async function loadDashboard() {
-    const [ov, usage] = await Promise.all([api('/api/admin/overview'), api('/api/admin/usage')])
+  function fillNavBadges(ov) {
+    const u = $('#nav-users-count')
+    if (u) u.textContent = fmtNum(ov.users.total)
+    const p = $('#nav-projects-count')
+    if (p) p.textContent = fmtNum(ov.projects.total)
+  }
+
+  function fillNotifications(ov) {
+    const menu = $('#notifications-menu')
+    const badge = $('#notif-badge')
+    if (!menu) return
+    const items = (ov.recent || []).slice(0, 5)
+    if (badge) {
+      badge.textContent = String(items.length)
+      badge.classList.toggle('d-none', items.length === 0)
+    }
+    menu.innerHTML = '<li><h6 class="dropdown-header">Notifikasi</h6></li>' +
+      (items.length
+        ? items.map((r) => {
+            const icon = r.kind === 'user' ? 'bi-person-plus' : r.kind === 'project' ? 'bi-box' : 'bi-hammer'
+            return `<li><a class="dropdown-item" href="/admin"><i class="bi ${icon} me-2"></i>${esc(r.text)}<br><small class="text-muted">${esc(timeAgo(r.at))}</small></a></li>`
+          }).join('') +
+          '<li><hr class="dropdown-divider"></li><li><a class="dropdown-item text-center" href="/admin">Lihat semua aktivitas</a></li>'
+        : '<li><a class="dropdown-item text-muted" href="/admin">Belum ada aktivitas.</a></li>')
+  }
+
+  async function loadDashboard(ov) {
+    const usage = await api('/api/admin/usage')
     overviewCache = ov
-    usageCache = usage
     $('#stat-users').textContent = fmtNum(ov.users.total)
     $('#stat-users-sub').textContent = `+${fmtNum(ov.users.new7d)} dalam 7 hari · ${fmtNum(ov.users.disabled)} nonaktif`
     $('#stat-projects').textContent = fmtNum(ov.projects.total)
@@ -196,9 +326,8 @@
     const tokens = ov.usage.promptTokens + ov.usage.completionTokens
     $('#stat-tokens').textContent = fmtNum(tokens)
     $('#stat-tokens-sub').textContent = `${fmtNum(ov.usage.requests)} permintaan · sejak server start`
-    $('#nav-users-count').textContent = fmtNum(ov.users.total)
-    $('#nav-projects-count').textContent = fmtNum(ov.projects.total)
-    $('#dashboard-subtitle').textContent = `Diperbarui ${new Date().toLocaleTimeString('id-ID')} · semua angka dari database`
+    const subtitle = $('#dashboard-subtitle')
+    if (subtitle) subtitle.textContent = `Diperbarui ${new Date().toLocaleTimeString('id-ID')} · semua angka dari database`
 
     const labels = usage.daily.map((d) => d.date.slice(5))
     makeChart('messagesChart', {
@@ -211,12 +340,14 @@
     })
 
     const feed = $('#activity-feed')
-    feed.innerHTML = ov.recent.length
-      ? ov.recent.map((r) => {
-          const icon = r.kind === 'user' ? 'bi-person-plus' : r.kind === 'project' ? 'bi-box' : 'bi-hammer'
-          return `<div class="activity-item"><div class="activity-icon"><i class="bi ${icon}"></i></div><div class="activity-content"><p class="mb-1">${esc(r.text)}</p><small class="text-muted">${esc(timeAgo(r.at))}</small></div></div>`
-        }).join('')
-      : '<p class="text-muted mb-0">Belum ada aktivitas.</p>'
+    if (feed) {
+      feed.innerHTML = ov.recent.length
+        ? ov.recent.map((r) => {
+            const icon = r.kind === 'user' ? 'bi-person-plus' : r.kind === 'project' ? 'bi-box' : 'bi-hammer'
+            return `<div class="activity-item"><div class="activity-icon"><i class="bi ${icon}"></i></div><div class="activity-content"><p class="mb-1">${esc(r.text)}</p><small class="text-muted">${esc(timeAgo(r.at))}</small></div></div>`
+          }).join('')
+        : '<p class="text-muted mb-0">Belum ada aktivitas.</p>'
+    }
 
     const statusEntries = Object.entries(ov.projects.byStatus || {})
     makeChart('statusChart', {
@@ -225,9 +356,12 @@
       options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } },
     })
 
-    $('#top-users-body').innerHTML = ov.topUsers.length
-      ? ov.topUsers.map((u) => `<tr><td><div class="d-flex align-items-center gap-2"><span class="avatar-sm">${esc((u.name || u.email || '?').trim().charAt(0).toUpperCase())}</span><span>${esc(u.name || u.email)}<br><small class="text-muted">${esc(u.email)}</small></span></div></td><td>${fmtNum(u.projects)}</td><td>${fmtNum(u.messages)}</td></tr>`).join('')
-      : '<tr><td colspan="3" class="text-muted">Belum ada data.</td></tr>'
+    const topBody = $('#top-users-body')
+    if (topBody) {
+      topBody.innerHTML = ov.topUsers.length
+        ? ov.topUsers.map((u) => `<tr><td><div class="d-flex align-items-center gap-2"><span class="avatar-sm">${esc((u.name || u.email || '?').trim().charAt(0).toUpperCase())}</span><span>${esc(u.name || u.email)}<br><small class="text-muted">${esc(u.email)}</small></span></div></td><td>${fmtNum(u.projects)}</td><td>${fmtNum(u.messages)}</td></tr>`).join('')
+        : '<tr><td colspan="3" class="text-muted">Belum ada data.</td></tr>'
+    }
   }
 
   async function loadUsers() {
@@ -264,7 +398,7 @@
         try {
           await api(`/api/admin/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ disabled: disable }) })
           toast(`Akun ${email} ${disable ? 'dinonaktifkan' : 'diaktifkan'}.`)
-          loaded.users = false; loadUsers()
+          loadUsers()
         } catch (err) { toast(err.message, 'error') }
       } else {
         const ok = await confirmDialog('Hapus pengguna', `Hapus akun ${email} beserta SEMUA proyeknya? Tindakan ini tidak bisa dibatalkan.`, 'Ya, hapus')
@@ -272,8 +406,7 @@
         try {
           const res = await api(`/api/admin/users/${encodeURIComponent(id)}`, { method: 'DELETE' })
           toast(`Akun ${email} dihapus (${fmtNum(res.deletedProjects)} proyek ikut terhapus).`)
-          loaded.users = false; loadUsers()
-          overviewCache = null
+          loadUsers()
         } catch (err) { toast(err.message, 'error') }
       }
     }))
@@ -305,15 +438,13 @@
       try {
         await api(`/api/admin/projects/${encodeURIComponent(btn.dataset.id)}`, { method: 'DELETE' })
         toast('Proyek dihapus.')
-        loaded.projects = false; loadProjects()
-        overviewCache = null
+        loadProjects()
       } catch (err) { toast(err.message, 'error') }
     }))
   }
 
   async function loadUsage() {
     const data = await api('/api/admin/usage')
-    usageCache = data
     $('#usage-requests').textContent = fmtNum(data.llm.requests)
     $('#usage-prompt').textContent = fmtNum(data.llm.promptTokens)
     $('#usage-completion').textContent = fmtNum(data.llm.completionTokens)
@@ -379,7 +510,7 @@
         try {
           await api(`/api/admin/plans/${encodeURIComponent(id)}`, { method: 'DELETE' })
           toast('Plan dihapus.')
-          loaded.plans = false; loadPlans()
+          loadPlans()
         } catch (err) { toast(err.message, 'error') }
         return
       }
@@ -395,7 +526,7 @@
       try {
         await api(`/api/admin/plans/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ name: vals.name, tokenLimit: vals.tokenLimit, priceIdr: vals.priceIdr, description: vals.description }) })
         toast('Plan diperbarui.')
-        loaded.plans = false; loadPlans()
+        loadPlans()
       } catch (err) { toast(err.message, 'error') }
     }))
 
@@ -405,16 +536,16 @@
       try {
         await api(`/api/admin/users/${encodeURIComponent(userId)}/plan`, { method: 'POST', body: JSON.stringify({ planId }) })
         toast('Plan pengguna diperbarui.')
-        loaded.plans = false; loadPlans()
-        loaded.users = false
+        loadPlans()
       } catch (err) {
         toast(err.message, 'error')
-        loaded.plans = false; loadPlans()
+        loadPlans()
       }
     }))
   }
 
-  $('#plan-add-btn').addEventListener('click', async () => {
+  const planAddBtn = $('#plan-add-btn')
+  if (planAddBtn) planAddBtn.addEventListener('click', async () => {
     const vals = await formDialog('Tambah plan', [
       { name: 'name', label: 'Nama plan', required: true, help: 'cth. Pro, Starter, Enterprise' },
       { name: 'tokenLimit', label: 'Kuota token (0 = tanpa batas)', type: 'number', min: 0, value: 0 },
@@ -425,7 +556,7 @@
     try {
       await api('/api/admin/plans', { method: 'POST', body: JSON.stringify({ name: vals.name, tokenLimit: vals.tokenLimit, priceIdr: vals.priceIdr, description: vals.description }) })
       toast('Plan dibuat.')
-      loaded.plans = false; loadPlans()
+      loadPlans()
     } catch (err) { toast(err.message, 'error') }
   })
 
@@ -460,7 +591,8 @@
     ].map(([k, v]) => `<dt class="col-sm-4">${esc(k)}</dt><dd class="col-sm-8 font-monospace">${esc(v)}</dd>`).join('')
   }
 
-  $('#ai-settings-form').addEventListener('submit', async (e) => {
+  const aiForm = $('#ai-settings-form')
+  if (aiForm) aiForm.addEventListener('submit', async (e) => {
     e.preventDefault()
     const payload = {
       model: $('#ai-model').value.trim(),
@@ -474,11 +606,12 @@
       await api('/api/admin/ai-settings', { method: 'PUT', body: JSON.stringify(payload) })
       toast('Pengaturan AI disimpan — berlaku langsung tanpa restart.')
       $('#ai-key').value = ''
-      loaded['ai-settings'] = false; loadAiSettings()
+      loadAiSettings()
     } catch (err) { toast(err.message, 'error') }
   })
 
-  $('#ai-test-btn').addEventListener('click', async () => {
+  const aiTestBtn = $('#ai-test-btn')
+  if (aiTestBtn) aiTestBtn.addEventListener('click', async () => {
     const box = $('#ai-test-result')
     box.innerHTML = '<p class="text-muted mb-0"><span class="spinner-border spinner-border-sm me-2"></span>Mengirim prompt tes ke LLM…</p>'
     try {
@@ -528,10 +661,12 @@
 
   function runMessagesSearch() {
     messagesQuery = $('#messages-search').value.trim()
-    loaded.messages = false; loadMessages()
+    loadMessages()
   }
-  $('#messages-search-btn').addEventListener('click', runMessagesSearch)
-  $('#messages-search').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); runMessagesSearch() } })
+  const msgSearchBtn = $('#messages-search-btn')
+  if (msgSearchBtn) msgSearchBtn.addEventListener('click', runMessagesSearch)
+  const msgSearch = $('#messages-search')
+  if (msgSearch) msgSearch.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); runMessagesSearch() } })
 
   /* ---------- sesi ---------- */
   async function loadSessions() {
@@ -552,7 +687,7 @@
       try {
         await api(`/api/admin/sessions/${encodeURIComponent(btn.dataset.hash)}`, { method: 'DELETE' })
         toast('Sesi dicabut.')
-        loaded.sessions = false; loadSessions()
+        loadSessions()
       } catch (err) { toast(err.message, 'error') }
     }))
   }
@@ -590,8 +725,10 @@
       : '<p class="text-muted mb-0">Tidak ada preview yang berjalan saat ini.</p>'
 
     const badge = $('#nav-health-badge')
-    if (llm.reachable) { badge.className = 'badge rounded-pill ms-auto bg-success'; badge.textContent = 'OK' }
-    else { badge.className = 'badge rounded-pill ms-auto bg-danger'; badge.textContent = 'LLM mati' }
+    if (badge) {
+      if (llm.reachable) { badge.className = 'badge rounded-pill ms-auto bg-success'; badge.textContent = 'OK' }
+      else { badge.className = 'badge rounded-pill ms-auto bg-danger'; badge.textContent = 'LLM mati' }
+    }
   }
 
   async function loadSettings() {
@@ -613,52 +750,65 @@
       : '<p class="text-muted mb-0">Belum ada pengguna, jadi belum ada admin.</p>'
   }
 
-  /* ---------- boot ---------- */
-  $('#refresh-btn').addEventListener('click', async () => {
-    Object.keys(loaded).forEach((k) => { loaded[k] = false })
-    overviewCache = null
-    usageCache = null
-    await loadPage(document.body.dataset.page || 'dashboard')
-    toast('Data dimuat ulang.')
+  /* ---------- boot per-route ---------- */
+  const refreshBtn = $('#refresh-btn')
+  if (refreshBtn) refreshBtn.addEventListener('click', async () => {
+    try {
+      const ov = await api('/api/admin/overview')
+      overviewCache = ov
+      fillNavBadges(ov)
+      fillNotifications(ov)
+      await loadPage(document.body.dataset.page || 'dashboard', ov)
+      toast('Data dimuat ulang.')
+    } catch (err) { toast(err.message, 'error') }
   })
 
-  $('#logout-link').addEventListener('click', async (e) => {
+  const logoutLink = $('#logout-link')
+  if (logoutLink) logoutLink.addEventListener('click', async (e) => {
     e.preventDefault()
     try { await api('/api/auth/logout', { method: 'POST' }) } catch { /* abaikan */ }
     window.location.href = '/'
   })
 
+  function showLocked(title, text, actionLabel) {
+    $('#locked-title').textContent = title
+    $('#locked-text').textContent = text
+    const action = $('#locked-action')
+    if (actionLabel) action.textContent = actionLabel
+    action.href = '/'
+    $('#locked-screen').classList.remove('d-none')
+    const content = $('#page-content')
+    if (content) content.classList.add('d-none')
+  }
+
   async function boot() {
+    const page = document.body.dataset.page || 'dashboard'
     try {
       const me = await api('/api/auth/me')
       if (!me.user) {
-        $('#locked-title').textContent = 'Masuk dulu'
-        $('#locked-text').textContent = 'Panel admin hanya untuk akun yang sudah masuk. Masuk lewat Builder, lalu kembali ke sini.'
-        $('#locked-screen').classList.remove('d-none')
-        $$('section[data-page]').forEach((s) => s.classList.add('d-none'))
+        showLocked('Masuk dulu', 'Panel admin hanya untuk akun yang sudah masuk. Masuk lewat Builder, lalu kembali ke sini.')
         $('#loading-screen').classList.add('done')
         return
       }
       window.__vbAdminMe = me.user.email
-      $('#user-email-label').textContent = me.user.email
+      const label = $('#user-email-label')
+      if (label) label.textContent = me.user.email
+      let ov
       try {
-        await api('/api/admin/overview')
+        ov = await api('/api/admin/overview')
       } catch (err) {
         if (err.status === 403) {
-          $('#locked-title').textContent = 'Bukan admin'
-          $('#locked-text').textContent = `Akun ${me.user.email} bukan admin. Hanya pemilik instalasi yang bisa membuka panel ini.`
-          $('#locked-action').textContent = 'Kembali ke Builder'
-          $('#locked-action').href = '/'
-          $('#locked-screen').classList.remove('d-none')
-          $$('section[data-page]').forEach((s) => s.classList.add('d-none'))
+          showLocked('Bukan admin', `Akun ${me.user.email} bukan admin. Hanya pemilik instalasi yang bisa membuka panel ini.`, 'Kembali ke Builder')
           $('#loading-screen').classList.add('done')
           return
         }
         throw err
       }
+      overviewCache = ov
+      fillNavBadges(ov)
+      fillNotifications(ov)
       $('#loading-screen').classList.add('done')
-      loaded.dashboard = true
-      await loadDashboard()
+      await loadPage(page, ov)
     } catch (err) {
       $('#loading-screen').classList.add('done')
       toast(err.message, 'error')

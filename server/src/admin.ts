@@ -676,20 +676,62 @@ export function registerAdmin(app: Hono<AdminEnv>) {
   /* ---------------------------------------------------------------- */
   /* Halaman admin (Metis) — disajikan dari server, terpisah dari     */
   /* React builder. Data semuanya dari /api/admin/*, tanpa mock.       */
+  /* Halaman dibuat dari template Metis asli (lihat server/src/admin/  */
+  /* VENDOR.md); tiap route adalah halaman sendiri.                    */
   /* ---------------------------------------------------------------- */
 
   const ADMIN_DIR = new URL('./admin/', import.meta.url).pathname
+  const ADMIN_PAGES: Record<string, string> = {
+    '': 'dashboard.html',
+    users: 'users.html',
+    projects: 'projects.html',
+    plans: 'plans.html',
+    usage: 'usage.html',
+    builds: 'builds.html',
+    messages: 'messages.html',
+    sessions: 'sessions.html',
+    health: 'health.html',
+    'ai-settings': 'ai-settings.html',
+    settings: 'settings.html',
+  }
+  const ADMIN_ASSET_TYPES: Record<string, string> = {
+    '.css': 'text/css; charset=utf-8',
+    '.js': 'text/javascript; charset=utf-8',
+    '.mjs': 'text/javascript; charset=utf-8',
+    '.woff2': 'font/woff2',
+    '.woff': 'font/woff',
+    '.ttf': 'font/ttf',
+    '.svg': 'image/svg+xml',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.ico': 'image/x-icon',
+    '.json': 'application/json',
+    '.map': 'application/json',
+  }
 
-  const serveAdminFile = async (c: Context, file: string, contentType: string) => {
+  const serveAdminFile = async (c: Context, rel: string, contentType: string) => {
     const fs = await import('node:fs/promises')
-    const body = await fs.readFile(`${ADMIN_DIR}${file}`, 'utf8').catch(() => null)
+    const body = await fs.readFile(`${ADMIN_DIR}${rel}`).catch(() => null)
     if (body === null) return c.text('File admin tidak ditemukan.', 404)
     c.header('Cache-Control', 'no-store')
     c.header('Content-Type', contentType)
     return c.body(body)
   }
 
-  app.get('/admin', (c) => serveAdminFile(c, 'admin.html', 'text/html; charset=utf-8'))
-  app.get('/admin/admin.css', (c) => serveAdminFile(c, 'admin.css', 'text/css; charset=utf-8'))
-  app.get('/admin/admin.js', (c) => serveAdminFile(c, 'admin.js', 'text/javascript; charset=utf-8'))
+  const ADMIN_HTML = 'text/html; charset=utf-8'
+  for (const [slug, file] of Object.entries(ADMIN_PAGES)) {
+    const path = slug === '' ? '/admin' : `/admin/${slug}`
+    app.get(path, (c) => serveAdminFile(c, `pages/${file}`, ADMIN_HTML))
+  }
+  app.get('/admin/', (c) => c.redirect('/admin', 302))
+  app.get('/admin/assets/admin.js', (c) => serveAdminFile(c, 'admin.js', 'text/javascript; charset=utf-8'))
+  app.get('/admin/assets/*', (c) => {
+    const rest = decodeURIComponent(c.req.path).replace(/^\/admin\/assets\//, '')
+    if (!rest || rest.includes('..') || rest.startsWith('/')) return c.text('Tidak ditemukan.', 404)
+    const dot = rest.lastIndexOf('.')
+    const ext = dot >= 0 ? rest.slice(dot) : ''
+    const type = ADMIN_ASSET_TYPES[ext]
+    if (!type) return c.text('Tidak ditemukan.', 404)
+    return serveAdminFile(c, `vendor/assets/${rest}`, type)
+  })
 }
