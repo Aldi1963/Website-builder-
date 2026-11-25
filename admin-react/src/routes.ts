@@ -123,7 +123,7 @@ export const ROUTES: AdminRoute[] = [
 export const ADMIN_SECTION_SLUGS = ['audit', 'pemeliharaan', 'ai-settings', 'settings']
 
 /** Tautan keluar sidebar (bukan route admin). */
-export const SITE_LINK = { title: 'Lihat situs', href: '/', icon: ArrowSquareOut }
+export const SITE_LINK = { title: 'Kembali ke Builder', href: '/', icon: ArrowSquareOut }
 
 /** Cocokkan pathname dengan tabel route. Mendukung segmen `:param`
     (mis. '/admin/users/:id') untuk halaman detail nanti. */

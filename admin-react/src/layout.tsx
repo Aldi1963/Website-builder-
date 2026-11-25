@@ -1,10 +1,14 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import {
+  ArrowsIn,
+  ArrowsOut,
   Bell,
   CaretDown,
   Gear,
   List,
+  MagnifyingGlass,
   Moon,
+  Sidebar,
   SignOut,
   Sun,
   Warning,
@@ -67,6 +71,26 @@ export function AdminLayout({ children }: { children: ReactNode }) {
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const notifRef = useRef<HTMLDivElement>(null)
   const userMenuRef = useRef<HTMLDivElement>(null)
+  /* Collapse sidebar desktop (SPEC §0.12): tersimpan di
+     localStorage['sidebar-collapsed']. */
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('sidebar-collapsed') === 'true'
+    } catch {
+      return false
+    }
+  })
+  /* Pencarian header (SPEC §0.8): min 2 karakter, maks 6 hasil, filter
+     substring judul. */
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const searchRef = useRef<HTMLDivElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const searchResults =
+    searchQuery.length >= 2
+      ? ROUTES.filter((r) => r.title.toLowerCase().includes(searchQuery.toLowerCase())).slice(0, 6)
+      : []
 
   /* Badge nav + notifikasi: sumber data SAMA seperti admin.js lama.
      - nav users/projects: GET /api/admin/overview (users.total, projects.total)
@@ -74,12 +98,18 @@ export function AdminLayout({ children }: { children: ReactNode }) {
      - lonceng: GET /api/admin/alerts + overview.recent (5 item terakhir);
        badge = jumlah alert + aktivitas. Semua best-effort: gagal memuat
        tidak boleh merusak layout (badge cukup disembunyikan). */
+  const mountedRef = useRef(true)
   useEffect(() => {
-    let cancelled = false
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
+  const refreshNav = useCallback(() => {
     api
       .get<OverviewResponse>('/api/admin/overview')
       .then((ov) => {
-        if (cancelled) return
+        if (!mountedRef.current) return
         setUsersCount(ov.users.total)
         setProjectsCount(ov.projects.total)
         setNotifs((prev) => {
@@ -97,7 +127,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
     api
       .get<{ alerts: AlertItem[] }>('/api/admin/alerts')
       .then((data) => {
-        if (cancelled) return
+        if (!mountedRef.current) return
         const alerts: NotifItem[] = (data.alerts ?? []).map((a) => ({
           kind: 'alert',
           level: a.level,
@@ -111,27 +141,41 @@ export function AdminLayout({ children }: { children: ReactNode }) {
     api
       .get<HealthResponse>('/api/admin/health')
       .then((h) => {
-        if (!cancelled) setHealthOk(h.llm.reachable)
+        if (mountedRef.current) setHealthOk(h.llm.reachable)
       })
       .catch(() => {})
-    return () => {
-      cancelled = true
-    }
   }, [])
-
-  /* Tutup dropdown bila klik di luar. */
   useEffect(() => {
-    if (!notifOpen && !userMenuOpen) return
+    refreshNav()
+  }, [refreshNav])
+  /* Refresh Dashboard juga me-refresh badge + notifikasi (SPEC §0.10/§0.11:
+     admin.js lama memanggil fillNavBadges + fillNotifications saat refresh). */
+  useEffect(() => {
+    const onRefresh = () => refreshNav()
+    window.addEventListener('vb-admin:refresh-nav', onRefresh)
+    return () => window.removeEventListener('vb-admin:refresh-nav', onRefresh)
+  }, [refreshNav])
+
+  /* Tutup dropdown bila klik di luar; Escape menutup semuanya; Ctrl+K /
+     Cmd+K fokus ke pencarian header (SPEC §0.13). */
+  useEffect(() => {
     const onClick = (e: globalThis.MouseEvent) => {
       const t = e.target as Node
       if (notifOpen && notifRef.current && !notifRef.current.contains(t)) setNotifOpen(false)
       if (userMenuOpen && userMenuRef.current && !userMenuRef.current.contains(t)) setUserMenuOpen(false)
+      if (searchOpen && searchRef.current && !searchRef.current.contains(t)) setSearchOpen(false)
     }
     const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        searchInputRef.current?.focus()
+        return
+      }
       if (e.key === 'Escape') {
         setNotifOpen(false)
         setUserMenuOpen(false)
         setSidebarOpen(false)
+        setSearchOpen(false)
       }
     }
     document.addEventListener('mousedown', onClick)
@@ -140,7 +184,30 @@ export function AdminLayout({ children }: { children: ReactNode }) {
       document.removeEventListener('mousedown', onClick)
       document.removeEventListener('keydown', onKey)
     }
-  }, [notifOpen, userMenuOpen])
+  }, [notifOpen, userMenuOpen, searchOpen])
+
+  useEffect(() => {
+    const onFs = () => setIsFullscreen(Boolean(document.fullscreenElement))
+    document.addEventListener('fullscreenchange', onFs)
+    return () => document.removeEventListener('fullscreenchange', onFs)
+  }, [])
+
+  const toggleCollapse = () => {
+    setCollapsed((v) => {
+      const next = !v
+      try {
+        localStorage.setItem('sidebar-collapsed', String(next))
+      } catch {
+        /* abaikan */
+      }
+      return next
+    })
+  }
+
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) void document.exitFullscreen()
+    else void document.documentElement.requestFullscreen().catch(() => {})
+  }
 
   const toggleTheme = () => {
     const next = theme === 'dark' ? 'light' : 'dark'
@@ -164,20 +231,26 @@ export function AdminLayout({ children }: { children: ReactNode }) {
     return null
   }
 
-  const sidebar = (
+  const renderSidebar = (compact: boolean) => (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
-        <a
-          href="/admin"
-          onClick={(e) => {
-            e.preventDefault()
-            navigate('/admin')
-            closeSidebar()
-          }}
-          className="text-lg font-bold text-accent"
-        >
-          VibeBuilder
-        </a>
+        {compact ? (
+          <span className="mx-auto text-lg font-bold text-accent" title="VibeBuilder">
+            VB
+          </span>
+        ) : (
+          <a
+            href="/admin"
+            onClick={(e) => {
+              e.preventDefault()
+              navigate('/admin')
+              closeSidebar()
+            }}
+            className="text-lg font-bold text-accent"
+          >
+            VibeBuilder
+          </a>
+        )}
         <button
           type="button"
           aria-label="Tutup menu"
@@ -194,7 +267,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
             const sectionStart = ADMIN_SECTION_SLUGS[0] === route.slug
             return (
               <li key={route.slug}>
-                {sectionStart ? (
+                {sectionStart && !compact ? (
                   <p className="px-3 pt-4 pb-1 text-xs font-bold tracking-wide text-muted uppercase">
                     Admin
                   </p>
@@ -202,8 +275,11 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                 <NavLink
                   to={route.path}
                   onClick={closeSidebar}
+                  title={compact ? route.title : undefined}
                   className={(active) =>
                     `flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm ${
+                      compact ? 'justify-center' : ''
+                    } ${
                       active
                         ? 'bg-accent-soft font-semibold text-accent'
                         : 'text-ink hover:bg-surface-muted'
@@ -211,8 +287,12 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                   }
                 >
                   <Icon size={18} className="shrink-0" />
-                  <span className="flex-1 truncate">{route.title}</span>
-                  {badgeFor(route.slug)}
+                  {compact ? null : (
+                    <>
+                      <span className="flex-1 truncate">{route.title}</span>
+                      {badgeFor(route.slug)}
+                    </>
+                  )}
                 </NavLink>
               </li>
             )
@@ -220,23 +300,38 @@ export function AdminLayout({ children }: { children: ReactNode }) {
           <li>
             <a
               href={SITE_LINK.href}
-              className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-ink hover:bg-surface-muted"
+              title={compact ? SITE_LINK.title : undefined}
+              className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-ink hover:bg-surface-muted ${
+                compact ? 'justify-center' : ''
+              }`}
             >
               <SITE_LINK.icon size={18} className="shrink-0" />
-              <span className="flex-1 truncate">{SITE_LINK.title}</span>
+              {compact ? null : <span className="flex-1 truncate">{SITE_LINK.title}</span>}
             </a>
           </li>
         </ul>
       </nav>
-      <div className="border-t border-border px-4 py-3 text-xs text-muted">© 2026 VibeBuilder Admin</div>
+      {compact ? null : (
+        <div className="border-t border-border px-4 py-3 text-xs text-muted">© 2026 VibeBuilder Admin</div>
+      )}
     </div>
   )
 
   return (
     <div className="min-h-full">
-      {/* Sidebar desktop */}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-border bg-surface lg:block">
-        {sidebar}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[70] focus:rounded-lg focus:bg-accent focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-white"
+      >
+        Lewati ke konten utama
+      </a>
+      {/* Sidebar desktop (bisa di-collapse, tersimpan di localStorage). */}
+      <aside
+        className={`fixed inset-y-0 left-0 z-30 hidden border-r border-border bg-surface lg:block ${
+          collapsed ? 'w-16' : 'w-64'
+        }`}
+      >
+        {renderSidebar(collapsed)}
       </aside>
       {/* Sidebar HP: off-canvas */}
       {sidebarOpen ? (
@@ -252,10 +347,10 @@ export function AdminLayout({ children }: { children: ReactNode }) {
         }`}
         aria-hidden={!sidebarOpen}
       >
-        {sidebar}
+        {renderSidebar(false)}
       </aside>
 
-      <div className="lg:pl-64">
+      <div className={collapsed ? 'lg:pl-16' : 'lg:pl-64'}>
         <header className="sticky top-0 z-20 border-b border-border bg-surface">
           <div className="flex items-center gap-2 px-3 py-2.5 sm:px-4">
             <button
@@ -278,7 +373,77 @@ export function AdminLayout({ children }: { children: ReactNode }) {
               VibeBuilder
             </a>
             <span className="hidden text-sm font-semibold lg:block">Panel Admin</span>
+            <button
+              type="button"
+              aria-label="Toggle sidebar"
+              title="Tampilkan/sembunyikan menu"
+              onClick={toggleCollapse}
+              className="hidden rounded-lg p-2 text-ink hover:bg-surface-muted lg:inline-flex"
+            >
+              <Sidebar size={20} />
+            </button>
+            <div className="relative ml-2 hidden md:block" ref={searchRef}>
+              <MagnifyingGlass
+                size={16}
+                className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted"
+              />
+              <input
+                ref={searchInputRef}
+                data-search-input
+                type="search"
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value)
+                  setSearchOpen(true)
+                }}
+                onFocus={() => setSearchOpen(true)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && searchResults.length > 0) {
+                    e.preventDefault()
+                    navigate(searchResults[0].path)
+                    setSearchQuery('')
+                    setSearchOpen(false)
+                    searchInputRef.current?.blur()
+                  }
+                }}
+                placeholder="Cari halaman… (Ctrl+K)"
+                aria-label="Cari halaman admin"
+                className="w-56 rounded-lg border border-border bg-surface px-9 py-2 text-sm outline-none placeholder:text-muted focus:border-accent lg:w-64"
+              />
+              {searchOpen && searchResults.length > 0 ? (
+                <div className="absolute left-0 z-50 mt-2 w-full overflow-hidden rounded-xl border border-border bg-surface shadow-lg">
+                  <ul>
+                    {searchResults.map((r) => (
+                      <li key={r.slug}>
+                        <a
+                          href={r.path}
+                          onClick={(e) => {
+                            e.preventDefault()
+                            navigate(r.path)
+                            setSearchQuery('')
+                            setSearchOpen(false)
+                          }}
+                          className="flex items-center justify-between px-4 py-2.5 text-sm hover:bg-surface-muted"
+                        >
+                          <span>{r.title}</span>
+                          <span className="text-xs text-muted">halaman</span>
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
             <div className="ml-auto flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={toggleFullscreen}
+                aria-label={isFullscreen ? 'Keluar dari layar penuh' : 'Layar penuh'}
+                title="Layar penuh"
+                className="hidden rounded-lg border border-border p-2 hover:bg-surface-muted lg:inline-flex"
+              >
+                {isFullscreen ? <ArrowsIn size={18} /> : <ArrowsOut size={18} />}
+              </button>
               <button
                 type="button"
                 onClick={toggleTheme}
@@ -312,7 +477,17 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                     <p className="border-b border-border px-4 py-2.5 text-sm font-semibold">Notifikasi</p>
                     <div className="max-h-[60vh] overflow-y-auto">
                       {notifs.length === 0 ? (
-                        <p className="px-4 py-6 text-center text-sm text-muted">Belum ada aktivitas.</p>
+                        <a
+                          href="/admin"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            navigate('/admin')
+                            setNotifOpen(false)
+                          }}
+                          className="block px-4 py-6 text-center text-sm text-muted hover:bg-surface-muted"
+                        >
+                          Belum ada aktivitas.
+                        </a>
                       ) : (
                         <ul>
                           {notifs.some((n) => n.kind === 'alert') ? (
@@ -349,17 +524,19 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                         </ul>
                       )}
                     </div>
-                    <a
-                      href="/admin"
-                      onClick={(e) => {
-                        e.preventDefault()
-                        navigate('/admin')
-                        setNotifOpen(false)
-                      }}
-                      className="block border-t border-border px-4 py-2.5 text-center text-sm hover:bg-surface-muted"
-                    >
-                      Lihat semua aktivitas
-                    </a>
+                    {notifs.length > 0 ? (
+                      <a
+                        href="/admin"
+                        onClick={(e) => {
+                          e.preventDefault()
+                          navigate('/admin')
+                          setNotifOpen(false)
+                        }}
+                        className="block border-t border-border px-4 py-2.5 text-center text-sm hover:bg-surface-muted"
+                      >
+                        Lihat semua aktivitas
+                      </a>
+                    ) : null}
                   </div>
                 ) : null}
               </div>

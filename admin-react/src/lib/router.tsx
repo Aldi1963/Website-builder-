@@ -63,12 +63,13 @@ interface NavLinkProps {
   className?: string | ((active: boolean) => string)
   exact?: boolean
   onClick?: () => void
+  title?: string
 }
 
 /** Tautan internal. `active` bila path cocok (persis bila `exact`, atau
     awalan segmen bila tidak — mis. '/admin/users' aktif juga di
     '/admin/users/12'). */
-export function NavLink({ to, children, className, exact = false, onClick }: NavLinkProps) {
+export function NavLink({ to, children, className, exact = false, onClick, title }: NavLinkProps) {
   const { path } = useRoute()
   const active = exact ? path === to : path === to || (to !== BASENAME && path.startsWith(`${to}/`))
   const resolved = typeof className === 'function' ? className(active) : className
@@ -78,7 +79,7 @@ export function NavLink({ to, children, className, exact = false, onClick }: Nav
     onClick?.()
   }
   return (
-    <a href={to} onClick={handleClick} aria-current={active ? 'page' : undefined} className={resolved}>
+    <a href={to} onClick={handleClick} aria-current={active ? 'page' : undefined} className={resolved} title={title}>
       {children}
     </a>
   )

@@ -1,4 +1,4 @@
-import { StrictMode, Suspense } from 'react'
+import { StrictMode, Suspense, useEffect } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ShieldCheck } from '@phosphor-icons/react'
 import { AuthProvider, LOGIN_URL, useAuth } from './lib/auth'
@@ -63,8 +63,13 @@ function NotFound() {
 }
 
 function App() {
-  const { status } = useAuth()
+  const { status, user } = useAuth()
   const { route } = useRoute()
+
+  /* Judul dokumen per halaman (SPEC §0.1): "<Judul> — Admin VibeBuilder". */
+  useEffect(() => {
+    document.title = route ? `${route.title} — Admin VibeBuilder` : 'Admin — VibeBuilder'
+  }, [route])
 
   if (status === 'loading') {
     return (
@@ -77,7 +82,7 @@ function App() {
     return (
       <LockedScreen
         title="Masuk dulu"
-        text="Masuk dulu untuk membuka panel admin."
+        text="Panel admin hanya untuk akun yang sudah masuk. Masuk lewat Builder, lalu kembali ke sini."
         actionLabel="Buka Builder & Masuk"
         actionHref={LOGIN_URL}
       />
@@ -87,7 +92,7 @@ function App() {
     return (
       <LockedScreen
         title="Bukan admin"
-        text="Akun ini masuk, tetapi bukan admin. Hanya admin yang boleh membuka panel ini."
+        text={`Akun ${user?.email ?? ''} bukan admin. Hanya pemilik instalasi yang bisa membuka panel ini.`}
         actionLabel="Kembali ke Builder"
         actionHref="/"
       />
