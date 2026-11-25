@@ -630,6 +630,47 @@ export function registerBilling(app: Hono<BillingEnv>) {
     return c.json({ balance: getBalance(user.id), packages: PACKAGES, configured: cfg.apiKey.length > 0 })
   })
 
+  /* Riwayat pemakaian + top-up pengguna (halaman Penggunaan, fase 3).
+     credit_usage: satu baris per panggilan LLM yang dipotong; credit
+     = credit yang benar-benar dipotong, shortfallCredit = kekurangan
+     bila biaya melebihi sisa saldo. Orders dari listOrders (sudah
+     menyapu order kedaluwarsa). Tanpa data pengguna lain. */
+  app.get('/api/billing/usage', (c) => {
+    const user = currentUser(c)
+    if (!user) return c.json({ error: 'Belum masuk.' }, 401)
+    const rows = db
+      .prepare(
+        `SELECT model, prompt_tokens, completion_tokens, rate_in, rate_out, cost_usd, credit, shortfall_credit, created_at
+         FROM credit_usage WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT 50`,
+      )
+      .all(user.id) as {
+      model: string
+      prompt_tokens: number
+      completion_tokens: number
+      rate_in: number
+      rate_out: number
+      cost_usd: number
+      credit: number
+      shortfall_credit: number
+      created_at: number
+    }[]
+    return c.json({
+      balance: getBalance(user.id),
+      usage: rows.map((r) => ({
+        model: r.model,
+        promptTokens: r.prompt_tokens,
+        completionTokens: r.completion_tokens,
+        rateIn: r.rate_in,
+        rateOut: r.rate_out,
+        costUsd: r.cost_usd,
+        credit: r.credit,
+        shortfallCredit: r.shortfall_credit,
+        createdAt: r.created_at,
+      })),
+      orders: listOrders(user.id).map(publicOrder),
+    })
+  })
+
   /* Buat order top-up. Paket HANYA dari daftar yang disetujui — nominal
      bebas dari client selalu ditolak. */
   app.post('/api/billing/orders', async (c) => {
