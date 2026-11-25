@@ -23,6 +23,7 @@ import {
   completeText,
 } from './llm.ts'
 import { ROOT } from './paths.ts'
+import { registerBilling } from './billing.ts'
 
 type AdminEnv = { Variables: { user: User } }
 
@@ -185,6 +186,11 @@ function aiSettingsView() {
 /* ------------------------------------------------------------------ */
 
 export function registerAdmin(app: Hono<AdminEnv>) {
+  /* Top-up credit (fase 2): route billing didaftarkan lewat rantai ini
+     karena app.ts sedang dipegang trek lain (belum commit) dan TIDAK
+     BOLEH disentuh. Bila app.ts sudah stabil, pindahkan pemanggilan
+     satu baris ini ke app.ts di samping registerAdmin(app). */
+  registerBilling(app)
   ensureDefaultPlan()
   /* FITUR 3 — Moderasi proyek: tanda (flag) + penangguhan.
      Penangguhan TIDAK memakai nilai status (idle/working/building/error)

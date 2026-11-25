@@ -137,6 +137,41 @@ CREATE INDEX IF NOT EXISTS idx_credit_tx_user ON credit_transactions(user_id, cr
 CREATE INDEX IF NOT EXISTS idx_credit_tx_free_day ON credit_transactions(user_id, bucket, kind, created_at);
 `)
 
+/* ---- Credit (fase 2): order top-up QRIS + jejak webhook ----
+   credit_orders: satu baris per order top-up. status: pending (menunggu
+   bayar) / paid / expired (lewat masa berlaku QRIS tanpa bayar) /
+   cancelled (dibatalkan pengguna; webhook lunas yang datang sesudahnya
+   TIDAK dikreditkan). qr_payload = string QR EMV dari gateway (field
+   qr_url) — bukan URL gambar. credit_webhook_events: jejak tiap webhook
+   masuk (termasuk yang ditolak/gagal) untuk audit admin. */
+db.exec(`
+CREATE TABLE IF NOT EXISTS credit_orders (
+  order_id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  package TEXT NOT NULL,
+  amount_idr INTEGER NOT NULL,
+  credits REAL NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  qr_payload TEXT,
+  payment_url TEXT,
+  gateway_status TEXT,
+  created_at INTEGER NOT NULL,
+  paid_at INTEGER,
+  expires_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_credit_orders_user ON credit_orders(user_id, created_at);
+
+CREATE TABLE IF NOT EXISTS credit_webhook_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_id TEXT NOT NULL DEFAULT '',
+  event TEXT NOT NULL DEFAULT '',
+  signature_valid INTEGER NOT NULL DEFAULT 0,
+  result TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_credit_webhook_events_order ON credit_webhook_events(order_id, created_at);
+`)
+
 /* Publish state lives on the project row. The column is added in place so an
    existing database keeps working without a migration tool. */
 try {
