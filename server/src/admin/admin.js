@@ -12,6 +12,7 @@
     return String(v ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]))
   }
   const fmtNum = (n) => Number(n ?? 0).toLocaleString('id-ID')
+  const fmtRp = (n) => (n === null || n === undefined ? '–' : `Rp ${fmtNum(n)}`)
   const fmtBytes = (n) => {
     if (!n && n !== 0) return '–'
     if (n < 1024) return `${n} B`
@@ -226,6 +227,7 @@
     { title: 'Proyek', url: '/admin/projects', type: 'halaman' },
     { title: 'Plan', url: '/admin/plans', type: 'halaman' },
     { title: 'Penggunaan', url: '/admin/usage', type: 'halaman' },
+    { title: 'Biaya LLM', url: '/admin/biaya', type: 'halaman' },
     { title: 'Build', url: '/admin/builds', type: 'halaman' },
     { title: 'Pesan', url: '/admin/messages', type: 'halaman' },
     { title: 'Sesi', url: '/admin/sessions', type: 'halaman' },
@@ -280,6 +282,7 @@
     else if (name === 'projects') await loadProjects()
     else if (name === 'plans') await loadPlans()
     else if (name === 'usage') await loadUsage()
+    else if (name === 'biaya') await loadCost()
     else if (name === 'builds') await loadBuilds()
     else if (name === 'messages') await loadMessages()
     else if (name === 'sessions') await loadSessions()
@@ -467,6 +470,112 @@
       ? data.byUserTokens.map((u) => `<tr><td>${esc(u.name || u.email)}<br><small class="text-muted">${esc(u.email)}</small></td><td>${fmtNum(u.tokens)}</td><td>${fmtNum(u.prompt_tokens)}</td><td>${fmtNum(u.completion_tokens)}</td></tr>`).join('')
       : '<tr><td colspan="4" class="text-muted">Belum ada token tercatat per pengguna.</td></tr>'
   }
+
+  /* ---------- biaya LLM ---------- */
+  let costDays = 30
+  let costPricesCache = {}
+  async function loadCost() {
+    const data = await api(`/api/admin/cost?days=${costDays}`)
+    costPricesCache = data.prices || {}
+    const label = costDays === 0 ? 'semua riwayat' : `${costDays} hari terakhir`
+    const csv = $('#cost-csv')
+    if (csv) csv.href = `/api/admin/cost.csv?days=${costDays}`
+    $('#cost-range-label').textContent = label
+    $('#cost-total-tokens').textContent = fmtNum(data.totals.total_tokens)
+    $('#cost-requests').textContent = fmtNum(data.totals.requests)
+    $('#cost-total-cost').textContent = fmtRp(data.totals.cost_idr)
+    $('#cost-alltime-tokens').textContent = fmtNum(data.allTime.total_tokens)
+    $('#cost-by-model-body').innerHTML = data.byModel.length
+      ? data.byModel.map((m) => `<tr>
+          <td class="font-monospace">${esc(m.model || '(tanpa model)')}</td>
+          <td>${fmtNum(m.requests)}</td>
+          <td>${fmtNum(m.prompt_tokens)}</td>
+          <td>${fmtNum(m.completion_tokens)}</td>
+          <td>${fmtNum(m.total_tokens)}</td>
+          <td>${m.priced ? fmtRp(m.cost_idr) : '<span class="text-muted">–</span>'}</td>
+        </tr>`).join('')
+      : '<tr><td colspan="6" class="text-muted">Belum ada token tercatat dalam rentang ini.</td></tr>'
+    $('#cost-by-user-body').innerHTML = data.byUser.length
+      ? data.byUser.map((u) => `<tr>
+          <td>${u.email ? `${esc(u.name || u.email)}<br><small class="text-muted">${esc(u.email)}</small>` : `Pengguna tak dikenal<br><small class="text-muted font-monospace">${esc(u.user_id)}</small>`}</td>
+          <td>${fmtNum(u.requests)}</td>
+          <td>${fmtNum(u.prompt_tokens)}</td>
+          <td>${fmtNum(u.completion_tokens)}</td>
+          <td>${fmtNum(u.total_tokens)}</td>
+          <td>${u.cost_idr !== null ? fmtRp(u.cost_idr) : '<span class="text-muted">–</span>'}${u.unpriced_tokens > 0 ? `<br><small class="text-muted">${fmtNum(u.unpriced_tokens)} token tanpa harga</small>` : ''}</td>
+        </tr>`).join('')
+      : '<tr><td colspan="6" class="text-muted">Belum ada token tercatat dalam rentang ini.</td></tr>'
+    const priceModels = Object.keys(costPricesCache).sort()
+    const knownModels = data.byModel.map((m) => m.model).filter((m) => m && !priceModels.includes(m))
+    $('#cost-prices-body').innerHTML = (priceModels.length || knownModels.length)
+      ? priceModels.map((m) => {
+          const p = costPricesCache[m]
+          return `<tr>
+            <td class="font-monospace">${esc(m)}</td>
+            <td>Rp ${fmtNum(p.prompt_per_1k)}</td>
+            <td>Rp ${fmtNum(p.completion_per_1k)}</td>
+            <td class="text-end text-nowrap">
+              <button class="btn btn-sm btn-outline-primary" data-act="edit-price" data-model="${esc(m)}">Ubah</button>
+              <button class="btn btn-sm btn-outline-danger" data-act="delete-price" data-model="${esc(m)}">Hapus</button>
+            </td>
+          </tr>`
+        }).join('') +
+        knownModels.map((m) => `<tr>
+          <td class="font-monospace">${esc(m)}</td>
+          <td colspan="2"><span class="text-muted">Belum ada harga — biaya tampil “–”.</span></td>
+          <td class="text-end text-nowrap"><button class="btn btn-sm btn-outline-primary" data-act="edit-price" data-model="${esc(m)}">Isi harga</button></td>
+        </tr>`).join('')
+      : '<tr><td colspan="4" class="text-muted">Belum ada harga dan belum ada model tercatat.</td></tr>'
+    $$('#cost-prices-body [data-act]').forEach((btn) => btn.addEventListener('click', async () => {
+      const model = btn.dataset.model
+      if (btn.dataset.act === 'delete-price') {
+        const ok = await confirmDialog('Hapus harga', `Hapus harga model ${model}? Biayanya kembali tampil “–”.`, 'Ya, hapus')
+        if (!ok) return
+        try {
+          const next = { ...costPricesCache }
+          delete next[model]
+          await saveCostPrices(next)
+        } catch (err) { toast(err.message, 'error') }
+        return
+      }
+      const cur = costPricesCache[model] || { prompt_per_1k: 0, completion_per_1k: 0 }
+      const vals = await formDialog(`Harga model ${model}`, [
+        { name: 'prompt', label: 'Prompt — Rp per 1.000 token', type: 'number', min: 0, help: 'Tarif prompt sesuai tagihan provider.' },
+        { name: 'completion', label: 'Completion — Rp per 1.000 token', type: 'number', min: 0, help: 'Tarif completion sesuai tagihan provider.' },
+      ], { prompt: cur.prompt_per_1k, completion: cur.completion_per_1k })
+      if (!vals) return
+      try {
+        const next = { ...costPricesCache, [model]: { prompt_per_1k: Number(vals.prompt) || 0, completion_per_1k: Number(vals.completion) || 0, currency: 'IDR' } }
+        await saveCostPrices(next)
+      } catch (err) { toast(err.message, 'error') }
+    }))
+  }
+
+  async function saveCostPrices(prices) {
+    await api('/api/admin/cost/prices', { method: 'PUT', body: JSON.stringify({ prices }) })
+    toast('Harga model disimpan.')
+    loadCost()
+  }
+
+  const costDaysSel = $('#cost-days')
+  if (costDaysSel) costDaysSel.addEventListener('change', () => {
+    costDays = Number(costDaysSel.value) || 0
+    loadCost()
+  })
+
+  const costAddBtn = $('#cost-add-price-btn')
+  if (costAddBtn) costAddBtn.addEventListener('click', async () => {
+    const vals = await formDialog('Tambah harga model', [
+      { name: 'model', label: 'Nama model', required: true, help: 'cth. cx/gpt-5.6-luna — harus sama persis dengan nama di tabel per model.' },
+      { name: 'prompt', label: 'Prompt — Rp per 1.000 token', type: 'number', min: 0, value: 0 },
+      { name: 'completion', label: 'Completion — Rp per 1.000 token', type: 'number', min: 0, value: 0 },
+    ], {})
+    if (!vals || !String(vals.model || '').trim()) return
+    try {
+      const next = { ...costPricesCache, [String(vals.model).trim()]: { prompt_per_1k: Number(vals.prompt) || 0, completion_per_1k: Number(vals.completion) || 0, currency: 'IDR' } }
+      await saveCostPrices(next)
+    } catch (err) { toast(err.message, 'error') }
+  })
 
   /* ---------- plan ---------- */
   let plansCache = []
