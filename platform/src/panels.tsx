@@ -10,6 +10,39 @@ import { ActivityFeed, type ActivityEntry } from './activity'
 import { api, type AuditFinding, type PlanStep, type ProjectSettings } from './api'
 
 export type ChatItem = { role: string; content: string; id?: number }
+
+/* Blok terminal & chip file yang muncul DI DALAM thread chat (ala Emergent:
+   output perintah agent terlihat sebagai bagian percakapan, klik chip file
+   membuka file tersebut di tab Kode). */
+export type InlineEvent =
+  | { kind: 'terminal'; title: string; log: string; ok: boolean }
+  | { kind: 'file'; path: string; action: 'write' | 'delete' | 'mkdir' }
+
+export function InlineEvents({ events, onOpenFile }: { events: InlineEvent[]; onOpenFile?: (path: string) => void }) {
+  if (!events.length) return null
+  return (
+    <div className="flex flex-col gap-2">
+      {events.map((e, i) =>
+        e.kind === 'terminal' ? (
+          <TerminalBlock key={i} title={e.title} log={e.log} ok={e.ok} />
+        ) : (
+          <button
+            key={i}
+            type="button"
+            onClick={() => onOpenFile?.(e.path)}
+            className="flex w-full items-center gap-2 rounded-lg border border-edge bg-surface px-3 py-2 text-left transition-colors hover:border-quiet"
+            title={onOpenFile ? `Buka ${e.path} di tab Kode` : e.path}
+          >
+            <Icon name={e.action === 'delete' ? 'trash' : 'file'} size={12} className="shrink-0 text-quiet" />
+            <span className="font-mono text-[10px] uppercase text-quiet">{e.action}</span>
+            <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-body">{e.path}</span>
+            {onOpenFile && <Icon name="open" size={11} className="shrink-0 text-quiet" />}
+          </button>
+        ),
+      )}
+    </div>
+  )
+}
 export type ChatPlan = { ringkasan: string; langkah: PlanStep[]; berkas: string[]; asumsi: string[] }
 export type ChatAudit = { nilai: number; temuan: AuditFinding[]; catatan: string }
 
@@ -50,6 +83,9 @@ export function SettingsSheet({
   const [domain, setDomain] = useState('')
   const [secretKey, setSecretKey] = useState('')
   const [secretValue, setSecretValue] = useState('')
+  const [llmKey, setLlmKey] = useState('')
+  const [llmBaseUrl, setLlmBaseUrl] = useState('')
+  const [llmModel, setLlmModel] = useState('')
   const [msg, setMsg] = useState('')
 
   useEffect(() => {
@@ -111,6 +147,35 @@ export function SettingsSheet({
       setMsg((e as Error).message)
     }
   }
+
+  /* Pengaturan LLM untuk fitur AI aplikasi ini (mis. halaman chatbot).
+     Disimpan sebagai secrets (LLM_API_KEY / LLM_BASE_URL / LLM_MODEL) lewat
+     endpoint secrets yang sudah ada, lalu disuntikkan sebagai env ke preview. */
+  const saveLlm = async () => {
+    setMsg('')
+    try {
+      const entries: [string, string][] = [
+        ['LLM_API_KEY', llmKey.trim()],
+        ['LLM_BASE_URL', llmBaseUrl.trim()],
+        ['LLM_MODEL', llmModel.trim()],
+      ].filter(([, v]) => v) as [string, string][]
+      if (!entries.length) {
+        setMsg('Isi dulu salah satu field LLM.')
+        return
+      }
+      for (const [k, v] of entries) await api.setSecret(projectId, k, v)
+      const s = await api.settings(projectId)
+      setSettings(s)
+      setLlmKey('')
+      setLlmBaseUrl('')
+      setLlmModel('')
+      setMsg('Pengaturan LLM disimpan. Preview memakai key baru saat dimuat ulang.')
+    } catch (e) {
+      setMsg((e as Error).message)
+    }
+  }
+
+  const llmHint = (key: string) => settings?.secrets.find((s) => s.key === key)?.hint
 
   const back = section !== 'menu'
 
@@ -299,6 +364,57 @@ export function SettingsSheet({
                 </div>
               </div>
             </section>
+
+            <section className="py-3">
+              <p className="text-[11px] font-medium text-accent">LLM</p>
+              <p className="mt-1 text-[11px] leading-relaxed text-quiet">
+                API key untuk fitur AI di aplikasi ini (mis. halaman chatbot). Key hanya dipakai server aplikasi,
+                tidak pernah masuk ke kode yang dilihat pengunjung. Kosongkan Base URL / Model untuk memakai default.
+              </p>
+              <div className="mt-2 flex flex-col gap-2">
+                <Input
+                  type="password"
+                  value={llmKey}
+                  onChange={(e) => setLlmKey(e.target.value)}
+                  placeholder="API key LLM"
+                  aria-label="API key LLM"
+                  size="sm"
+                  className="w-full font-mono"
+                />
+                <Input
+                  value={llmBaseUrl}
+                  onChange={(e) => setLlmBaseUrl(e.target.value)}
+                  placeholder="Base URL (default: https://ai.clipku.com/v1)"
+                  aria-label="Base URL LLM"
+                  size="sm"
+                  className="w-full font-mono"
+                />
+                <Input
+                  value={llmModel}
+                  onChange={(e) => setLlmModel(e.target.value)}
+                  placeholder="Model (default: cx/gpt-5.6-luna)"
+                  aria-label="Model LLM"
+                  size="sm"
+                  className="w-full font-mono"
+                />
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={saveLlm}
+                  disabled={!llmKey.trim() && !llmBaseUrl.trim() && !llmModel.trim()}
+                  className="self-start"
+                >
+                  Simpan pengaturan LLM
+                </Button>
+                {(llmHint('LLM_API_KEY') || llmHint('LLM_BASE_URL') || llmHint('LLM_MODEL')) && (
+                  <ul className="mt-1 space-y-1 text-[11.5px] text-quiet">
+                    {llmHint('LLM_API_KEY') && <li>API key tersimpan {llmHint('LLM_API_KEY')}</li>}
+                    {llmHint('LLM_BASE_URL') && <li>Base URL tersimpan {llmHint('LLM_BASE_URL')}</li>}
+                    {llmHint('LLM_MODEL') && <li>Model tersimpan {llmHint('LLM_MODEL')}</li>}
+                  </ul>
+                )}
+              </div>
+            </section>
           </div>
         )}
       </div>
@@ -358,6 +474,10 @@ export function ChatPanel({
   onCancel,
   onOpenSettings,
   waitingForDiscovery,
+  inlineEvents,
+  onOpenFile,
+  previewOpen,
+  previewOrigin,
 }: {
   messages: ChatItem[]
   sending: boolean
@@ -370,6 +490,10 @@ export function ChatPanel({
   onCancel: () => void
   onOpenSettings: () => void
   waitingForDiscovery: boolean
+  inlineEvents?: InlineEvent[]
+  onOpenFile?: (path: string) => void
+  previewOpen?: boolean
+  previewOrigin?: string
 }) {
   const [input, setInput] = useState('')
   const [attached, setAttached] = useState<{ name: string; content: string }[]>([])
@@ -442,11 +566,19 @@ export function ChatPanel({
         ) : (
           <div className="mx-auto flex max-w-[640px] flex-col gap-5">
             {messages.map((m, i) => (
-              <Bubble key={m.id ?? i} role={m.role} content={m.content} />
+              <Bubble
+                key={m.id ?? i}
+                role={m.role}
+                content={m.content}
+                isLast={i === messages.length - 1}
+                previewOpen={previewOpen}
+                previewOrigin={previewOrigin}
+              />
             ))}
             {sending && (
               <div className="vb-enter flex flex-col gap-2.5 text-[12px] text-quiet">
                 <ActivityFeed entries={activity ?? []} />
+                <InlineEvents events={inlineEvents ?? []} onOpenFile={onOpenFile} />
                 {status && (
                   <div className="flex items-center gap-2"><Activity /><span>{status}</span></div>
                 )}
@@ -650,7 +782,19 @@ function Welcome({ onPick }: { onPick: (s: string) => void }) {
   )
 }
 
-function Bubble({ role, content }: { role: string; content: string }) {
+function Bubble({
+  role,
+  content,
+  isLast = false,
+  previewOpen = false,
+  previewOrigin = '',
+}: {
+  role: string
+  content: string
+  isLast?: boolean
+  previewOpen?: boolean
+  previewOrigin?: string
+}) {
   const { copied, copy } = useCopy()
   const [zoomed, setZoomed] = useState(false)
   const match = role === 'assistant' ? content.match(/!\[([^\]]*)\]\((\/api\/projects\/[^)\s]+)\)/) : null
@@ -694,6 +838,25 @@ function Bubble({ role, content }: { role: string; content: string }) {
             <img src={match[2]} alt={match[1] || 'Screenshot preview'} className="max-h-[80vh] max-w-full rounded-lg border border-edge" />
             <button type="button" onClick={() => setZoomed(false)} className="mt-2 text-[12px] text-white/80 hover:text-white">Tutup</button>
           </div>
+        </div>
+      )}
+      {role === 'assistant' && isLast && previewOpen && (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <a
+            href={`http://127.0.0.1:${previewOrigin.split(':').pop() || ''}/`}
+            target="_blank"
+            rel="noreferrer"
+            className="hidden items-center gap-1.5 rounded-full border border-edge bg-surface px-3 py-1.5 text-[11.5px] text-body transition-colors hover:border-quiet md:inline-flex"
+          >
+            <Icon name="open" size={11} />
+            Buka preview
+          </a>
+          {previewOrigin && (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-edge bg-surface px-3 py-1.5 font-mono text-[11px] text-quiet">
+              <i className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+              live · {previewOrigin}
+            </span>
+          )}
         </div>
       )}
       <button

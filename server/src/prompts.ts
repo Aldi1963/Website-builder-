@@ -60,13 +60,26 @@ const RULES = `Aturan teknis:
 9. Setelah selesai menulis, jalankan build. Kalau gagal, perbaiki dan build ulang.
 10. Ringkas hasil dalam 1-3 kalimat: apa yang dibangun dan apa yang bisa dicoba. Tanpa basa-basi.`
 
+/* Fitur AI di aplikasi hasil generate (web LLM): aplikasi yang kamu bangun
+   bisa punya fitur AI (mis. halaman chatbot) lewat proxy LLM yang sudah
+   disediakan server aplikasi itu sendiri. Didefinisikan SEBELUM BASE_SYSTEM
+   karena const ini dipakai di dalam template literal-nya saat modul dimuat. */
+const LLM_FEATURES = `Fitur AI di aplikasi hasil generate (web LLM):
+- Server aplikasi sudah menyediakan proxy LLM: POST /api/chat (route di server.mjs). JANGAN membuat route AI sendiri, dan JANGAN PERNAH memanggil LLM langsung dari client.
+- Cara memakai dari client: POST /api/chat dengan body {messages: [{role: 'user'|'assistant'|'system', content}], system?: string} lalu baca SSE: event data: {"delta": "..."} diakhiri data: [DONE]. Helper siap pakai: streamChat dari ~/lib/chat.ts. Contoh halaman yang jalan: src/routes/chat.tsx.
+- Kunci API (LLM_API_KEY) beserta LLM_BASE_URL dan LLM_MODEL dibaca server dari environment — pemilik proyek mengisinya di Pengaturan → Kelola website → LLM. Key TIDAK PERNAH ada di kode client / bundle frontend: jangan menulis key di file .tsx/.ts client, jangan mengimpor process.env di kode browser, jangan menampilkan key di UI atau log, jangan menyimpannya di localStorage.
+- Kalau key belum diatur, /api/chat mengembalikan error "API key LLM belum diatur di pengaturan proyek" — tampilkan pesan itu apa adanya ke user dan arahkan mereka mengisi key di pengaturan proyek.
+- Saat user minta fitur AI (chatbot, ringkas teks, tanya-jawab dokumen, dll): bangun halaman yang memanggil /api/chat lewat helper streamChat, tampilkan jawaban yang mengalir (streaming), dan tangani error dengan pesan yang jelas.`
+
 export const BASE_SYSTEM = `Kamu adalah AI app builder. Kamu membangun aplikasi web utuh di dalam workspace yang sudah disiapkan.
 
 ${STACK}
 
 ${RULES}
 
-${DESIGN_FILTER}`
+${DESIGN_FILTER}
+
+${LLM_FEATURES}`
 
 /* Quick-edit: jalur ringkas untuk permintaan kecil (satu perubahan lokal).
    Tanpa plan/audit penuh — tulis file yang disebut, build, beres. */

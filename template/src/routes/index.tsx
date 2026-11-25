@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { getDbInfo } from '~/lib/db'
 
@@ -18,6 +18,10 @@ function Home() {
       <pre className="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-4 text-sm">
         {JSON.stringify(info, null, 2)}
       </pre>
+      <p className="mt-6 text-sm text-slate-400">
+        Contoh fitur AI: <Link to="/chat" className="text-slate-100 underline">buka halaman chat</Link> (butuh
+        API key LLM di pengaturan proyek).
+      </p>
     </main>
   )
 }

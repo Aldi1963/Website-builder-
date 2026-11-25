@@ -147,7 +147,7 @@ function reconcileAssets(dir: string) {
   }
 }
 
-const previews = new Map<string, { port: number; proc: ChildProcess }>()
+const previews = new Map<string, { port: number; proc: ChildProcess; settingsFingerprint: string }>()
 
 export function previewPort(projectId: string): number {
   const existing = previews.get(projectId)
@@ -164,8 +164,20 @@ export function previewPort(projectId: string): number {
 }
 
 export async function startPreview(projectId: string): Promise<number> {
+  // Env preview (termasuk secret LLM) disuntikkan saat proses dinyalakan. Kalau
+  // pengaturan berubah sejak preview jalan (mis. key LLM baru diisi), restart
+  // prosesnya supaya env baru dipakai — kalau tidak, key baru tidak pernah
+  // sampai ke aplikasi yang sedang di-preview.
+  const settingsFingerprint = JSON.stringify(listSettings(projectId))
   const existing = previews.get(projectId)
-  if (existing && existing.proc.exitCode === null) return existing.port
+  if (existing && existing.proc.exitCode === null) {
+    if (existing.settingsFingerprint === settingsFingerprint) return existing.port
+    existing.proc.kill('SIGTERM')
+    for (let i = 0; i < 20 && existing.proc.exitCode === null; i++) {
+      await new Promise((r) => setTimeout(r, 100))
+    }
+    previews.delete(projectId)
+  }
 
   const dir = ensureWorkspace(projectId)
   // keep the static-asset server in sync with the platform's current version
@@ -183,7 +195,7 @@ export async function startPreview(projectId: string): Promise<number> {
   proc.stdout?.on('data', () => {})
   proc.stderr?.on('data', () => {})
   proc.on('exit', () => previews.delete(projectId))
-  previews.set(projectId, { port, proc })
+  previews.set(projectId, { port, proc, settingsFingerprint })
 
   for (let i = 0; i < 40; i++) {
     await new Promise((r) => setTimeout(r, 250))
