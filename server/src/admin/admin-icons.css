@@ -1,14 +1,23 @@
 /* Ikon Bootstrap yang hilang dari main.css template.
    CSS template (main-G_CDnMN9.css) hanya membawa 158 aturan .bi- (subset
    ikon yang dipakai halaman demo template). Font bootstrap-icons.woff2
-   lengkap (2078 glyph), jadi yang kurang hanya aturan content ini.
-   Codepoint diverifikasi ada di font vendor (fontTools, 25 Nov 2026).
+   lengkap, jadi yang kurang hanya aturan content ini.
+   Codepoint diambil dari paket bootstrap-icons template itu sendiri
+   (template-metis/node_modules/bootstrap-icons/font/bootstrap-icons.css)
+   — BUKAN dari ingatan. Rantai ini terverifikasi: 7 ikon yang tampil
+   benar di HP (gear, key, speedometer2, people, box, bell, sun-fill)
+   punya codepoint yang sama persis di main.css dan di CSS resmi itu,
+   dan ke-9 codepoint di bawah ini ada di font vendor.
+   Daftar lengkap ikon yang dipakai panel (audit 25 Nov 2026): 33 ikon,
+   9 di antaranya hilang dari main.css dan semuanya ada di file ini.
    File ini terpisah dari CSS template agar tidak tertimpa bila template
    di-vendor ulang. */
-.bi-box-arrow-up-left:before { content: "\f1c5"; }
-.bi-chat-left-text:before { content: "\f26b"; }
-.bi-cpu:before { content: "\f2e2"; }
-.bi-hammer:before { content: "\f68a"; }
-.bi-heart-pulse:before { content: "\f76d"; }
-.bi-lightning:before { content: "\f46b"; }
-.bi-robot:before { content: "\f6d2"; }
+.bi-box-arrow-up-left:before { content: "\f1c4"; }
+.bi-chat-left-text:before { content: "\f252"; }
+.bi-cpu:before { content: "\f2d6"; }
+.bi-database:before { content: "\f8c4"; }
+.bi-hammer:before { content: "\f3ff"; }
+.bi-heart-pulse:before { content: "\f76f"; }
+.bi-lightning:before { content: "\f46f"; }
+.bi-memory:before { content: "\f6e3"; }
+.bi-robot:before { content: "\f6b1"; }
