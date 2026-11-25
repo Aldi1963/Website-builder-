@@ -99,6 +99,7 @@ export async function runAgent(
   userPrompt: string,
   emit: (e: AgentEvent) => void | Promise<void>,
   model?: string,
+  forcePlanMode?: boolean,
 ): Promise<void> {
   ensureWorkspace(projectId)
   addMessage(projectId, 'user', userPrompt)
@@ -118,7 +119,7 @@ export async function runAgent(
 
   // Klasifikasi cepat: edit kecil vs pekerjaan penuh. Edit kecil = jalur ringkas tanpa plan/audit.
   let quickEdit = false
-  if (history.length > 1 && listFiles(projectId).length > 0) {
+  if (!forcePlanMode && history.length > 1 && listFiles(projectId).length > 0) {
     try {
       const cls = await complete([
         { role: 'system', content: 'Klasifikasi permintaan. Balas HANYA JSON: {"kecil": true|false}. Kecil=true bila permintaan hanya mengubah satu bagian kecil yang sudah ada (teks, warna, komponen tunggal, perbaikan kecil). Kecil=false bila menambah fitur, mengubah struktur data, atau membuat halaman/flow baru.' },

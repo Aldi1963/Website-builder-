@@ -149,11 +149,17 @@ export async function exportProjectZip(projectId: string): Promise<void> {
   URL.revokeObjectURL(url)
 }
 
-export async function chatStream(projectId: string, message: string, h: ChatHandlers, signal?: AbortSignal) {
+export async function chatStream(
+  projectId: string,
+  message: string,
+  h: ChatHandlers,
+  signal?: AbortSignal,
+  opts?: { model?: string; planMode?: boolean },
+) {
   const res = await fetch(`/api/projects/${projectId}/chat`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, model: opts?.model, planMode: opts?.planMode }),
     signal,
   })
   if (!res.ok || !res.body) throw new Error(`chat gagal: ${res.status}`)

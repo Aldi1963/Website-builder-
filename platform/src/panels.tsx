@@ -6,6 +6,169 @@ export type ChatItem = { role: string; content: string; id?: number }
 export type ChatPlan = { ringkasan: string; langkah: PlanStep[]; berkas: string[]; asumsi: string[] }
 export type ChatAudit = { nilai: number; temuan: AuditFinding[]; catatan: string }
 
+/* Katalog model untuk picker gaya "Select model". Id benar diverifikasi terhadap
+   /v1/models gateway; 'auto' berarti server memakai default-nya. */
+export type ModelOption = { id: string; name: string; note: string; available?: boolean }
+
+export const MODEL_CATALOG: ModelOption[] = [
+  { id: 'auto', name: 'Auto', note: 'Selalu pilih model terbaik', available: true },
+  { id: 'ag/claude-opus-5-5', name: 'Claude Opus 5.5', note: 'Model paling cerdas Anthropic', available: false },
+  { id: 'ag/claude-sonnet-5-5', name: 'Claude Sonnet 5.5', note: 'Seimbang untuk kerja harian', available: false },
+  { id: 'cx/gpt-6-luna', name: 'GPT-6 Luna', note: 'Kuat untuk coding & penalaran', available: true },
+  { id: 'cx/gpt-5.6-luna', name: 'GPT-5.6 Luna', note: 'Cepat dan andal', available: true },
+]
+
+export function SettingsSheet({
+  open,
+  onClose,
+  model,
+  onModel,
+  planMode,
+  onPlanMode,
+}: {
+  open: boolean
+  onClose: () => void
+  model: string
+  onModel: (id: string) => void
+  planMode: boolean
+  onPlanMode: (v: boolean) => void
+}) {
+  const [picking, setPicking] = useState(false)
+
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') (picking ? setPicking(false) : onClose())
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [open, picking, onClose])
+
+  if (!open) return null
+  const current = MODEL_CATALOG.find((m) => m.id === model) ?? MODEL_CATALOG[0]
+
+  return (
+    <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/55" onClick={onClose} role="dialog" aria-label="Pengaturan sesi">
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="vb-enter w-full max-w-[420px] border border-edge bg-surface px-4 pb-6 pt-4 max-md:px-3"
+      >
+        {!picking ? (
+          <>
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="font-display text-[16px] text-body">Pengaturan</h2>
+              <button onClick={onClose} aria-label="Tutup pengaturan" className="flex h-8 w-8 items-center justify-center text-quiet hover:text-body">
+                <Icon name="close" size={14} />
+              </button>
+            </div>
+
+            <button
+              onClick={() => setPicking(true)}
+              className="flex min-h-[48px] w-full items-center justify-between border-b border-edge py-2 text-left"
+            >
+              <span>
+                <span className="block text-[12.5px] text-body">Model — {current.name}</span>
+                <span className="block text-[11px] text-quiet">{current.note}</span>
+              </span>
+              <Icon name="arrow" size={12} className="text-quiet" />
+            </button>
+
+            <ToggleRow
+              label="Plan mode"
+              hint="Rencana kerja ditampilkan dulu sebelum kode ditulis"
+              checked={planMode}
+              onChange={onPlanMode}
+            />
+            <ToggleRow
+              label="Fast mode"
+              hint="Edit kecil langsung diterapkan tanpa tinjauan penuh"
+              checked={false}
+              onChange={() => {}}
+              disabled
+            />
+            <div className="mt-1 border-b border-edge py-2">
+              <p className="text-[12.5px] text-body">Simpan ke GitHub</p>
+              <p className="text-[11px] text-quiet">Ekspor ZIP tersedia di header workspace.</p>
+            </div>
+            <div className="mt-1 border-b border-edge py-2 opacity-50">
+              <p className="text-[12.5px] text-body">Fork</p>
+              <p className="text-[11px] text-quiet">Belum tersedia di deploy ini.</p>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="mb-2 flex items-center justify-between">
+              <button onClick={() => setPicking(false)} className="flex h-8 w-8 items-center justify-center text-quiet hover:text-body" aria-label="Kembali ke pengaturan">
+                <Icon name="back" size={14} />
+              </button>
+              <h2 className="text-[13px] font-medium text-body">Pilih model</h2>
+              <span className="h-8 w-8" />
+            </div>
+            <div className="flex flex-col">
+              {MODEL_CATALOG.map((m) => {
+                const active = m.id === model
+                const disabled = m.available === false
+                return (
+                  <button
+                    key={m.id}
+                    disabled={disabled}
+                    onClick={() => {
+                      onModel(m.id)
+                      setPicking(false)
+                    }}
+                    className={`flex min-h-[52px] items-center justify-between border-b border-edge py-2 text-left transition-colors ${
+                      disabled ? 'cursor-not-allowed opacity-40' : 'hover:bg-ink'
+                    }`}
+                  >
+                    <span>
+                      <span className="block text-[12.5px] text-body">{m.name}</span>
+                      <span className="block text-[11px] text-quiet">
+                        {m.note}
+                        {disabled ? ' — sedang tidak tersedia di gateway' : ''}
+                      </span>
+                    </span>
+                    {active && <Icon name="check" size={13} className="shrink-0 text-accent" />}
+                  </button>
+                )
+              })}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ToggleRow({
+  label,
+  hint,
+  checked,
+  onChange,
+  disabled,
+}: {
+  label: string
+  hint: string
+  checked: boolean
+  onChange: (v: boolean) => void
+  disabled?: boolean
+}) {
+  return (
+    <label className={`flex min-h-[48px] items-center justify-between gap-3 border-b border-edge py-2 ${disabled ? 'opacity-50' : ''}`}>
+      <span>
+        <span className="block text-[12.5px] text-body">{label}</span>
+        <span className="block text-[11px] text-quiet">{hint}</span>
+      </span>
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+        className="h-4 w-4 shrink-0 accent-[var(--vb-accent)]"
+      />
+    </label>
+  )
+}
+
 export function ChatPanel({
   messages,
   sending,

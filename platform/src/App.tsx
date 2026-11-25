@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Icon, Spinner, Wordmark } from './ui'
 import { api, auth, ChatHandlers, chatStream, Project, type User } from './api'
 import { AuthGate, UserBar } from './auth'
-import { ChatPanel, CodePane, PreviewPane, type ChatAudit, type ChatPlan } from './panels'
+import { ChatPanel, CodePane, PreviewPane, SettingsSheet, type ChatAudit, type ChatPlan } from './panels'
 import { exportProjectZip } from './api'
 
 /* Theme is a real choice here: the shell is used for long sessions next to an
@@ -369,6 +369,9 @@ function Workspace({ projectId, onTitle }: { projectId: string; onTitle: (n: str
   const [publishing, setPublishing] = useState(false)
   const [publishMsg, setPublishMsg] = useState('')
   const [pubUrl, setPubUrl] = useState<string | null>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [model, setModel] = useState(() => localStorage.getItem('vb-model') ?? 'auto')
+  const [planMode, setPlanMode] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
 
   const load = async () => {
@@ -450,7 +453,7 @@ function Workspace({ projectId, onTitle }: { projectId: string; onTitle: (n: str
     }
 
     try {
-      await chatStream(projectId, text, handlers, ctrl.signal)
+      await chatStream(projectId, text, handlers, ctrl.signal, { model: model === 'auto' ? undefined : model, planMode })
     } catch (err) {
       setMessages((m) => [...m, { role: 'error', content: (err as Error).message }])
     } finally {
@@ -563,6 +566,15 @@ function Workspace({ projectId, onTitle }: { projectId: string; onTitle: (n: str
         </div>
 
         <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={() => setSettingsOpen(true)}
+            aria-label="Buka pengaturan sesi"
+            className="flex h-7 max-md:h-11 items-center gap-1.5 border border-edge px-2.5 text-[11.5px] text-body transition-colors hover:border-quiet"
+          >
+            <Icon name="rule" size={10} />
+            <span className="max-sm:hidden">{model === 'auto' ? 'Model: Auto' : model.replace(/^[a-z]+\//, '')}</span>
+            <span className="sm:hidden">Setelan</span>
+          </button>
           {status && (
             <span className="hidden items-center gap-1.5 text-[11.5px] text-quiet lg:flex">
               <Spinner />
@@ -676,6 +688,18 @@ function Workspace({ projectId, onTitle }: { projectId: string; onTitle: (n: str
           )}
         </section>
       </div>
+
+      <SettingsSheet
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        model={model}
+        onModel={(m) => {
+          setModel(m)
+          localStorage.setItem('vb-model', m)
+        }}
+        planMode={planMode}
+        onPlanMode={setPlanMode}
+      />
 
       {publishMsg && (
         <p className="shrink-0 border-t border-edge bg-surface px-3 py-1.5 text-[11px] text-accent">

@@ -444,7 +444,7 @@ app.post('/api/projects/:id/chat', async (c) => {
   if ('error' in r) return c.json({ error: r.error }, r.status)
   const id = r.project.id
 
-  const body = (await c.req.json().catch(() => ({}))) as { message?: string; model?: string }
+  const body = (await c.req.json().catch(() => ({}))) as { message?: string; model?: string; planMode?: boolean }
   const message = (body.message ?? '').trim()
   if (!message) return c.json({ error: 'message kosong' }, 400)
 
@@ -476,7 +476,7 @@ app.post('/api/projects/:id/chat', async (c) => {
     }
 
     try {
-      await runAgent(id, message, onEvent, body.model)
+      await runAgent(id, message, onEvent, body.model, body.planMode)
       dbg(`agent resolved at ${(Date.now() - t0) / 1000}s`)
       setStatus(id, 'idle')
     } catch (err) {
