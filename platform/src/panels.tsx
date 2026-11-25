@@ -335,6 +335,7 @@ export function ChatPanel({
   onSend,
   onCancel,
   onOpenSettings,
+  waitingForDiscovery,
 }: {
   messages: ChatItem[]
   sending: boolean
@@ -346,6 +347,7 @@ export function ChatPanel({
   onSend: (text: string) => void
   onCancel: () => void
   onOpenSettings: () => void
+  waitingForDiscovery: boolean
 }) {
   const [input, setInput] = useState('')
   const [attached, setAttached] = useState<{ name: string; content: string }[]>([])
@@ -444,18 +446,14 @@ export function ChatPanel({
       <div className="shrink-0 bg-ink px-3 pb-[max(10px,env(safe-area-inset-bottom))] pt-2.5 md:px-5 md:pb-4">
         <div className="mx-auto max-w-[720px]">
           <div className="overflow-hidden rounded-[22px] border border-edge bg-surface shadow-[0_8px_28px_rgba(15,23,42,0.08)] transition-colors focus-within:border-accent focus-within:ring-1 focus-within:ring-accent/20">
-            <div className="flex items-center gap-2 border-b border-edge/70 px-3 py-2">
-              <button type="button" onClick={() => setExpanded((v) => !v)} aria-expanded={expanded} className="flex min-w-0 flex-1 items-center gap-2 text-left">
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-accent/10 text-accent"><Icon name="bolt" size={13} /></span>
-                <span className="truncate text-[11.5px] font-medium text-body">Some feature enhancements</span>
-              </button>
-              <button type="button" onClick={() => setExpanded((v) => !v)} aria-label={expanded ? 'Ciutkan composer' : 'Perluas composer'} title={expanded ? 'Ciutkan' : 'Perluas'} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-quiet hover:bg-ink">
+            <div className="flex items-center justify-end border-b border-edge/70 px-3 py-1.5">
+              <button type="button" onClick={() => setExpanded((v) => !v)} aria-expanded={expanded} aria-label={expanded ? 'Ciutkan composer' : 'Perluas composer'} title={expanded ? 'Ciutkan' : 'Perluas'} className="flex h-7 w-7 items-center justify-center rounded-md text-quiet hover:bg-ink">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d={expanded ? 'M8 3v5H3M16 21v-5h5M21 8h-5V3M3 16h5v5' : 'M8 3H3v5M16 3h5v5M21 16v5h-5M3 16v5h5'} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </button>
             </div>
             {expanded && (
               <div className="flex items-center justify-between gap-3 border-b border-edge/70 bg-ink px-3 py-2 text-[11px] text-quiet">
-                <span>Tambahkan konteks atau pilih model untuk instruksi ini.</span>
+                <span>Instruksi lebih panjang. Atur model atau mode dari setelan.</span>
                 <button type="button" onClick={onOpenSettings} className="shrink-0 font-medium text-accent hover:underline">Model &amp; mode</button>
               </div>
             )}
@@ -482,7 +480,7 @@ export function ChatPanel({
                 }
               }}
               rows={expanded ? 4 : 2}
-              placeholder={sending ? 'Waiting for your next message' : 'Tanyakan apa saja atau jelaskan perubahan yang kamu inginkan…'}
+              placeholder={waitingForDiscovery ? 'Jawab pertanyaan agent…' : sending ? 'Waiting for your next message' : 'Tanyakan apa saja atau jelaskan perubahan yang kamu inginkan…'}
               className={`vb-scroll w-full resize-none bg-transparent px-4 py-3 text-[14px] leading-relaxed text-body outline-none placeholder:text-quiet ${expanded ? 'max-h-[300px]' : 'max-h-[168px]'}`}
               aria-label="Pesan untuk agent"
             />

@@ -450,6 +450,7 @@ function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle:
   const { dark, toggle } = useTheme()
   const [tab, setTab] = useState<Tab>('chat')
   const [messages, setMessages] = useState<{ role: string; content: string; id?: number }[]>([])
+  const [pendingDiscovery, setPendingDiscovery] = useState<string | null>(null)
   const [streamText, setStreamText] = useState('')
   const [changedFiles, setChangedFiles] = useState<string[]>([])
   const [files, setFiles] = useState<{ path: string }[]>([])
@@ -508,6 +509,23 @@ function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle:
 
   const send = async (text: string) => {
     if (!text.trim() || sending) return
+
+    // Ask discovery only for the first user request. If the model needs details,
+    // show its questions in chat and wait; otherwise continue straight to build.
+    if (pendingDiscovery) {
+      text = `Permintaan awal: ${pendingDiscovery}\n\nJawaban/konteks tambahan dari pemilik: ${text.trim()}`
+      setPendingDiscovery(null)
+    } else if (messages.length === 0) {
+      try {
+        const discovery = await api.discovery(text.trim())
+        if (!discovery.ready && discovery.questions.length) {
+          setPendingDiscovery(text.trim())
+          setMessages((m) => [...m, { role: 'user', content: text.trim() }, { role: 'assistant', content: discovery.questions.map((q, i) => `${i + 1}. ${q}`).join('\n') }])
+          return
+        }
+      } catch { /* Discovery is advisory; continue building if unavailable. */ }
+    }
+
     setSending(true)
     setStatus('menyiapkan')
     setPlan(null)
@@ -735,6 +753,7 @@ function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle:
             onSend={send}
             onCancel={() => abortRef.current?.abort()}
             onOpenSettings={() => setSettingsOpen(true)}
+            waitingForDiscovery={!!pendingDiscovery}
           />
         </section>
 
