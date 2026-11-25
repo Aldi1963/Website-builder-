@@ -653,7 +653,7 @@
           <td><strong>${esc(m.project_name)}</strong><br><small class="text-muted font-monospace">${esc(m.project_id)}</small></td>
           <td>${esc(m.owner_email || '–')}</td>
           <td><span class="badge ${m.role === 'user' ? 'bg-primary' : m.role === 'assistant' ? 'bg-success' : 'bg-secondary'}">${esc(m.role)}</span></td>
-          <td class="text-break">${esc(m.excerpt)}</td>
+          <td class="text-break" style="min-width: 300px">${esc(m.excerpt)}</td>
           <td>${esc(fmtDate(m.created_at))}</td>
         </tr>`).join('')
       : '<tr><td colspan="5" class="text-muted">Tidak ada pesan.</td></tr>'
