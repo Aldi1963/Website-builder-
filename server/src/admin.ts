@@ -1,7 +1,11 @@
 import type { Hono, Context, Next } from 'hono'
-import { statSync } from 'node:fs'
-import { join } from 'node:path'
+import { copyFileSync, createReadStream, existsSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
 import { resolveCname, resolve4 } from 'node:dns/promises'
+import { DatabaseSync } from 'node:sqlite'
+import { Readable } from 'node:stream'
+import { randomBytes } from 'node:crypto'
 import { db, deleteProject } from './db.ts'
 import { stopPreview, runningPreviews } from './workspace.ts'
 import { SESSION_COOKIE, readCookie, tokenHash, userByToken, type User } from './auth.ts'
@@ -1219,6 +1223,315 @@ export function registerAdmin(app: Hono<AdminEnv>) {
     })
   })
 
+  /* FITUR 5 — Cadangan & Pulihkan                                    */
+  /* Unduh memakai VACUUM INTO (snapshot konsisten dari koneksi yang  */
+  /* sedang jalan, termasuk isi WAL) lalu di-stream tanpa memuat       */
+  /* seluruh file ke memori. Pulihkan: validasi dulu, simpan cadangan */
+  /* otomatis DB aktif, ganti file secara atomik, lalu keluar supaya  */
+  /* supervisor menghidupkan ulang server dengan DB baru. DB aktif    */
+  /* TIDAK PERNAH dihapus tanpa cadangan otomatis di atas.             */
+  /* ---------------------------------------------------------------- */
+
+  const dbPath = () => process.env.VB_DB ?? join(ROOT, 'data', 'vibebuilder.db')
+  const dataDir = () => dirname(dbPath())
+  const BACKUP_NAME_RE = /^vibebuilder\.db\.bak-\d+$/
+  const CORE_TABLES = ['users', 'projects', 'messages', 'files', 'builds', 'plans', 'token_usage', 'admin_settings']
+
+  function backupFileName(d = new Date()): string {
+    const p = (n: number) => String(n).padStart(2, '0')
+    return `vibebuilder-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}.db`
+  }
+
+  function listBackupFiles() {
+    let names: string[] = []
+    try {
+      names = readdirSync(dataDir())
+    } catch {
+      return []
+    }
+    return names
+      .filter((n) => n !== 'vibebuilder.db' && (BACKUP_NAME_RE.test(n) || /^vibebuilder-\d{8}-\d{4}\.db$/.test(n)))
+      .sort()
+      .reverse()
+      .map((n) => {
+        let size = 0
+        let mtime = 0
+        try {
+          const st = statSync(join(dataDir(), n))
+          size = st.size
+          mtime = st.mtimeMs
+        } catch {
+          /* abaikan */
+        }
+        return { name: n, size, mtime, isAutoBackup: BACKUP_NAME_RE.test(n) }
+      })
+  }
+
+  /* Buka file kandidat read-only, cek integritas + tabel inti. */
+  function validateBackupDb(path: string): { ok: true } | { ok: false; error: string } {
+    let check: DatabaseSync | null = null
+    try {
+      check = new DatabaseSync(path, { readOnly: true })
+      const row = check.prepare(`PRAGMA integrity_check`).get() as { integrity_check: string } | undefined
+      if (!row || row.integrity_check !== 'ok') return { ok: false, error: 'PRAGMA integrity_check gagal — file database rusak.' }
+      const tables = new Set(
+        (check.prepare(`SELECT name FROM sqlite_master WHERE type = 'table'`).all() as { name: string }[]).map((r) => r.name),
+      )
+      const missing = CORE_TABLES.filter((t) => !tables.has(t))
+      if (missing.length) return { ok: false, error: `Tabel inti hilang: ${missing.join(', ')}.` }
+      return { ok: true }
+    } catch (err) {
+      return { ok: false, error: `File bukan database SQLite yang valid (${(err as Error).message.slice(0, 120)}).` }
+    } finally {
+      try {
+        check?.close()
+      } catch {
+        /* abaikan */
+      }
+    }
+  }
+
+  /* Tukar DB aktif dengan file yang sudah divalidasi, lalu restart. */
+  function swapDatabase(validatedPath: string, fromBackupFile: boolean): string {
+    const ts = Date.now()
+    const bakName = `vibebuilder.db.bak-${ts}`
+    const bakPath = join(dataDir(), bakName)
+    const active = dbPath()
+    try {
+      db.exec(`PRAGMA wal_checkpoint(TRUNCATE)`)
+    } catch {
+      /* checkpoint gagal bukan fatal — salinan tetap dibuat dari file utama */
+    }
+    copyFileSync(active, bakPath)
+    if (fromBackupFile) copyFileSync(validatedPath, active)
+    else renameSync(validatedPath, active)
+    for (const suffix of ['-wal', '-shm']) {
+      try {
+        unlinkSync(`${active}${suffix}`)
+      } catch {
+        /* tidak ada / sudah terhapus */
+      }
+    }
+    return bakName
+  }
+
+  /* Unduh cadangan: snapshot konsisten via VACUUM INTO, di-stream. */
+  app.get('/api/admin/backup', (c) => {
+    const tmp = join(tmpdir(), `vb-backup-${Date.now()}-${randomBytes(6).toString('hex')}.db`)
+    try {
+      db.prepare(`VACUUM INTO ?`).run(tmp)
+    } catch (err) {
+      try {
+        unlinkSync(tmp)
+      } catch {
+        /* abaikan */
+      }
+      return c.json({ error: `Gagal membuat cadangan: ${(err as Error).message.slice(0, 200)}` }, 500)
+    }
+    let size = 0
+    try {
+      size = statSync(tmp).size
+    } catch {
+      return c.json({ error: 'Gagal membaca file cadangan.' }, 500)
+    }
+    const stream = createReadStream(tmp)
+    stream.on('close', () => {
+      try {
+        unlinkSync(tmp)
+      } catch {
+        /* abaikan */
+      }
+    })
+    stream.on('error', () => {
+      try {
+        unlinkSync(tmp)
+      } catch {
+        /* abaikan */
+      }
+    })
+    return c.body(Readable.toWeb(stream) as unknown as BodyInit, 200, {
+      'Content-Type': 'application/octet-stream',
+      'Content-Disposition': `attachment; filename="${backupFileName()}"`,
+      'Content-Length': String(size),
+    })
+  })
+
+  app.get('/api/admin/backup/list', (c) => {
+    let dbSize = 0
+    try {
+      dbSize = statSync(dbPath()).size
+    } catch {
+      /* abaikan */
+    }
+    return c.json({
+      dbSize,
+      counts: {
+        users: count(`SELECT count(*) AS n FROM users`),
+        projects: count(`SELECT count(*) AS n FROM projects`),
+        messages: count(`SELECT count(*) AS n FROM messages`),
+        builds: count(`SELECT count(*) AS n FROM builds`),
+      },
+      files: listBackupFiles(),
+    })
+  })
+
+  app.post('/api/admin/restore', async (c) => {
+    const contentType = c.req.header('content-type') ?? ''
+    let validatedPath: string | null = null
+    let uploadedTmp: string | null = null
+    let fromBackupFile = false
+    try {
+      if (contentType.includes('multipart/form-data')) {
+        const form = await c.req.formData()
+        const file = form.get('file')
+        if (!file || typeof file !== 'object' || typeof (file as File).arrayBuffer !== 'function') {
+          return c.json({ error: 'Field file wajib diisi (unggah file .db).' }, 400)
+        }
+        const f = file as File
+        if (f.size === 0) return c.json({ error: 'File unggahan kosong.' }, 400)
+        if (f.size > 200 * 1024 * 1024) return c.json({ error: 'File unggahan terlalu besar (maks 200 MB).' }, 400)
+        uploadedTmp = join(dataDir(), `restore-${Date.now()}.db`)
+        writeFileSync(uploadedTmp, Buffer.from(await f.arrayBuffer()))
+        validatedPath = uploadedTmp
+      } else {
+        const body = (await c.req.json().catch(() => ({}))) as { backup?: string }
+        const name = String(body.backup ?? '')
+        if (!BACKUP_NAME_RE.test(name)) return c.json({ error: 'Nama cadangan otomatis tidak valid.' }, 400)
+        const p = join(dataDir(), name)
+        if (!existsSync(p)) return c.json({ error: 'File cadangan tidak ditemukan.' }, 404)
+        validatedPath = p
+        fromBackupFile = true
+      }
+      const check = validateBackupDb(validatedPath)
+      if (!check.ok) {
+        if (uploadedTmp) {
+          try {
+            unlinkSync(uploadedTmp)
+          } catch {
+            /* abaikan */
+          }
+        }
+        return c.json({ error: `Cadangan tidak valid: ${check.error} Database aktif tidak diubah.` }, 400)
+      }
+      const bakName = swapDatabase(validatedPath, fromBackupFile)
+      setTimeout(() => process.exit(0), 500)
+      return c.json({ ok: true, restarting: true, autoBackup: bakName })
+    } catch (err) {
+      if (uploadedTmp) {
+        try {
+          unlinkSync(uploadedTmp)
+        } catch {
+          /* abaikan */
+        }
+      }
+      return c.json({ error: `Gagal memulihkan: ${(err as Error).message.slice(0, 200)}` }, 500)
+    }
+  })
+
+  /* ---------------------------------------------------------------- */
+  /* FITUR 9 — Pembersihan Otomatis                                    */
+  /* Yang dibersihkan: baris builds lebih lama dari retensi, dan sesi */
+  /* login yang sudah kedaluwarsa. Preview TIDAK PERNAH dibunuh dari   */
+  /* sini: preview adalah proses anak yang sedang dipakai — halaman    */
+  /* hanya menampilkan jumlah preview yang berjalan (0 yang dihapus).  */
+  /* Pengaturan + hasil terakhir disimpan di admin_settings            */
+  /* (key cleanup_settings, JSON).                                     */
+  /* ---------------------------------------------------------------- */
+
+  type CleanupSettings = { retentionDays: number; auto: boolean; lastRunAt: number | null; lastRun: { at: number; builds: number; sessions: number; previews: number } | null }
+  const CLEANUP_DEFAULTS: CleanupSettings = { retentionDays: 30, auto: false, lastRunAt: null, lastRun: null }
+
+  function readCleanupSettings(): CleanupSettings {
+    try {
+      const raw = db.prepare(`SELECT value FROM admin_settings WHERE key = 'cleanup_settings'`).get() as { value: string } | undefined
+      if (!raw) return { ...CLEANUP_DEFAULTS }
+      const parsed = JSON.parse(raw.value) as Partial<CleanupSettings>
+      return {
+        retentionDays: Math.min(365, Math.max(1, Math.floor(Number(parsed.retentionDays) || 30))),
+        auto: parsed.auto === true,
+        lastRunAt: typeof parsed.lastRunAt === 'number' ? parsed.lastRunAt : null,
+        lastRun: parsed.lastRun ?? null,
+      }
+    } catch {
+      return { ...CLEANUP_DEFAULTS }
+    }
+  }
+
+  function writeCleanupSettings(s: CleanupSettings) {
+    db.prepare(
+      `INSERT INTO admin_settings (key, value, updated_at) VALUES ('cleanup_settings', ?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+    ).run(JSON.stringify(s), now())
+  }
+
+  function cleanupCounts(retentionDays: number) {
+    const cutoff = now() - retentionDays * DAY
+    return {
+      builds: count(`SELECT count(*) AS n FROM builds WHERE created_at < ?`, cutoff),
+      sessions: count(`SELECT count(*) AS n FROM sessions WHERE expires_at < ?`, now()),
+      previewsRunning: runningPreviews().length,
+    }
+  }
+
+  function runCleanup(retentionDays: number) {
+    const cutoff = now() - retentionDays * DAY
+    const builds = Number(db.prepare(`DELETE FROM builds WHERE created_at < ?`).run(cutoff).changes ?? 0)
+    const sessions = Number(db.prepare(`DELETE FROM sessions WHERE expires_at < ?`).run(now()).changes ?? 0)
+    return { builds, sessions, previews: 0, previewsRunning: runningPreviews().length }
+  }
+
+  app.get('/api/admin/cleanup', (c) => {
+    const settings = readCleanupSettings()
+    return c.json({ settings, counts: cleanupCounts(settings.retentionDays), lastRun: settings.lastRun })
+  })
+
+  app.post('/api/admin/cleanup/run', (c) => {
+    const settings = readCleanupSettings()
+    const result = runCleanup(settings.retentionDays)
+    const at = now()
+    settings.lastRunAt = at
+    settings.lastRun = { at, builds: result.builds, sessions: result.sessions, previews: result.previews }
+    writeCleanupSettings(settings)
+    return c.json({ ok: true, at, retentionDays: settings.retentionDays, deleted: result })
+  })
+
+  app.put('/api/admin/cleanup/settings', async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { retentionDays?: number; auto?: boolean }
+    const settings = readCleanupSettings()
+    if (body.retentionDays !== undefined) {
+      const d = Math.floor(Number(body.retentionDays))
+      if (!Number.isFinite(d) || d < 1 || d > 365) return c.json({ error: 'Retensi harus 1–365 hari.' }, 400)
+      settings.retentionDays = d
+    }
+    if (body.auto !== undefined) {
+      if (typeof body.auto !== 'boolean') return c.json({ error: 'Field auto wajib boolean.' }, 400)
+      settings.auto = body.auto
+    }
+    writeCleanupSettings(settings)
+    return c.json({ ok: true, settings })
+  })
+
+  /* Berkala (sekali saat server start, di dalam registerAdmin): cek
+     tiap jam; bila otomatis aktif dan sudah ≥24 jam sejak pembersihan
+     terakhir (atau belum pernah), jalankan sekali. */
+  if (!(globalThis as unknown as { __vbCleanupTimer?: boolean }).__vbCleanupTimer) {
+    ;(globalThis as unknown as { __vbCleanupTimer?: boolean }).__vbCleanupTimer = true
+    setInterval(() => {
+      try {
+        const s = readCleanupSettings()
+        if (!s.auto) return
+        if (s.lastRunAt && now() - s.lastRunAt < DAY) return
+        const result = runCleanup(s.retentionDays)
+        const at = now()
+        s.lastRunAt = at
+        s.lastRun = { at, builds: result.builds, sessions: result.sessions, previews: 0 }
+        writeCleanupSettings(s)
+      } catch {
+        /* pembersihan berkala gagal diam-diam — jangan jatuhkan server */
+      }
+    }, 60 * 60 * 1000).unref()
+  }
+
   /* ---------------------------------------------------------------- */
   /* Halaman admin (Metis) — disajikan dari server, terpisah dari     */
   /* React builder. Data semuanya dari /api/admin/*, tanpa mock.       */
@@ -1242,6 +1555,8 @@ export function registerAdmin(app: Hono<AdminEnv>) {
     moderasi: 'moderasi.html',
     sessions: 'sessions.html',
     health: 'health.html',
+    cadangan: 'cadangan.html',
+    pembersihan: 'pembersihan.html',
     'ai-settings': 'ai-settings.html',
     settings: 'settings.html',
   }

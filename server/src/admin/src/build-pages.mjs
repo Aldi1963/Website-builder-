@@ -24,6 +24,8 @@ const pages = [
   { id: 'moderasi', title: 'Moderasi', file: 'moderasi.html' },
   { id: 'sessions', title: 'Sesi', file: 'sessions.html' },
   { id: 'health', title: 'Kesehatan Sistem', file: 'health.html' },
+  { id: 'cadangan', title: 'Cadangan & Pulihkan', file: 'cadangan.html' },
+  { id: 'pembersihan', title: 'Pembersihan', file: 'pembersihan.html' },
   { id: 'ai-settings', title: 'Pengaturan AI', file: 'ai-settings.html' },
   { id: 'settings', title: 'Pengaturan', file: 'settings.html' },
 ]
