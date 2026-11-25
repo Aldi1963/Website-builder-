@@ -27,6 +27,7 @@ const pages = [
   { id: 'cadangan', title: 'Cadangan & Pulihkan', file: 'cadangan.html' },
   { id: 'pembersihan', title: 'Pembersihan', file: 'pembersihan.html' },
   { id: 'ai-settings', title: 'Pengaturan AI', file: 'ai-settings.html' },
+  { id: 'audit', title: 'Log Audit', file: 'audit.html' },
   { id: 'settings', title: 'Pengaturan', file: 'settings.html' },
 ]
 
