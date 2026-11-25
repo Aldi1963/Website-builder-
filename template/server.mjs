@@ -74,6 +74,58 @@ function jsonError(status, message) {
   })
 }
 
+/* ---------- RAG embedding lokal: POST /api/embed ----------
+   Embedding pakai fastembed (model bge-small ONNX, 384 dim) yang jalan di CPU
+   proses Node ini — tanpa API key / kirim data keluar. Dipakai helper ~/lib/rag
+   untuk membangun basis pengetahuan (pgvector). */
+
+let _embedder = null
+let _embedderInit = null
+async function getEmbedder() {
+  if (_embedder) return _embedder
+  if (!_embedderInit) {
+    _embedderInit = (async () => {
+      const { FlagEmbedding } = await import('fastembed')
+      _embedder = await FlagEmbedding.init()
+      return _embedder
+    })()
+  }
+  return _embedderInit
+}
+
+async function embedTexts(inputs) {
+  const embedder = await getEmbedder()
+  // embed() menerima array dan menghasilkan satu vektor per input (Float32Array).
+  const vectors = []
+  for await (const vec of embedder.embed(inputs)) vectors.push(Array.from(vec))
+  return vectors
+}
+
+async function handleEmbed(request) {
+  let body
+  try {
+    body = await request.json()
+  } catch {
+    return jsonError(400, 'Body harus JSON.')
+  }
+  const { input } = body ?? {}
+  const inputs = Array.isArray(input) ? input : typeof input === 'string' ? [input] : null
+  if (!inputs || !inputs.length || inputs.some((s) => typeof s !== 'string' || !s.trim())) {
+    return jsonError(400, 'Field "input" harus string atau array string non-kosong.')
+  }
+  if (inputs.length > 64) return jsonError(400, 'Maksimal 64 input per permintaan.')
+  try {
+    const vectors = await embedTexts(inputs)
+    // Satu input -> balas embedding langsung; banyak -> array embedding.
+    const out = inputs.length === 1 ? vectors[0] : vectors
+    return new Response(JSON.stringify({ embedding: out, dimensions: vectors[0]?.length ?? 0 }), {
+      headers: { 'content-type': 'application/json; charset=utf-8' },
+    })
+  } catch (err) {
+    return jsonError(500, `Gagal membuat embedding: ${err.message}`)
+  }
+}
+
 async function handleChat(request) {
   const { key, baseUrl, model } = llmConfig()
   if (!key) {
@@ -176,6 +228,10 @@ await serve({
     if (url.pathname === '/api/chat') {
       if (request.method !== 'POST') return jsonError(405, 'Gunakan POST.')
       return handleChat(request)
+    }
+    if (url.pathname === '/api/embed') {
+      if (request.method !== 'POST') return jsonError(405, 'Gunakan POST.')
+      return handleEmbed(request)
     }
     const hit = await tryStatic(url.pathname)
     if (hit) return hit

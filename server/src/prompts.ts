@@ -79,6 +79,12 @@ const AUTH = `Autentikasi bawaan (saat aplikasi butuh login/akun user):
 - Sebelum query ke tabel users/sessions pertama kali, panggil ensureAuthSchema() (idempotent) — mis. di server function bootstrap atau loader halaman login.
 - DILARANG mengimplementasikan hash password sendiri, menyimpan password plaintext, atau menaruh token sesi di localStorage.`
 
+const RAG = `Basis pengetahuan / tanya-jawab dokumen (RAG) — server-side saja:
+- Helper server-only tersedia di src/lib/rag.ts (template, jangan ditulis ulang): ingestText(source, text) -> {chunks}, searchKnowledge(question) -> [{content, score, source}], buildContext(hits), ensureRagSchema(). Embedding lokal 384-dim (fastembed) via endpoint server POST /api/embed — TANPA API key, jangan memanggil /api/embed dari kode client.
+- Alur tanya-jawab dokumen: (1) user unggah/tempel teks -> panggil ingestText di createServerFn; (2) saat user bertanya -> searchKnowledge(pertanyaan), bangun konteks buildContext(hits), lalu kirim sebagai bagian dari system/messages ke /api/chat (streamChat). Sebutkan sumber ([1], [2]) saat menjawab bila relevan.
+- Sebelum menyimpan chunk pertama kali, panggil ensureRagSchema() (idempotent) — membuat ekstensi vector + tabel knowledge_chunks.
+- Saat user minta "tanya-jawab dokumen", "basis pengetahuan", "chat dengan data sendiri", dll: bangun halaman unggah dokumen + chat yang menjawab dari pengetahuan. JANGAN memasukkan seluruh dokumen ke prompt; gunakan retrieval.`
+
 export const BASE_SYSTEM = `Kamu adalah AI app builder. Kamu membangun aplikasi web utuh di dalam workspace yang sudah disiapkan.
 
 ${STACK}
@@ -86,6 +92,8 @@ ${STACK}
 ${RULES}
 
 ${AUTH}
+
+${RAG}
 
 ${DESIGN_FILTER}
 

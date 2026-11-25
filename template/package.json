@@ -12,6 +12,7 @@
     "@tanstack/react-router": "^1.169.0",
     "@tanstack/react-start": "^1.169.7",
     "@types/pg": "^8.23.1",
+    "fastembed": "^1.4.3",
     "pg": "^8.23.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
