@@ -88,6 +88,7 @@ export type AgentEvent =
   | { type: 'audit'; nilai: number; temuan: { tingkat: string; kategori: string; berkas: string; baris: number; masalah: string; perbaikan: string }[]; catatan: string }
   | { type: 'file'; path: string; action: 'write' | 'delete' }
   | { type: 'build'; ok: boolean; log: string }
+  | { type: 'install'; ok: boolean; log: string }
   | { type: 'assistant_delta'; text: string }
   | { type: 'assistant'; text: string }
   | { type: 'error'; text: string }
@@ -323,6 +324,7 @@ export async function runAgent(
       } else if (name === 'install') {
         await emit({ type: 'status', text: 'Install dependency…' })
         const r = await installDeps(projectId)
+        await emit({ type: 'install', ok: r.code === 0, log: r.output.slice(-4000) })
         result = `exit=${r.code}\n${r.output.slice(-2500)}`
       } else if (name === 'build') {
         await emit({ type: 'status', text: 'Build…' })

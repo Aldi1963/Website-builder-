@@ -25,6 +25,7 @@ export type AgentEvent =
   | { type: 'audit'; nilai: number; temuan: AuditFinding[]; catatan: string }
   | { type: 'file'; path: string; action: 'write' | 'delete' }
   | { type: 'build'; ok: boolean; log: string }
+  | { type: 'install'; ok: boolean; log: string }
   | { type: 'assistant'; text: string }
   | { type: 'error'; text: string }
 
@@ -141,6 +142,7 @@ export type ChatHandlers = {
   onAudit?: (event: Extract<AgentEvent, { type: 'audit' }>) => void
   onFile?: (path: string, action: 'write' | 'delete') => void
   onBuild?: (ok: boolean, log: string) => void
+  onInstall?: (ok: boolean, log: string) => void
   onAssistantDelta?: (text: string) => void
   onAssistant?: (text: string) => void
   onError?: (text: string) => void
@@ -212,6 +214,7 @@ export async function chatStream(
       else if (event === 'audit') h.onAudit?.(payload)
       else if (event === 'file') h.onFile?.(payload.path, payload.action)
       else if (event === 'build') h.onBuild?.(payload.ok, payload.log)
+      else if (event === 'install') h.onInstall?.(payload.ok, payload.log)
       else if (event === 'assistant_delta') h.onAssistantDelta?.(payload.text)
       else if (event === 'assistant') h.onAssistant?.(payload.text)
       else if (event === 'error') h.onError?.(payload.text)

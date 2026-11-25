@@ -6,6 +6,7 @@ import { Badge } from '@cloudflare/kumo/components/badge'
 import { Tabs } from '@cloudflare/kumo/components/tabs'
 import { Dialog } from '@cloudflare/kumo/components/dialog'
 import { Icon, Activity, useAutoScroll, useCopy } from './ui'
+import { ActivityFeed, type ActivityEntry } from './activity'
 import { api, type AuditFinding, type PlanStep, type ProjectSettings } from './api'
 
 export type ChatItem = { role: string; content: string; id?: number }
@@ -330,6 +331,7 @@ export function ChatPanel({
   plan,
   audit,
   streamText,
+  activity,
   onSend,
   onCancel,
 }: {
@@ -339,11 +341,12 @@ export function ChatPanel({
   plan: ChatPlan | null
   audit: ChatAudit | null
   streamText?: string
+  activity?: ActivityEntry[]
   onSend: (text: string) => void
   onCancel: () => void
 }) {
   const [input, setInput] = useState('')
-  const scrollRef = useAutoScroll(messages.length + (streamText?.length ?? 0))
+  const scrollRef = useAutoScroll(messages.length + (streamText?.length ?? 0) + (activity?.length ?? 0))
   const taRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
@@ -371,6 +374,7 @@ export function ChatPanel({
             ))}
             {sending && (
               <div className="vb-enter flex flex-col gap-2.5 text-[12px] text-quiet">
+                <ActivityFeed entries={activity ?? []} />
                 {status && (
                   <div className="flex items-center gap-2"><Activity /><span>{status}</span></div>
                 )}
@@ -407,7 +411,7 @@ export function ChatPanel({
                 }
               }}
               rows={1}
-              placeholder="Apa yang harus dibangun atau diubah"
+              placeholder={sending ? 'Menunggu pesan berikutnya…' : 'Apa yang harus dibangun atau diubah'}
               className="vb-scroll max-h-[168px] w-full resize-none bg-transparent px-1 py-1 text-[13.5px] leading-relaxed text-body outline-none placeholder:text-quiet"
             />
             <div className="mt-1.5 flex items-center justify-between gap-3 px-1">

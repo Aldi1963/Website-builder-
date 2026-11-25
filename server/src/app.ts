@@ -531,6 +531,7 @@ app.post('/api/projects/:id/chat', async (c) => {
       dbg(`event ${e.type} at ${(Date.now() - t0) / 1000}s`)
       if (e.type === 'file') await send('file', e)
       else if (e.type === 'build') await send('build', e)
+      else if (e.type === 'install') await send('install', e)
       else if (e.type === 'status') await send('status', e)
       else if (e.type === 'plan') await send('plan', e)
       else if (e.type === 'audit') await send('audit', e)

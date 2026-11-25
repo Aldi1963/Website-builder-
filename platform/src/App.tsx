@@ -5,16 +5,23 @@ import { Icon, Spinner, Wordmark } from './ui'
 import { api, auth, ChatHandlers, chatStream, Project, type User } from './api'
 import { AuthGate, UserBar } from './auth'
 import { ChatPanel, CodePane, PreviewPane, SettingsSheet, type ChatAudit, type ChatPlan } from './panels'
+import { useActivity } from './activity'
 import { exportProjectZip } from './api'
 
 /* Theme is a real choice here: the shell is used for long sessions next to an
    arbitrary generated app, so both modes ship and both are verified. */
+/* Light is the product default. The stored key is versioned so a stale
+   'dark' saved by older builds (which followed the OS preference) can't
+   keep a light-mode phone stuck in dark mode. */
+const THEME_KEY = 'vb-theme-v2'
+
 function useTheme() {
-  const [dark, setDark] = useState(() => localStorage.getItem('vb-theme') === 'dark')
+  const [dark, setDark] = useState(() => localStorage.getItem(THEME_KEY) === 'dark')
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark)
-    localStorage.setItem('vb-theme', dark ? 'dark' : 'light')
+    localStorage.removeItem('vb-theme')
+    localStorage.setItem(THEME_KEY, dark ? 'dark' : 'light')
   }, [dark])
 
   return { dark, toggle: () => setDark((d) => !d) }
@@ -370,6 +377,7 @@ function Workspace({ projectId, onTitle }: { projectId: string; onTitle: (n: str
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [model, setModel] = useState(() => localStorage.getItem('vb-model') ?? 'auto')
   const [planMode, setPlanMode] = useState(false)
+  const { entries: activity, push: pushActivity, reset: resetActivity } = useActivity()
   const abortRef = useRef<AbortController | null>(null)
 
   const load = async () => {
@@ -408,16 +416,22 @@ function Workspace({ projectId, onTitle }: { projectId: string; onTitle: (n: str
     setAudit(null)
     setStreamText('')
     setChangedFiles([])
+    resetActivity()
+    pushActivity({ kind: 'status', text: 'menyiapkan', at: Date.now() })
     setMessages((m) => [...m, { role: 'user', content: text }])
 
     const ctrl = new AbortController()
     abortRef.current = ctrl
 
     const handlers: ChatHandlers = {
-      onStatus: (t) => setStatus(t),
+      onStatus: (t) => {
+        setStatus(t)
+        pushActivity({ kind: 'status', text: t, at: Date.now() })
+      },
       onPlan: (event) => setPlan(event),
       onAudit: (event) => setAudit(event),
-      onFile: async (path) => {
+      onFile: async (path, action) => {
+        pushActivity({ kind: 'file', path, action, at: Date.now() })
         const { files } = await api.files(projectId)
         setFiles(files.map((f) => ({ path: f.path })))
         if (path) setChangedFiles((prev) => (prev.includes(path) ? prev : [...prev, path]))
@@ -426,7 +440,11 @@ function Workspace({ projectId, onTitle }: { projectId: string; onTitle: (n: str
       },
       onBuild: (ok, log) => {
         setBuildLog({ ok, log })
+        pushActivity({ kind: 'terminal', title: 'npm run build', log, ok, at: Date.now() })
         if (!ok) setTab('code')
+      },
+      onInstall: (ok, log) => {
+        pushActivity({ kind: 'terminal', title: 'npm install', log, ok, at: Date.now() })
       },
       onAssistantDelta: (d) => {
         setStreamText((prev) => {
@@ -664,6 +682,7 @@ function Workspace({ projectId, onTitle }: { projectId: string; onTitle: (n: str
             plan={plan}
             audit={audit}
             streamText={streamText}
+            activity={activity}
             onSend={send}
             onCancel={() => abortRef.current?.abort()}
           />
