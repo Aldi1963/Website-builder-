@@ -1,0 +1,47 @@
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3 mb-4">
+  <div><h1 class="h3 mb-0">Pemeliharaan</h1><p class="text-muted mb-0">Mode pemeliharaan untuk pengunjung. Pengaturan tersimpan di database.</p></div>
+</div>
+<div class="alert alert-warning d-flex gap-2" role="alert">
+  <i class="bi bi-exclamation-triangle flex-shrink-0"></i>
+  <div><strong>Belum berlaku.</strong> Mengaktifkan mode pemeliharaan di sini baru menyimpan pengaturannya. Halaman maintenance untuk pengunjung baru tampil setelah middleware di <code>app.ts</code> dipasang (tertunda).</div>
+</div>
+<div class="row g-4 mb-4">
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-header"><h2 class="h5 card-title mb-0">Pengaturan Mode Pemeliharaan</h2></div>
+      <div class="card-body">
+        <form id="maintenance-form" autocomplete="off">
+          <div class="form-check form-switch mb-3">
+            <input class="form-check-input" type="checkbox" role="switch" id="maintenance-enabled">
+            <label class="form-check-label" for="maintenance-enabled">Mode pemeliharaan aktif</label>
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="maintenance-message">Pesan maintenance</label>
+            <textarea class="form-control" id="maintenance-message" rows="4" placeholder="cth. VibeBuilder sedang dalam pemeliharaan. Kami kembali sebentar lagi."></textarea>
+            <div class="form-text">Pesan yang dilihat pengunjung di halaman maintenance (maks 2000 karakter).</div>
+          </div>
+          <div class="d-flex gap-2 align-items-center">
+            <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Simpan</button>
+            <small class="text-muted" id="maintenance-updated"></small>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-header"><h2 class="h5 card-title mb-0">Pratinjau Pesan</h2></div>
+      <div class="card-body">
+        <div class="border rounded p-3 text-center" id="maintenance-preview">
+          <i class="bi bi-wrench display-6 text-muted"></i>
+          <p class="mt-2 mb-0" id="maintenance-preview-text">Belum ada pesan.</p>
+        </div>
+        <p class="text-muted small mt-3 mb-0">Pratinjau di atas mengikuti isi kolom pesan. Tampilan halaman maintenance sebenarnya ditentukan oleh middleware penyajian (belum dipasang).</p>
+      </div>
+    </div>
+    <div class="card mt-4">
+      <div class="card-header"><h2 class="h5 card-title mb-0">Status Saat Ini</h2></div>
+      <div class="card-body" id="maintenance-status-body"><p class="text-muted mb-0">Memuat…</p></div>
+    </div>
+  </div>
+</div>

@@ -162,6 +162,17 @@ export function registerAdmin(app: Hono<AdminEnv>) {
     );
     CREATE INDEX IF NOT EXISTS idx_custom_domains_project ON custom_domains(project_id);
   `)
+  /* Fitur 4 — Pengumuman: satu pengumuman aktif dalam satu waktu. */
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS announcements (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL DEFAULT '',
+      active INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    )
+  `)
   app.use('/api/admin/*', requireAdmin)
 
   app.get('/api/admin/overview', (c) => {
@@ -853,6 +864,123 @@ export function registerAdmin(app: Hono<AdminEnv>) {
   })
 
   /* ---------------------------------------------------------------- */
+  /* Fitur 4 — Pengumuman ke semua pengguna                            */
+  /* Satu pengumuman aktif dalam satu waktu; mengaktifkan satu         */
+  /* menonaktifkan yang lain. Banner di builder (platform/* +         */
+  /* endpoint publik) BELUM dipasang — lihat laporan.                  */
+  /* ---------------------------------------------------------------- */
+
+  app.get('/api/admin/announcements', (c) => {
+    const rows = db
+      .prepare(`SELECT id, title, body, active, created_at, updated_at FROM announcements ORDER BY created_at DESC, id DESC`)
+      .all()
+    return c.json({ announcements: rows })
+  })
+
+  app.post('/api/admin/announcements', async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { title?: string; body?: string }
+    const title = String(body.title ?? '').trim()
+    if (!title || title.length > 200) return c.json({ error: 'Judul wajib diisi (maks 200 karakter).' }, 400)
+    const text = String(body.body ?? '').slice(0, 5000)
+    const t = now()
+    const res = db
+      .prepare(`INSERT INTO announcements (title, body, active, created_at, updated_at) VALUES (?, ?, 0, ?, ?)`)
+      .run(title, text, t, t)
+    return c.json({ ok: true, id: Number(res.lastInsertRowid) })
+  })
+
+  app.put('/api/admin/announcements/:id', async (c) => {
+    const id = Number(c.req.param('id'))
+    if (!Number.isInteger(id)) return c.json({ error: 'ID tidak valid.' }, 400)
+    const row = db.prepare(`SELECT id FROM announcements WHERE id = ?`).get(id)
+    if (!row) return c.json({ error: 'Pengumuman tidak ditemukan.' }, 404)
+    const body = (await c.req.json().catch(() => ({}))) as { title?: string; body?: string }
+    const sets: string[] = []
+    const params: unknown[] = []
+    if (body.title !== undefined) {
+      const title = String(body.title).trim()
+      if (!title || title.length > 200) return c.json({ error: 'Judul wajib diisi (maks 200 karakter).' }, 400)
+      sets.push('title = ?')
+      params.push(title)
+    }
+    if (body.body !== undefined) {
+      sets.push('body = ?')
+      params.push(String(body.body).slice(0, 5000))
+    }
+    if (!sets.length) return c.json({ error: 'Tidak ada field yang diubah.' }, 400)
+    sets.push('updated_at = ?')
+    params.push(now())
+    db.prepare(`UPDATE announcements SET ${sets.join(', ')} WHERE id = ?`).run(...(params as never[]), id)
+    return c.json({ ok: true })
+  })
+
+  app.delete('/api/admin/announcements/:id', (c) => {
+    const id = Number(c.req.param('id'))
+    if (!Number.isInteger(id)) return c.json({ error: 'ID tidak valid.' }, 400)
+    const row = db.prepare(`SELECT id FROM announcements WHERE id = ?`).get(id)
+    if (!row) return c.json({ error: 'Pengumuman tidak ditemukan.' }, 404)
+    db.prepare(`DELETE FROM announcements WHERE id = ?`).run(id)
+    return c.json({ ok: true })
+  })
+
+  /* Aktifkan satu pengumuman (menonaktifkan semua yang lain). Body
+     opsional { active: false } untuk menonaktifkan tanpa pengganti. */
+  app.post('/api/admin/announcements/:id/activate', async (c) => {
+    const id = Number(c.req.param('id'))
+    if (!Number.isInteger(id)) return c.json({ error: 'ID tidak valid.' }, 400)
+    const row = db.prepare(`SELECT id FROM announcements WHERE id = ?`).get(id)
+    if (!row) return c.json({ error: 'Pengumuman tidak ditemukan.' }, 404)
+    const body = (await c.req.json().catch(() => ({}))) as { active?: boolean }
+    const active = body.active !== undefined ? !!body.active : true
+    const t = now()
+    if (active) {
+      db.prepare(`UPDATE announcements SET active = 0, updated_at = ?`).run(t)
+      db.prepare(`UPDATE announcements SET active = 1, updated_at = ? WHERE id = ?`).run(t, id)
+    } else {
+      db.prepare(`UPDATE announcements SET active = 0, updated_at = ? WHERE id = ?`).run(t, id)
+    }
+    return c.json({ ok: true, active })
+  })
+
+  /* ---------------------------------------------------------------- */
+  /* Fitur 8 — Mode pemeliharaan                                       */
+  /* Disimpan di admin_settings key maintenance_mode (JSON).            */
+  /* Halaman maintenance untuk pengunjung butuh middleware di app.ts   */
+  /* — BELUM dipasang, lihat laporan.                                  */
+  /* ---------------------------------------------------------------- */
+
+  function maintenanceView() {
+    const raw = adminSetting('maintenance_mode')
+    let parsed: { enabled?: boolean; message?: string; updated_at?: number } = {}
+    if (raw) {
+      try {
+        parsed = JSON.parse(raw)
+      } catch {
+        /* nilai rusak: anggap mati */
+      }
+    }
+    return {
+      enabled: parsed.enabled === true,
+      message: typeof parsed.message === 'string' ? parsed.message : '',
+      updated_at: typeof parsed.updated_at === 'number' ? parsed.updated_at : null,
+    }
+  }
+
+  app.get('/api/admin/maintenance', (c) => c.json(maintenanceView()))
+
+  app.put('/api/admin/maintenance', async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { enabled?: boolean; message?: string }
+    if (typeof body.enabled !== 'boolean') return c.json({ error: 'Field enabled wajib boolean.' }, 400)
+    const message = String(body.message ?? '').slice(0, 2000)
+    const value = JSON.stringify({ enabled: body.enabled, message, updated_at: now() })
+    db.prepare(
+      `INSERT INTO admin_settings (key, value, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+    ).run('maintenance_mode', value, now())
+    return c.json({ ok: true, ...maintenanceView() })
+  })
+
+  /* ---------------------------------------------------------------- */
   /* Build, Pesan, Sesi                                                */
   /* ---------------------------------------------------------------- */
 
@@ -1103,6 +1231,8 @@ export function registerAdmin(app: Hono<AdminEnv>) {
     '': 'dashboard.html',
     users: 'users.html',
     projects: 'projects.html',
+    pemeliharaan: 'pemeliharaan.html',
+    pengumuman: 'pengumuman.html',
     plans: 'plans.html',
     usage: 'usage.html',
     builds: 'builds.html',

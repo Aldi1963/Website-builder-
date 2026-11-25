@@ -13,6 +13,8 @@ const pages = [
   { id: 'dashboard', title: 'Dashboard', file: 'dashboard.html' },
   { id: 'users', title: 'Pengguna', file: 'users.html' },
   { id: 'projects', title: 'Proyek', file: 'projects.html' },
+  { id: 'pemeliharaan', title: 'Pemeliharaan', file: 'pemeliharaan.html' },
+  { id: 'pengumuman', title: 'Pengumuman', file: 'pengumuman.html' },
   { id: 'plans', title: 'Plan', file: 'plans.html' },
   { id: 'usage', title: 'Penggunaan', file: 'usage.html' },
   { id: 'builds', title: 'Build', file: 'builds.html' },
