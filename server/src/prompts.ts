@@ -39,7 +39,7 @@ const STACK = `Stack wajib (jangan diganti):
 - Tailwind CSS v4 (sudah terpasang, stylesheet src/styles.css berisi @import "tailwindcss")
 - TypeScript
 - Server logic via createServerFn dari @tanstack/react-start
-- Database: node:sqlite (DatabaseSync) di src/lib/db.server.ts, satu instance di-cache, file persisten di process.env.VB_APP_DB_PATH ?? join(process.cwd(), 'data', 'app.db') — buat folder data bila perlu; DILARANG ':memory:' untuk data aplikasi
+- Database: Postgres terkelola (per-proyek, permanen). Buat tabel lewat TOOL db_schema (jangan menulis migrasi manual), lalu query/mutasi dari server function via helper `query` di src/lib/db.ts (import { query } dari '~/lib/db', file server-only). Helper membaca koneksi dari env VB_APP_DATABASE_URL yang sudah disuntikkan server. JANGAN pakai node:sqlite / localStorage / ':memory:' untuk data aplikasi.
 - Root layout di src/routes/__root.tsx, halaman di src/routes/index.tsx`
 
 const RULES = `Aturan teknis:
@@ -47,19 +47,19 @@ const RULES = `Aturan teknis:
 2. Semua file harus lengkap dan bisa dikompilasi. Tidak boleh ada placeholder "// TODO" atau komponen kosong.
 3. Import path internal pakai prefix ~/ (contoh: import { x } from '~/lib/x').
 4. UI pakai Tailwind, tanpa library UI eksternal.
-5. Data nyata: simpan di SQLite lewat createServerFn. Jangan pakai localStorage untuk data yang seharusnya dibagi antar perangkat.
+5. Data nyata: simpan di database Postgres terkelola lewat createServerFn (helper query dari ~/lib/db). Jangan pakai localStorage untuk data yang seharusnya dibagi antar perangkat.
 6. Struktur folder standar:
    src/routes/*.tsx        halaman (file-based)
    src/components/*.tsx    komponen yang dipakai lebih dari satu halaman
    src/lib/types.ts        tipe domain
    src/lib/format.ts       helper presentasi (angka, tanggal)
-   src/lib/db.server.ts    koneksi + migrasi + seed (hanya server)
+   src/lib/db.ts           helper query Postgres terkelola (server-only; sudah disediakan template)
    src/server/*.ts         createServerFn: query & mutation
 7. Validasi input di dalam .validator() sebelum menyentuh database. Tolak dengan pesan bahasa Indonesia yang menyebut apa yang salah.
 8. Setiap file yang ditulis harus lengkap. Kalau mengubah file, baca dulu isinya.
 9. Setelah selesai menulis, jalankan build. Kalau gagal, perbaiki dan build ulang.
 10. Ringkas hasil dalam 1-3 kalimat: apa yang dibangun dan apa yang bisa dicoba. Tanpa basa-basi.
-11. Database aplikasi WAJIB file persisten (pola kanonik): src/lib/db.server.ts membaca process.env.VB_APP_DB_PATH ?? join(process.cwd(), 'data', 'app.db'), membuat folder data bila perlu, satu instance DatabaseSync di-cache. DILARANG memakai ':memory:' untuk data aplikasi — data in-memory hilang saat preview/server restart. Migrasi pakai CREATE TABLE IF NOT EXISTS dan seed hanya bila tabel kosong (idempotent), supaya restart tidak gagal atau menduplikasi data.`
+11. Database aplikasi = Postgres terkelola (permanen). Alur wajib saat butuh data: (a) panggil TOOL db_schema dengan pernyataan CREATE TABLE IF NOT EXISTS untuk tiap tabel (idempotent), (b) tulis src/lib/db.ts yang sudah disediakan template (jangan diubah, isinya helper query Postgres), (c) tulis createServerFn di src/server/ yang memakai query(...) untuk baca/tulis. DILARANG memakai node:sqlite, localStorage, atau ':memory:' untuk data aplikasi. Setiap tabel punya kolom id (serial primary key).`
 
 /* Fitur AI di aplikasi hasil generate (web LLM): aplikasi yang kamu bangun
    bisa punya fitur AI (mis. halaman chatbot) lewat proxy LLM yang sudah
