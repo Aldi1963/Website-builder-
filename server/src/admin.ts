@@ -404,6 +404,210 @@ export function registerAdmin(app: Hono<AdminEnv>) {
     })
   })
 
+  /* ---------------------------------------------------------------- */
+  /* Biaya LLM (Fitur 7)                                               */
+  /* Statistik biaya dari token_usage yang sudah tercatat (kolom model  */
+  /* memang dicatat llm.ts/recordTokenUsage, jadi rincian per model     */
+  /* tersedia). Harga per model diisi admin di admin_settings key      */
+  /* llm_prices; model tanpa harga tampil tanpa biaya ("-") — tidak    */
+  /* ada harga karangan. Angka token di sini sama dengan               */
+  /* /api/admin/usage (all-time) supaya bisa dicocokkan.               */
+  /* ---------------------------------------------------------------- */
+
+  type LlmPrice = { prompt_per_1k: number; completion_per_1k: number; currency: 'IDR' }
+  type LlmPrices = Record<string, LlmPrice>
+
+  function readLlmPrices(): LlmPrices {
+    try {
+      const raw = adminSetting('llm_prices')
+      if (!raw) return {}
+      const parsed = JSON.parse(raw) as unknown
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+      const out: LlmPrices = {}
+      for (const [model, v] of Object.entries(parsed as Record<string, unknown>)) {
+        if (typeof v !== 'object' || !v) continue
+        const p = (v as { prompt_per_1k?: unknown }).prompt_per_1k
+        const cc = (v as { completion_per_1k?: unknown }).completion_per_1k
+        if (typeof p !== 'number' || typeof cc !== 'number' || !Number.isFinite(p) || !Number.isFinite(cc) || p < 0 || cc < 0) continue
+        out[model] = { prompt_per_1k: p, completion_per_1k: cc, currency: 'IDR' }
+      }
+      return out
+    } catch {
+      return {}
+    }
+  }
+
+  function costFor(prompt: number, completion: number, price: LlmPrice | undefined): number | null {
+    if (!price) return null
+    return Math.round((prompt / 1000) * price.prompt_per_1k + (completion / 1000) * price.completion_per_1k)
+  }
+
+  function parseCostDays(c: Context): number {
+    const raw = Number(c.req.query('days') ?? 30)
+    if (!Number.isFinite(raw)) return 30
+    if (raw === 0) return 0 /* 0 = semua riwayat */
+    return Math.min(365, Math.max(1, Math.floor(raw)))
+  }
+
+  function costReport(days: number) {
+    const prices = readLlmPrices()
+    const until = now()
+    const since = days > 0 ? until - days * DAY : 0
+    const where = days > 0 ? `WHERE created_at >= ?` : ''
+    const whereT = days > 0 ? `WHERE t.created_at >= ?` : ''
+    const params: unknown[] = days > 0 ? [since] : []
+
+    type ModelRow = { model: string; requests: number; prompt_tokens: number; completion_tokens: number }
+    const modelRows = db
+      .prepare(
+        `SELECT model, count(*) AS requests, coalesce(sum(prompt_tokens), 0) AS prompt_tokens,
+                coalesce(sum(completion_tokens), 0) AS completion_tokens
+         FROM token_usage ${where} GROUP BY model ORDER BY prompt_tokens + completion_tokens DESC`,
+      )
+      .all(...(params as never[])) as ModelRow[]
+    const byModel = modelRows.map((r) => {
+      const price = prices[r.model]
+      return {
+        model: r.model,
+        requests: r.requests,
+        prompt_tokens: r.prompt_tokens,
+        completion_tokens: r.completion_tokens,
+        total_tokens: r.prompt_tokens + r.completion_tokens,
+        cost_idr: costFor(r.prompt_tokens, r.completion_tokens, price),
+        priced: !!price,
+      }
+    })
+
+    type UserRow = { user_id: string; email: string | null; name: string | null; requests: number; prompt_tokens: number; completion_tokens: number }
+    const userRows = db
+      .prepare(
+        `SELECT t.user_id AS user_id, u.email AS email, u.name AS name,
+                count(*) AS requests, coalesce(sum(t.prompt_tokens), 0) AS prompt_tokens,
+                coalesce(sum(t.completion_tokens), 0) AS completion_tokens
+         FROM token_usage t LEFT JOIN users u ON u.id = t.user_id ${whereT}
+         GROUP BY t.user_id ORDER BY prompt_tokens + completion_tokens DESC`,
+      )
+      .all(...(params as never[])) as UserRow[]
+    /* Biaya per pengguna dihitung per model (harga bisa beda per model). */
+    type UserModelRow = { user_id: string; model: string; prompt_tokens: number; completion_tokens: number }
+    const userModelRows = db
+      .prepare(
+        `SELECT t.user_id AS user_id, t.model AS model,
+                coalesce(sum(t.prompt_tokens), 0) AS prompt_tokens,
+                coalesce(sum(t.completion_tokens), 0) AS completion_tokens
+         FROM token_usage t ${whereT} GROUP BY t.user_id, t.model`,
+      )
+      .all(...(params as never[])) as UserModelRow[]
+    const costByUser = new Map<string, { cost: number; hasPriced: boolean; unpriced: number }>()
+    for (const r of userModelRows) {
+      const cur = costByUser.get(r.user_id) ?? { cost: 0, hasPriced: false, unpriced: 0 }
+      const c = costFor(r.prompt_tokens, r.completion_tokens, prices[r.model])
+      if (c === null) cur.unpriced += r.prompt_tokens + r.completion_tokens
+      else {
+        cur.cost += c
+        cur.hasPriced = true
+      }
+      costByUser.set(r.user_id, cur)
+    }
+    const byUser = userRows.map((r) => {
+      const cc = costByUser.get(r.user_id) ?? { cost: 0, hasPriced: false, unpriced: 0 }
+      return {
+        user_id: r.user_id,
+        email: r.email,
+        name: r.name,
+        requests: r.requests,
+        prompt_tokens: r.prompt_tokens,
+        completion_tokens: r.completion_tokens,
+        total_tokens: r.prompt_tokens + r.completion_tokens,
+        cost_idr: cc.hasPriced ? cc.cost : null,
+        unpriced_tokens: cc.unpriced,
+      }
+    })
+
+    const totals = byModel.reduce(
+      (acc, r) => ({
+        requests: acc.requests + r.requests,
+        prompt_tokens: acc.prompt_tokens + r.prompt_tokens,
+        completion_tokens: acc.completion_tokens + r.completion_tokens,
+        total_tokens: acc.total_tokens + r.total_tokens,
+        cost_idr: acc.cost_idr + (r.cost_idr ?? 0),
+        hasPriced: acc.hasPriced || r.priced,
+        unpriced_tokens: acc.unpriced_tokens + (r.priced ? 0 : r.total_tokens),
+      }),
+      { requests: 0, prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, cost_idr: 0, hasPriced: false, unpriced_tokens: 0 },
+    )
+    const allTime = (db.prepare(
+      `SELECT count(*) AS requests, coalesce(sum(prompt_tokens), 0) AS prompt_tokens,
+              coalesce(sum(completion_tokens), 0) AS completion_tokens
+       FROM token_usage`,
+    ).get() as { requests: number; prompt_tokens: number; completion_tokens: number })
+    return {
+      days,
+      since: days > 0 ? since : null,
+      until,
+      prices,
+      byModel,
+      byUser,
+      totals: { ...totals, cost_idr: totals.hasPriced ? totals.cost_idr : null },
+      allTime: { ...allTime, total_tokens: allTime.prompt_tokens + allTime.completion_tokens },
+    }
+  }
+
+  function csvCell(v: unknown): string {
+    const s = v === null || v === undefined ? '' : String(v)
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+  }
+
+  app.get('/api/admin/cost', (c) => c.json(costReport(parseCostDays(c))))
+
+  app.get('/api/admin/cost.csv', (c) => {
+    const days = parseCostDays(c)
+    const r = costReport(days)
+    const lines: string[] = [
+      'bagian,model_atau_pengguna,permintaan,prompt_tokens,completion_tokens,total_tokens,biaya_idr',
+      ...r.byModel.map((m) =>
+        ['per_model', m.model || '(tanpa model)', m.requests, m.prompt_tokens, m.completion_tokens, m.total_tokens, m.cost_idr ?? ''].map(csvCell).join(','),
+      ),
+      ...r.byUser.map((u) =>
+        ['per_pengguna', u.email ?? `id:${u.user_id}`, u.requests, u.prompt_tokens, u.completion_tokens, u.total_tokens, u.cost_idr ?? ''].map(csvCell).join(','),
+      ),
+      ['total', '', r.totals.requests, r.totals.prompt_tokens, r.totals.completion_tokens, r.totals.total_tokens, r.totals.cost_idr ?? ''].map(csvCell).join(','),
+    ]
+    const label = days === 0 ? 'semua' : `${days}hari`
+    /* c.text() menimpa Content-Type jadi text/plain — pakai c.body supaya
+       header text/csv di bawah ini yang dipakai. */
+    return c.body(lines.join('\n') + '\n', 200, {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="biaya-llm-${label}.csv"`,
+    })
+  })
+
+  app.put('/api/admin/cost/prices', async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { prices?: unknown }
+    if (!body.prices || typeof body.prices !== 'object' || Array.isArray(body.prices)) {
+      return c.json({ error: 'Field prices wajib objek.' }, 400)
+    }
+    const cleaned: LlmPrices = {}
+    for (const [model, v] of Object.entries(body.prices as Record<string, unknown>)) {
+      const name = model.trim()
+      if (!name || name.length > 120 || !/^[A-Za-z0-9][A-Za-z0-9._\-/:]*$/.test(name)) {
+        return c.json({ error: `Nama model tidak valid: ${model}` }, 400)
+      }
+      if (typeof v !== 'object' || !v) return c.json({ error: `Harga model ${name} tidak valid.` }, 400)
+      const p = Number((v as { prompt_per_1k?: unknown }).prompt_per_1k)
+      const cc = Number((v as { completion_per_1k?: unknown }).completion_per_1k)
+      if (!Number.isFinite(p) || !Number.isFinite(cc) || p < 0 || cc < 0) {
+        return c.json({ error: `Harga model ${name} harus angka >= 0 (Rp per 1.000 token).` }, 400)
+      }
+      cleaned[name] = { prompt_per_1k: p, completion_per_1k: cc, currency: 'IDR' }
+    }
+    db.prepare(
+      `INSERT INTO admin_settings (key, value, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+    ).run('llm_prices', JSON.stringify(cleaned), now())
+    return c.json({ ok: true, prices: cleaned })
+  })
+
   app.get('/api/admin/health', async (c) => {
     const started = Date.now()
     const endpoint = effectiveEndpoint()
@@ -902,6 +1106,7 @@ export function registerAdmin(app: Hono<AdminEnv>) {
     plans: 'plans.html',
     usage: 'usage.html',
     builds: 'builds.html',
+    biaya: 'cost.html',
     domain: 'domain.html',
     messages: 'messages.html',
     moderasi: 'moderasi.html',
