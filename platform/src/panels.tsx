@@ -472,6 +472,8 @@ export function ChatPanel({
   activity,
   onSend,
   onCancel,
+  onConfirmPlan,
+  awaitingConfirm,
   onOpenSettings,
   waitingForDiscovery,
   inlineEvents,
@@ -488,6 +490,8 @@ export function ChatPanel({
   activity?: ActivityEntry[]
   onSend: (text: string) => void
   onCancel: () => void
+  onConfirmPlan?: () => void
+  awaitingConfirm?: boolean
   onOpenSettings: () => void
   waitingForDiscovery: boolean
   inlineEvents?: InlineEvent[]
@@ -590,6 +594,24 @@ export function ChatPanel({
                     <p className="whitespace-pre-wrap">{streamText}<span className="vb-caret ml-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-accent align-middle" /></p>
                   </div>
                 ) : null}
+              </div>
+            )}
+            {/* Gerbang konfirmasi di luar container `sending`: saat run berhenti
+                untuk menunggu persetujuan, sending=false lalu container tadi
+                di-unmount. Blok ini harus tetap hidup agar tombol tampil. */}
+            {!sending && plan && awaitingConfirm && (
+              <div className="vb-enter mx-auto flex max-w-[640px] flex-col gap-2.5">
+                <PlanCard plan={plan} />
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={onConfirmPlan}
+                    className="rounded-md bg-accent px-3 py-1.5 text-[12px] font-medium text-white transition-opacity hover:opacity-90"
+                  >
+                    Setujui &amp; bangun
+                  </button>
+                  <span className="text-[11.5px] text-quiet">Agent menunggu sebelum menulis file</span>
+                </div>
               </div>
             )}
             {!sending && audit && <AuditCard audit={audit} />}
@@ -812,10 +834,22 @@ function Bubble({
   }
 
   if (role === 'error') {
+    /* Fase 3: error CREDIT_HABIS (gate fase 1, saldo < 10) tampil berbeda
+       dari error biasa — pesan jelas + tombol Top-up, tanpa stack trace
+       (teks error dari server sudah berupa kalimat, bukan trace). */
+    const creditHabis = content.includes('Credit habis')
     return (
       <div className="vb-enter rounded-lg border border-edge border-l-2 border-l-accent bg-surface px-3.5 py-2.5">
-        <p className="text-[11px] font-medium text-accent">agent gagal</p>
+        <p className="text-[11px] font-medium text-accent">{creditHabis ? 'credit habis' : 'agent gagal'}</p>
         <p className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-body">{content}</p>
+        {creditHabis && (
+          <a
+            href="/topup"
+            className="mt-2.5 inline-flex h-8 items-center gap-1.5 rounded-full bg-accent px-3.5 text-[12px] font-medium text-white transition-opacity hover:opacity-90"
+          >
+            Top-up credit
+          </a>
+        )}
       </div>
     )
   }

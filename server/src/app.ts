@@ -511,7 +511,7 @@ app.post('/api/projects/:id/chat', async (c) => {
   if ('error' in r) return c.json({ error: r.error }, r.status)
   const id = r.project.id
 
-  const body = (await c.req.json().catch(() => ({}))) as { message?: string; model?: string; planMode?: boolean }
+  const body = (await c.req.json().catch(() => ({}))) as { message?: string; model?: string; planMode?: boolean; confirmPlan?: boolean; confirmed?: boolean }
   const message = (body.message ?? '').trim()
   if (!message) return c.json({ error: 'message kosong' }, 400)
 
@@ -541,11 +541,12 @@ app.post('/api/projects/:id/chat', async (c) => {
       else if (e.type === 'assistant_delta') await send('assistant_delta', e)
       else if (e.type === 'assistant') await send('assistant', e)
       else if (e.type === 'screenshot') await send('screenshot', e)
+      else if (e.type === 'awaiting_confirmation') await send('awaiting_confirmation', e)
       else await send('error', e)
     }
 
     try {
-      await runAgent(id, message, onEvent, body.model, body.planMode, { userId: c.get('user').id })
+      await runAgent(id, message, onEvent, body.model, body.planMode, { userId: c.get('user').id, confirmPlan: body.confirmPlan === true, confirmed: body.confirmed === true })
       dbg(`agent resolved at ${(Date.now() - t0) / 1000}s`)
       setStatus(id, 'idle')
     } catch (err) {

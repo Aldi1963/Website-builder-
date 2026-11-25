@@ -94,6 +94,7 @@ export type AgentEvent =
   | { type: 'assistant_delta'; text: string }
   | { type: 'assistant'; text: string }
   | { type: 'screenshot'; url: string; name: string }
+  | { type: 'awaiting_confirmation'; ringkasan: string }
   | { type: 'error'; text: string }
 
 const MAX_STEPS = Number(process.env.VB_MAX_STEPS ?? 30)
@@ -104,10 +105,12 @@ export async function runAgent(
   emit: (e: AgentEvent) => void | Promise<void>,
   model?: string,
   forcePlanMode?: boolean,
-  opts?: { userId?: string },
+  opts?: { userId?: string; confirmed?: boolean; confirmPlan?: boolean },
 ): Promise<void> {
   ensureWorkspace(projectId)
-  addMessage(projectId, 'user', userPrompt)
+  // Saat user menyetujui rencana, run ini adalah lanjutan (confirmed=true):
+  // prompt asli sudah tercatat, jangan catat dua kali sebagai pesan user.
+  if (!opts?.confirmed) addMessage(projectId, 'user', userPrompt)
   const versionLabel = userPrompt
 
   // Snapshot sebelum run — dipakai untuk version history & rollback UI.
@@ -141,8 +144,10 @@ export async function runAgent(
   }
 
   // Klasifikasi cepat: edit kecil vs pekerjaan penuh. Edit kecil = jalur ringkas tanpa plan/audit.
+  // Saat confirmed=true, user sudah menyetujui rencana — lewati klasifikasi & regenerasi
+  // plan, langsung eksekusi. History sudah memuat "Rencana kerja" dari run sebelumnya.
   let quickEdit = false
-  if (!forcePlanMode && history.length > 1 && listFiles(projectId).length > 0) {
+  if (!opts?.confirmed && !forcePlanMode && history.length > 1 && listFiles(projectId).length > 0) {
     try {
       const cls = await complete([
         { role: 'system', content: 'Klasifikasi permintaan. Balas HANYA JSON: {"kecil": true|false}. Kecil=true bila permintaan hanya mengubah satu bagian kecil yang sudah ada (teks, warna, komponen tunggal, perbaikan kecil). Kecil=false bila menambah fitur, mengubah struktur data, atau membuat halaman/flow baru.' },
@@ -154,25 +159,56 @@ export async function runAgent(
     } catch { /* default: jalur penuh */ }
   }
 
-  if (quickEdit) {
-    messages[0] = { role: 'system', content: `${QUICK_EDIT_SYSTEM}\n\nWorkspace saat ini:\n${fileIndex(projectId)}` }
-    await emit({ type: 'plan', ringkasan: 'Edit cepat: perubahan kecil langsung diterapkan', langkah: [{ judul: 'Terapkan perubahan', detail: 'Menulis file minimum yang disebut permintaan.' }, { judul: 'Verifikasi build', detail: 'Build produksi untuk memastikan tidak merusak aplikasi.' }], berkas: [], asumsi: [] })
+  // Saat confirmed, user sudah menyetujui rencana pada run sebelumnya — jangan
+  // regenerate plan (nanti membingungkan karena bisa berubah). Langsung eksekusi.
+  if (quickEdit || opts?.confirmed) {
+    if (!opts?.confirmed) {
+      messages[0] = { role: 'system', content: `${QUICK_EDIT_SYSTEM}\n\nWorkspace saat ini:\n${fileIndex(projectId)}` }
+      await emit({ type: 'plan', ringkasan: 'Edit cepat: perubahan kecil langsung diterapkan', langkah: [{ judul: 'Terapkan perubahan', detail: 'Menulis file minimum yang disebut permintaan.' }, { judul: 'Verifikasi build', detail: 'Build produksi untuk memastikan tidak merusak aplikasi.' }], berkas: [], asumsi: [] })
+    }
   } else {
-  // Generate and stream a concrete plan before the implementation agent acts.
+  // Susun rencana konkret sebelum agent implementasi menulis file. JSON-nya
+  // di-buffer; yang tampil ke user hanya kartu rencana + satu kalimat ringkas.
   await emit({ type: 'status', text: 'Menyusun rencana…' })
+  let planText = ''
+  let plan: any = null
   try {
     const planResp = await complete([
       { role: 'system', content: PLAN_SYSTEM },
       { role: 'user', content: `Permintaan: ${userPrompt}\n\nBerkas yang ada:\n${fileIndex(projectId)}` },
-    ], { model, temperature: 0.15, maxTokens: 1800, userId: opts?.userId })
-    const raw = typeof planResp.message.content === 'string' ? planResp.message.content : ''
+    ], {
+      model, temperature: 0.15, maxTokens: 1800, userId: opts?.userId,
+      // JSON rencana di-buffer, BUKAN di-stream ke chat: user tidak boleh melihat
+      // kurung kurawal/kunci mentah. Narasi manusiawi dipancarkan setelah parse.
+      onDelta: async (d) => { planText += d },
+    })
+    const raw = typeof planResp.message.content === 'string' ? planResp.message.content : planText
     const jsonText = raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1)
-    const plan = JSON.parse(jsonText)
-    const langkah = Array.isArray(plan.langkah) ? plan.langkah.slice(0, 6) : []
-    await emit({ type: 'plan', ringkasan: String(plan.ringkasan ?? 'Membangun perubahan yang diminta'), langkah, berkas: Array.isArray(plan.berkas) ? plan.berkas.slice(0, 10) : [], asumsi: Array.isArray(plan.asumsi) ? plan.asumsi.slice(0, 3) : [] })
-    if (langkah.length) messages.push({ role: 'assistant', content: `Rencana kerja: ${langkah.map((x: {judul:string;detail:string}, i:number) => `${i + 1}. ${x.judul}: ${x.detail}`).join('\n')}` })
+    plan = JSON.parse(jsonText)
   } catch {
-    await emit({ type: 'plan', ringkasan: 'Membangun dan memverifikasi perubahan yang diminta', langkah: [{judul:'Memahami proyek',detail:'Membaca struktur dan pola kode yang sudah ada.'},{judul:'Menerapkan perubahan',detail:'Menulis komponen dan logika yang diperlukan.'},{judul:'Menguji hasil',detail:'Menjalankan build dan memperbaiki error.'}], berkas: [], asumsi: [] })
+    /* narasi/parse gagal → fallback plan bawaan di bawah */
+  }
+  const langkah = Array.isArray(plan?.langkah) && plan.langkah.length ? plan.langkah.slice(0, 6) : [
+    { judul: 'Memahami proyek', detail: 'Membaca struktur dan pola kode yang sudah ada.' },
+    { judul: 'Menerapkan perubahan', detail: 'Menulis komponen dan logika yang diperlukan.' },
+    { judul: 'Menguji hasil', detail: 'Menjalankan build dan memperbaiki error.' },
+  ]
+  const ringkasan = String(plan?.ringkasan ?? 'Membangun perubahan yang diminta')
+  await emit({
+    type: 'plan', ringkasan, langkah,
+    berkas: Array.isArray(plan?.berkas) ? plan.berkas.slice(0, 10) : [],
+    asumsi: Array.isArray(plan?.asumsi) ? plan.asumsi.slice(0, 3) : [],
+  })
+  // Narasi manusiawi singkat di chat — tanpa JSON/kunci mentah.
+  await emit({ type: 'assistant', text: ringkasan })
+  if (langkah.length) messages.push({ role: 'assistant', content: `Rencana kerja: ${langkah.map((x: {judul:string;detail:string}, i:number) => `${i + 1}. ${x.judul}: ${x.detail}`).join('\n')}` })
+
+  // Gerbang konfirmasi: hanya aktif bila client memintanya (confirmPlan=true).
+  // Rencana ditampilkan lalu eksekusi berhenti; user menyetujui lewat tombol di
+  // chat, yang mengirim ulang prompt yang sama dengan confirmed=true.
+  if (opts?.confirmPlan && !opts?.confirmed) {
+    await emit({ type: 'awaiting_confirmation', ringkasan })
+    return
   }
   } // end else (full pipeline)
 

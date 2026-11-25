@@ -6,6 +6,10 @@ import { AuthGate, UserBar } from './auth'
 import { matchPath, navigate, usePath } from './router'
 import { ChatPanel, CodePane, PreviewPane, SettingsSheet, type ChatAudit, type ChatPlan, type InlineEvent } from './panels'
 import { useActivity } from './activity'
+/* Fase 3 (UI credit): chip saldo + halaman Penggunaan. File ini milik Hermes
+   (kotor, belum commit) — perubahan di bawah ini MINIMAL + aditif dan TIDAK
+   di-commit oleh trek ini; komponennya sendiri ada di billing-ui.tsx. */
+import { CreditChip, UsagePage, notifyBalanceChanged } from './billing-ui'
 
 /* Right-side session menu (Emergent-style): a single 3-dot button in the chat
    header that opens a small dropdown with the actions that used to clutter the
@@ -160,9 +164,11 @@ export default function App() {
   const [navOpen, setNavOpen] = useState(false)
   const { dark, toggle } = useTheme()
 
-  // Routing: '/' home, '/proyek/:id' workspace, '/profil' account page.
+  // Routing: '/' home, '/proyek/:id' workspace, '/profil' account page,
+  // '/penggunaan' credit usage page (fase 3).
   const projectRoute = matchPath('/proyek/:id', path)
   const profileRoute = matchPath('/profil', path)
+  const usageRoute = matchPath('/penggunaan', path)
   const activeId = projectRoute?.id ?? null
 
   useEffect(() => {
@@ -274,6 +280,38 @@ export default function App() {
         navOpen={navOpen}
         onCloseNav={() => setNavOpen(false)}
       />
+    )
+  }
+
+  /* Fase 3: halaman Penggunaan pengguna (/penggunaan). */
+  if (usageRoute) {
+    return (
+      <div className="flex h-dvh overflow-hidden bg-ink text-body">
+        <Sidebar
+          user={user}
+          onLogout={logout}
+          projects={projects}
+          activeId={null}
+          loading={loading}
+          loadError={loadError}
+          dark={dark}
+          onToggleTheme={toggle}
+          onSelect={onSelect}
+          onCreate={createProject}
+          onDelete={removeProject}
+          open={navOpen}
+          onClose={() => setNavOpen(false)}
+        />
+        <UsagePage
+          user={user}
+          dark={dark}
+          onToggleTheme={toggle}
+          onLogout={logout}
+          onMenu={() => setNavOpen(true)}
+          navOpen={navOpen}
+          onCloseNav={() => setNavOpen(false)}
+        />
+      </div>
     )
   }
 
@@ -791,6 +829,8 @@ function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle:
   const [usage, setUsage] = useState<{ requests: number; promptTokens: number; completionTokens: number } | null>(null)
   const [model, setModel] = useState(() => localStorage.getItem('vb-model') ?? 'auto')
   const [planMode, setPlanMode] = useState(false)
+  const [pendingPlan, setPendingPlan] = useState<{ prompt: string } | null>(null)
+  const [awaitingConfirm, setAwaitingConfirm] = useState(false)
   const { entries: activity, push: pushActivity, reset: resetActivity } = useActivity()
   const abortRef = useRef<AbortController | null>(null)
 
@@ -823,7 +863,7 @@ function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle:
     }
   }
 
-  const send = async (text: string) => {
+  const send = async (text: string, optsConfirmed = false) => {
     if (!text.trim() || sending) return
 
     // Ask discovery only for the first user request. If the model needs details,
@@ -851,10 +891,15 @@ function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle:
     setInlineEvents([])
     resetActivity()
     pushActivity({ kind: 'status', text: 'menyiapkan', at: Date.now() })
-    setMessages((m) => [...m, { role: 'user', content: text }])
+    if (!optsConfirmed) setPendingPlan({ prompt: text })
+    else setPendingPlan(null)
+    setAwaitingConfirm(false)
+    // Run konfirmasi = lanjutan dari prompt yang sama; jangan tampilkan bubble user dua kali.
+    if (!optsConfirmed) setMessages((m) => [...m, { role: 'user', content: text }])
 
     const ctrl = new AbortController()
     abortRef.current = ctrl
+    let didAwaitConfirm = false
 
     const handlers: ChatHandlers = {
       onStatus: (t) => {
@@ -894,22 +939,36 @@ function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle:
         setStreamText('')
         setMessages((m) => [...m, { role: 'assistant', content: t }])
       },
+      onAwaitingConfirmation: () => {
+        // Gerbang konfirmasi: rencana sudah tampil di chat; tunggu tombol "Setujui".
+        didAwaitConfirm = true
+        setStatus('')
+        setAwaitingConfirm(true)
+        setMessages((m) => [...m, { role: 'assistant', content: 'Rencana sudah ditampilkan. Setujui untuk mulai dibangun, atau tulis perubahan yang diinginkan.' }])
+      },
       onScreenshot: () => {
         void load()
       },
       onError: (t) => {
         setStreamText('')
         setMessages((m) => [...m, { role: 'error', content: t }])
+        /* Run yang gagal di tengah jalan bisa tetap memotong credit
+           (deduct atas usage sebagian) — segarkan chip saldo. */
+        notifyBalanceChanged()
       },
       onDone: () => {
         setStatus('')
+        /* Fase 3: saldo berkurang sesudah run — segarkan chip tanpa refresh. */
+        notifyBalanceChanged()
         void api.files(projectId).then(({ files }) => setFiles(files.map((f) => ({ path: f.path }))))
-        void autoPreview()
+        // Saat gerbang konfirmasi aktif, jangan jalankan preview: belum ada
+        // perubahan file dan dist bisa belum ada (menghindari 500 yang sia-sia).
+        if (!didAwaitConfirm) void autoPreview()
       },
     }
 
     try {
-      await chatStream(projectId, text, handlers, ctrl.signal, { model: model === 'auto' ? undefined : model, planMode })
+      await chatStream(projectId, text, handlers, ctrl.signal, { model: model === 'auto' ? undefined : model, planMode, confirmPlan: true, confirmed: optsConfirmed })
     } catch (err) {
       setMessages((m) => [...m, { role: 'error', content: (err as Error).message }])
     } finally {
@@ -917,6 +976,15 @@ function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle:
       setStatus('')
       abortRef.current = null
     }
+  }
+
+  const confirmPlanAndRun = async () => {
+    if (!pendingPlan || sending) return
+    const prompt = pendingPlan.prompt
+    setAwaitingConfirm(false)
+    // Hapus pesan "menunggu persetujuan" lama dari tampilan.
+    setMessages((m) => m.filter((x) => !(x.role === 'assistant' && x.content.startsWith('Rencana sudah ditampilkan'))))
+    await send(prompt, true)
   }
 
   const startPreview = async () => {
@@ -1030,18 +1098,10 @@ function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle:
               {status}
             </span>
           )}
-          <button
-            onClick={() => setSettingsOpen(true)}
-            aria-label="Kredit dan pemakaian model"
-            title="Pemakaian LLM"
-            className="flex h-8 items-center gap-1.5 rounded-full bg-amber-300 px-3 text-[11.5px] font-semibold text-amber-950 transition-opacity hover:opacity-85 max-md:h-10"
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
-              <path d="M12 7v10M9.5 9.5h3.5a1.75 1.75 0 0 1 0 3.5H11a1.75 1.75 0 0 0 0 3.5h3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
-            {usage ? `${usage.requests}` : '—'}
-          </button>
+          {/* Fase 3: chip saldo credit menggantikan chip "N req" token server.
+              Klik -> halaman Penggunaan. Saldo dimuat ulang sesudah tiap run
+              lewat notifyBalanceChanged() di onDone/onError di bawah. */}
+          <CreditChip />
           <SessionMenu
             onOpenSettings={() => setSettingsOpen(true)}
             onRun={startPreview}
@@ -1076,6 +1136,8 @@ function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle:
             activity={activity}
             onSend={send}
             onCancel={() => abortRef.current?.abort()}
+            onConfirmPlan={confirmPlanAndRun}
+            awaitingConfirm={awaitingConfirm}
             onOpenSettings={() => setSettingsOpen(true)}
             waitingForDiscovery={!!pendingDiscovery}
             inlineEvents={inlineEvents}

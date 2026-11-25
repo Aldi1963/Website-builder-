@@ -28,6 +28,7 @@ export type AgentEvent =
   | { type: 'install'; ok: boolean; log: string }
   | { type: 'assistant'; text: string }
   | { type: 'screenshot'; url: string; name: string }
+  | { type: 'awaiting_confirmation'; ringkasan: string }
   | { type: 'error'; text: string }
 
 export type User = { id: string; email: string; name: string; created_at: number }
@@ -151,6 +152,7 @@ export type ChatHandlers = {
   onAssistantDelta?: (text: string) => void
   onAssistant?: (text: string) => void
   onScreenshot?: (url: string, name: string) => void
+  onAwaitingConfirmation?: (ringkasan: string) => void
   onError?: (text: string) => void
   onDone?: () => void
 }
@@ -182,12 +184,12 @@ export async function chatStream(
   message: string,
   h: ChatHandlers,
   signal?: AbortSignal,
-  opts?: { model?: string; planMode?: boolean },
+  opts?: { model?: string; planMode?: boolean; confirmPlan?: boolean; confirmed?: boolean },
 ) {
   const res = await fetch(`/api/projects/${projectId}/chat`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ message, model: opts?.model, planMode: opts?.planMode }),
+    body: JSON.stringify({ message, model: opts?.model, planMode: opts?.planMode, confirmPlan: opts?.confirmPlan, confirmed: opts?.confirmed }),
     signal,
   })
   if (!res.ok || !res.body) throw new Error(`chat gagal: ${res.status}`)
@@ -224,6 +226,7 @@ export async function chatStream(
       else if (event === 'assistant_delta') h.onAssistantDelta?.(payload.text)
       else if (event === 'assistant') h.onAssistant?.(payload.text)
       else if (event === 'screenshot') h.onScreenshot?.(payload.url, payload.name)
+      else if (event === 'awaiting_confirmation') h.onAwaitingConfirmation?.(payload.ringkasan)
       else if (event === 'error') h.onError?.(payload.text)
       else if (event === 'done') h.onDone?.()
     }
