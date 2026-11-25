@@ -186,7 +186,10 @@ export async function startPreview(projectId: string): Promise<number> {
   const port = previewPort(projectId)
   // Settings stored per project are injected as env so generated apps can read
   // their own configuration without touching the platform's process env.
-  const env: Record<string, string> = { ...process.env, PORT: String(port), HOST: '127.0.0.1' }
+  // VB_APP_DB_PATH: jalur kanonik file database aplikasi (data/app.db di folder
+  // proyek) — pola db.server.ts memakainya, fallback-nya path yang sama, supaya
+  // data aplikasi persisten melewati restart preview/server.
+  const env: Record<string, string> = { ...process.env, PORT: String(port), HOST: '127.0.0.1', VB_APP_DB_PATH: join(dir, 'data', 'app.db') }
   for (const s of listSettings(projectId)) {
     if (s.key.startsWith('secret_')) env[s.key.slice(7)] = s.value
     else env[`VB_SETTING_${s.key.replace(/[^a-zA-Z0-9_]/g, '_').toUpperCase()}`] = s.value

@@ -133,8 +133,9 @@ function SessionMenu({
    CREATE TABLE diambil untuk skema, array seed (const ... = [{...}]) diambil
    untuk baris, lalu dipasangkan lewat INSERT INTO + loop .run(...) bila ada.
    Tabel tanpa seed yang terbaca menampilkan skemanya + catatan jujur — isi
-   TIDAK pernah dikarang. Catatan in-memory juga ditampilkan di penampil:
-   data yang masuk lewat preview (mis. saran fitur) hilang saat restart. */
+   TIDAK pernah dikarang. Penampil juga menjelaskan bahwa data aplikasi
+   tersimpan di file database proyek (kanonik: data/app.db) dan bertahan
+   melewati restart preview maupun server. */
 
 type DbTableView = {
   name: string
@@ -405,7 +406,7 @@ function parseAppDatabase(source: string): DbTableView[] {
       rows,
       note: rows.length
         ? undefined
-        : 'Tidak ada baris seed yang bisa dibaca dari file proyek. Baris tabel ini hanya terbentuk dari input pengguna di preview (tersimpan di memori, bukan di file) — jadi isinya tidak bisa ditampilkan di sini, dan tabel ini bukan berarti kosong.',
+        : 'Tidak ada baris seed yang bisa dibaca dari file proyek. Baris tabel ini hanya terbentuk dari input pengguna di preview (tersimpan di file database proyek, kanonik data/app.db) — jadi isinya tidak bisa ditampilkan di sini, dan tabel ini bukan berarti kosong.',
     }
   })
 }
@@ -490,9 +491,9 @@ function DatabaseViewer({
           </button>
         </div>
         <p className="mb-3 border-l-2 border-accent pl-2 text-[12px] leading-relaxed text-body">
-          Database aplikasi ini SQLite in-memory (:memory:) — dibuat ulang setiap preview dijalankan. Data yang
-          dimasukkan lewat preview (mis. saran fitur) tidak tersimpan permanen dan hilang saat preview restart.
-          Isi di bawah dibaca dari file proyek (skema + data seed), bukan dari memori preview yang sedang berjalan.
+          Database aplikasi ini SQLite file persisten di folder proyek (kanonik: data/app.db) — data yang
+          dimasukkan lewat preview tersimpan di file itu dan bertahan melewati restart preview maupun server.
+          Isi di bawah dibaca dari file proyek (skema + data seed), bukan dari file database yang sedang berjalan.
         </p>
         {dbFile && (
           <p className="mb-3 font-mono text-[11px] text-quiet">Sumber: {dbFile}</p>

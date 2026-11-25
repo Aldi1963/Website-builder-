@@ -39,7 +39,7 @@ const STACK = `Stack wajib (jangan diganti):
 - Tailwind CSS v4 (sudah terpasang, stylesheet src/styles.css berisi @import "tailwindcss")
 - TypeScript
 - Server logic via createServerFn dari @tanstack/react-start
-- Database: node:sqlite (DatabaseSync) di src/lib/db.server.ts, satu instance di-cache
+- Database: node:sqlite (DatabaseSync) di src/lib/db.server.ts, satu instance di-cache, file persisten di process.env.VB_APP_DB_PATH ?? join(process.cwd(), 'data', 'app.db') — buat folder data bila perlu; DILARANG ':memory:' untuk data aplikasi
 - Root layout di src/routes/__root.tsx, halaman di src/routes/index.tsx`
 
 const RULES = `Aturan teknis:
@@ -58,7 +58,8 @@ const RULES = `Aturan teknis:
 7. Validasi input di dalam .validator() sebelum menyentuh database. Tolak dengan pesan bahasa Indonesia yang menyebut apa yang salah.
 8. Setiap file yang ditulis harus lengkap. Kalau mengubah file, baca dulu isinya.
 9. Setelah selesai menulis, jalankan build. Kalau gagal, perbaiki dan build ulang.
-10. Ringkas hasil dalam 1-3 kalimat: apa yang dibangun dan apa yang bisa dicoba. Tanpa basa-basi.`
+10. Ringkas hasil dalam 1-3 kalimat: apa yang dibangun dan apa yang bisa dicoba. Tanpa basa-basi.
+11. Database aplikasi WAJIB file persisten (pola kanonik): src/lib/db.server.ts membaca process.env.VB_APP_DB_PATH ?? join(process.cwd(), 'data', 'app.db'), membuat folder data bila perlu, satu instance DatabaseSync di-cache. DILARANG memakai ':memory:' untuk data aplikasi — data in-memory hilang saat preview/server restart. Migrasi pakai CREATE TABLE IF NOT EXISTS dan seed hanya bila tabel kosong (idempotent), supaya restart tidak gagal atau menduplikasi data.`
 
 /* Fitur AI di aplikasi hasil generate (web LLM): aplikasi yang kamu bangun
    bisa punya fitur AI (mis. halaman chatbot) lewat proxy LLM yang sudah
