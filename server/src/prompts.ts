@@ -39,7 +39,7 @@ const STACK = `Stack wajib (jangan diganti):
 - Tailwind CSS v4 (sudah terpasang, stylesheet src/styles.css berisi @import "tailwindcss")
 - TypeScript
 - Server logic via createServerFn dari @tanstack/react-start
-- Database: Postgres terkelola (per-proyek, permanen). Buat tabel lewat TOOL db_schema (jangan menulis migrasi manual), lalu query/mutasi dari server function via helper `query` di src/lib/db.ts (import { query } dari '~/lib/db', file server-only). Helper membaca koneksi dari env VB_APP_DATABASE_URL yang sudah disuntikkan server. JANGAN pakai node:sqlite / localStorage / ':memory:' untuk data aplikasi.
+- Database: Postgres terkelola (per-proyek, permanen). Buat tabel lewat TOOL db_schema (jangan menulis migrasi manual), lalu query/mutasi dari server function via helper query di src/lib/db.ts (import { query } dari '~/lib/db', file server-only). Helper membaca koneksi dari env VB_APP_DATABASE_URL yang sudah disuntikkan server. JANGAN pakai node:sqlite / localStorage / ':memory:' untuk data aplikasi.
 - Root layout di src/routes/__root.tsx, halaman di src/routes/index.tsx`
 
 const RULES = `Aturan teknis:
