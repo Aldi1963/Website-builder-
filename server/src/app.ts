@@ -30,6 +30,7 @@ import {
   projectByDomain,
 } from './db.ts'
 import { db } from './db.ts'
+import { getPendingPlan, clearPendingPlan } from './pending-plan.ts'
 import { listVersions, getVersionDiff, restoreVersion, snapshotVersion, diffLines } from './versions.ts'
 import { projectZip } from './export.ts'
 import {
@@ -327,6 +328,7 @@ app.get('/api/projects/:id', (c) => {
     files: listFiles(p.id),
     build: lastBuild(p.id) ?? null,
     previewPort: previewPort(p.id),
+    pendingPlan: getPendingPlan(p.id) ?? null,
   })
 })
 
@@ -343,6 +345,14 @@ app.delete('/api/projects/:id', (c) => {
   if ('error' in r) return c.json({ error: r.error }, r.status)
   stopPreview(r.project.id)
   deleteProject(r.project.id)
+  return c.json({ ok: true })
+})
+
+/* Rencana menunggu persetujuan: dibatalkan user dari kartu rencana. */
+app.delete('/api/projects/:id/pending-plan', (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  clearPendingPlan(r.project.id)
   return c.json({ ok: true })
 })
 

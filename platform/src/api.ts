@@ -17,6 +17,12 @@ export type Message = {
 
 export type FileEntry = { path: string; updated_at: number }
 
+export type PendingPlan = {
+  prompt: string
+  plan: { ringkasan: string; langkah: PlanStep[]; berkas: string[]; asumsi: string[] }
+  createdAt: number
+}
+
 export type PlanStep = { judul: string; detail: string }
 export type AuditFinding = { tingkat: string; kategori: string; berkas: string; baris: number; masalah: string; perbaikan: string }
 export type AgentEvent =
@@ -87,10 +93,11 @@ export const api = {
   createProject: (name: string, prompt = '') =>
     req<{ project: Project }>('/api/projects', { method: 'POST', body: JSON.stringify({ name, prompt }) }),
   getProject: (id: string) =>
-    req<{ project: Project; messages: Message[]; files: FileEntry[]; previewPort: number }>(`/api/projects/${id}`),
+    req<{ project: Project; messages: Message[]; files: FileEntry[]; previewPort: number; pendingPlan: PendingPlan | null }>(`/api/projects/${id}`),
   renameProject: (id: string, name: string) =>
     req<{ project: Project }>(`/api/projects/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
   deleteProject: (id: string) => req<{ ok: boolean }>(`/api/projects/${id}`, { method: 'DELETE' }),
+  cancelPendingPlan: (id: string) => req<{ ok: boolean }>(`/api/projects/${id}/pending-plan`, { method: 'DELETE' }),
   files: (id: string) => req<{ files: FileEntry[] }>(`/api/projects/${id}/files`),
   file: (id: string, path: string) =>
     req<{ path: string; content: string }>(`/api/projects/${id}/file?path=${encodeURIComponent(path)}`),

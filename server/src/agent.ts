@@ -11,6 +11,7 @@ import {
   ensureWorkspace,
 } from './workspace.ts'
 import { putFile, removeFile, listFiles, addMessage, listMessages } from './db.ts'
+import { savePendingPlan, clearPendingPlan } from './pending-plan.ts'
 import { snapshotVersion, restoreVersion, listVersions } from './versions.ts'
 import { captureScreenshot } from './screenshots.ts'
 
@@ -109,6 +110,9 @@ export async function runAgent(
   opts?: { userId?: string; confirmed?: boolean; confirmPlan?: boolean },
 ): Promise<void> {
   ensureWorkspace(projectId)
+  // Run baru menggantikan rencana lama yang belum disetujui (atau menghabiskan
+  // rencana yang sedang dikonfirmasi) — jangan biarkan kartu basi tertinggal.
+  clearPendingPlan(projectId)
   // Saat user menyetujui rencana, run ini adalah lanjutan (confirmed=true):
   // prompt asli sudah tercatat, jangan catat dua kali sebagai pesan user.
   if (!opts?.confirmed) addMessage(projectId, 'user', userPrompt)
@@ -219,11 +223,9 @@ export async function runAgent(
     { judul: 'Menguji hasil', detail: 'Menjalankan build dan memperbaiki error.' },
   ]
   const ringkasan = String(plan?.ringkasan ?? 'Membangun perubahan yang diminta')
-  await emit({
-    type: 'plan', ringkasan, langkah,
-    berkas: Array.isArray(plan?.berkas) ? plan.berkas.slice(0, 10) : [],
-    asumsi: Array.isArray(plan?.asumsi) ? plan.asumsi.slice(0, 3) : [],
-  })
+  const berkas = Array.isArray(plan?.berkas) ? plan.berkas.slice(0, 10) : []
+  const asumsi = Array.isArray(plan?.asumsi) ? plan.asumsi.slice(0, 3) : []
+  await emit({ type: 'plan', ringkasan, langkah, berkas, asumsi })
   // Narasi manusiawi singkat di chat — tanpa JSON/kunci mentah.
   await emit({ type: 'assistant', text: ringkasan })
   if (langkah.length) messages.push({ role: 'assistant', content: `Rencana kerja: ${langkah.map((x: {judul:string;detail:string}, i:number) => `${i + 1}. ${x.judul}: ${x.detail}`).join('\n')}` })
@@ -232,6 +234,14 @@ export async function runAgent(
   // Rencana ditampilkan lalu eksekusi berhenti; user menyetujui lewat tombol di
   // chat, yang mengirim ulang prompt yang sama dengan confirmed=true.
   if (opts?.confirmPlan && !opts?.confirmed) {
+    // Simpan rencana ke DB supaya tidak hilang bila user keluar sebelum
+    // menyetujui; simpan juga ringkasannya sebagai pesan asisten supaya
+    // thread tidak kosong saat user kembali.
+    savePendingPlan(projectId, userPrompt, { ringkasan, langkah, berkas, asumsi })
+    const planText = langkah.length
+      ? `${ringkasan}\n\nRencana kerja:\n${langkah.map((x: { judul: string; detail: string }, i: number) => `${i + 1}. ${x.judul}: ${x.detail}`).join('\n')}`
+      : ringkasan
+    addMessage(projectId, 'assistant', planText)
     await emit({ type: 'awaiting_confirmation', ringkasan })
     return
   }

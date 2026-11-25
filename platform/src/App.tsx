@@ -1302,6 +1302,17 @@ function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle:
     setPreviewPort(d.previewPort)
     setSlug(d.project.slug ?? null)
     setPubUrl(d.project.slug ? publicUrl(d.project.slug) : null)
+    // Rencana yang menunggu persetujuan: tampilkan lagi kartunya bila user
+    // kembali sesudah keluar (disimpan server saat gerbang konfirmasi).
+    if (d.pendingPlan) {
+      setPlan(d.pendingPlan.plan)
+      setPendingPlan({ prompt: d.pendingPlan.prompt })
+      setAwaitingConfirm(true)
+    } else {
+      setPlan(null)
+      setPendingPlan(null)
+      setAwaitingConfirm(false)
+    }
     const st = await api.previewStatus(projectId)
     setPreviewOn(st.running)
   }
@@ -1417,6 +1428,14 @@ function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle:
         notifyBalanceChanged()
       },
       onDone: () => {
+        // Jawaban yang di-stream (konsultasi & narasi) hidup di streamText.
+        // Saat run selesai, simpan sebagai bubble permanen — kalau tidak,
+        // bubble chat hilang begitu run berakhir / halaman dimuat ulang.
+        setStreamText((streamed) => {
+          const clean = streamed.trim()
+          if (clean) setMessages((m) => [...m, { role: 'assistant', content: clean }])
+          return ''
+        })
         setStatus('')
         /* Fase 3: saldo berkurang sesudah run — segarkan chip tanpa refresh. */
         notifyBalanceChanged()
@@ -1448,6 +1467,18 @@ function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle:
     // Hapus pesan "menunggu persetujuan" lama dari tampilan.
     setMessages((m) => m.filter((x) => !(x.role === 'assistant' && x.content.startsWith('Rencana sudah ditampilkan'))))
     await send(prompt, true)
+  }
+
+  const cancelPlan = async () => {
+    if (!pendingPlan || sending) return
+    try {
+      await api.cancelPendingPlan(projectId)
+    } catch {
+      /* gagal hapus di server: tetap bersihkan tampilan */
+    }
+    setPlan(null)
+    setPendingPlan(null)
+    setAwaitingConfirm(false)
   }
 
   const startPreview = async () => {
@@ -1601,6 +1632,7 @@ function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle:
             onSend={send}
             onCancel={() => abortRef.current?.abort()}
             onConfirmPlan={confirmPlanAndRun}
+            onCancelPlan={cancelPlan}
             awaitingConfirm={awaitingConfirm}
             onOpenSettings={() => setSettingsOpen(true)}
             waitingForDiscovery={!!pendingDiscovery}

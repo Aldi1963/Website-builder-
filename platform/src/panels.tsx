@@ -88,9 +88,6 @@ export function SettingsSheet({
   const [domain, setDomain] = useState('')
   const [secretKey, setSecretKey] = useState('')
   const [secretValue, setSecretValue] = useState('')
-  const [llmKey, setLlmKey] = useState('')
-  const [llmBaseUrl, setLlmBaseUrl] = useState('')
-  const [llmModel, setLlmModel] = useState('')
   const [msg, setMsg] = useState('')
   /* Picker model dinamis: daftar dari GET /api/llm/models (cache 60 dtk,
      fallback katalog lama bila endpoint gagal — lihat models.ts). */
@@ -202,35 +199,6 @@ export function SettingsSheet({
       setMsg((e as Error).message)
     }
   }
-
-  /* Pengaturan LLM untuk fitur AI aplikasi ini (mis. halaman chatbot).
-     Disimpan sebagai secrets (LLM_API_KEY / LLM_BASE_URL / LLM_MODEL) lewat
-     endpoint secrets yang sudah ada, lalu disuntikkan sebagai env ke preview. */
-  const saveLlm = async () => {
-    setMsg('')
-    try {
-      const entries: [string, string][] = [
-        ['LLM_API_KEY', llmKey.trim()],
-        ['LLM_BASE_URL', llmBaseUrl.trim()],
-        ['LLM_MODEL', llmModel.trim()],
-      ].filter(([, v]) => v) as [string, string][]
-      if (!entries.length) {
-        setMsg('Isi dulu salah satu field LLM.')
-        return
-      }
-      for (const [k, v] of entries) await api.setSecret(projectId, k, v)
-      const s = await api.settings(projectId)
-      setSettings(s)
-      setLlmKey('')
-      setLlmBaseUrl('')
-      setLlmModel('')
-      setMsg('Pengaturan LLM disimpan. Preview memakai key baru saat dimuat ulang.')
-    } catch (e) {
-      setMsg((e as Error).message)
-    }
-  }
-
-  const llmHint = (key: string) => settings?.secrets.find((s) => s.key === key)?.hint
 
   const back = section !== 'menu'
 
@@ -427,57 +395,6 @@ export function SettingsSheet({
                 </div>
               </div>
             </section>
-
-            <section className="py-3">
-              <p className="text-[11px] font-medium text-accent">LLM</p>
-              <p className="mt-1 text-[11px] leading-relaxed text-quiet">
-                API key untuk fitur AI di aplikasi ini (mis. halaman chatbot). Key hanya dipakai server aplikasi,
-                tidak pernah masuk ke kode yang dilihat pengunjung. Kosongkan Base URL / Model untuk memakai default.
-              </p>
-              <div className="mt-2 flex flex-col gap-2">
-                <Input
-                  type="password"
-                  value={llmKey}
-                  onChange={(e) => setLlmKey(e.target.value)}
-                  placeholder="API key LLM"
-                  aria-label="API key LLM"
-                  size="sm"
-                  className="w-full font-mono"
-                />
-                <Input
-                  value={llmBaseUrl}
-                  onChange={(e) => setLlmBaseUrl(e.target.value)}
-                  placeholder="Base URL (default: https://ai.clipku.com/v1)"
-                  aria-label="Base URL LLM"
-                  size="sm"
-                  className="w-full font-mono"
-                />
-                <Input
-                  value={llmModel}
-                  onChange={(e) => setLlmModel(e.target.value)}
-                  placeholder="Model (default: cx/gpt-5.6-luna)"
-                  aria-label="Model LLM"
-                  size="sm"
-                  className="w-full font-mono"
-                />
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={saveLlm}
-                  disabled={!llmKey.trim() && !llmBaseUrl.trim() && !llmModel.trim()}
-                  className="self-start"
-                >
-                  Simpan pengaturan LLM
-                </Button>
-                {(llmHint('LLM_API_KEY') || llmHint('LLM_BASE_URL') || llmHint('LLM_MODEL')) && (
-                  <ul className="mt-1 space-y-1 text-[11.5px] text-quiet">
-                    {llmHint('LLM_API_KEY') && <li>API key tersimpan {llmHint('LLM_API_KEY')}</li>}
-                    {llmHint('LLM_BASE_URL') && <li>Base URL tersimpan {llmHint('LLM_BASE_URL')}</li>}
-                    {llmHint('LLM_MODEL') && <li>Model tersimpan {llmHint('LLM_MODEL')}</li>}
-                  </ul>
-                )}
-              </div>
-            </section>
           </div>
         )}
       </div>
@@ -536,6 +453,7 @@ export function ChatPanel({
   onSend,
   onCancel,
   onConfirmPlan,
+  onCancelPlan,
   awaitingConfirm,
   onOpenSettings,
   waitingForDiscovery,
@@ -554,6 +472,7 @@ export function ChatPanel({
   onSend: (text: string) => void
   onCancel: () => void
   onConfirmPlan?: () => void
+  onCancelPlan?: () => void
   awaitingConfirm?: boolean
   onOpenSettings: () => void
   waitingForDiscovery: boolean
@@ -673,6 +592,13 @@ export function ChatPanel({
                     className="rounded-md bg-accent px-3 py-1.5 text-[12px] font-medium text-white transition-opacity hover:opacity-90"
                   >
                     Setujui &amp; bangun
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onCancelPlan}
+                    className="rounded-md border border-edge px-3 py-1.5 text-[12px] font-medium text-body transition-colors hover:bg-ink"
+                  >
+                    Batalkan
                   </button>
                   <span className="text-[11.5px] text-quiet">Agent menunggu sebelum menulis file</span>
                 </div>
