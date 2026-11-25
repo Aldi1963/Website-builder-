@@ -6,7 +6,7 @@ import { Badge } from '@cloudflare/kumo/components/badge'
 import { Tabs } from '@cloudflare/kumo/components/tabs'
 import { Dialog } from '@cloudflare/kumo/components/dialog'
 import { Icon, Activity, useAutoScroll, useCopy } from './ui'
-import { ActivityFeed, type ActivityEntry } from './activity'
+import { ActivityFeed, TerminalBlock, type ActivityEntry } from './activity'
 import { api, type AuditFinding, type PlanStep, type ProjectSettings } from './api'
 
 export type ChatItem = { role: string; content: string; id?: number }
@@ -477,7 +477,7 @@ export function ChatPanel({
   inlineEvents,
   onOpenFile,
   previewOpen,
-  previewOrigin,
+  previewUrl,
 }: {
   messages: ChatItem[]
   sending: boolean
@@ -493,7 +493,7 @@ export function ChatPanel({
   inlineEvents?: InlineEvent[]
   onOpenFile?: (path: string) => void
   previewOpen?: boolean
-  previewOrigin?: string
+  previewUrl?: string
 }) {
   const [input, setInput] = useState('')
   const [attached, setAttached] = useState<{ name: string; content: string }[]>([])
@@ -572,7 +572,7 @@ export function ChatPanel({
                 content={m.content}
                 isLast={i === messages.length - 1}
                 previewOpen={previewOpen}
-                previewOrigin={previewOrigin}
+                previewUrl={previewUrl}
               />
             ))}
             {sending && (
@@ -787,13 +787,13 @@ function Bubble({
   content,
   isLast = false,
   previewOpen = false,
-  previewOrigin = '',
+  previewUrl = '',
 }: {
   role: string
   content: string
   isLast?: boolean
   previewOpen?: boolean
-  previewOrigin?: string
+  previewUrl?: string
 }) {
   const { copied, copy } = useCopy()
   const [zoomed, setZoomed] = useState(false)
@@ -840,23 +840,21 @@ function Bubble({
           </div>
         </div>
       )}
-      {role === 'assistant' && isLast && previewOpen && (
+      {role === 'assistant' && isLast && previewOpen && previewUrl && (
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <a
-            href={`http://127.0.0.1:${previewOrigin.split(':').pop() || ''}/`}
+            href={previewUrl}
             target="_blank"
             rel="noreferrer"
-            className="hidden items-center gap-1.5 rounded-full border border-edge bg-surface px-3 py-1.5 text-[11.5px] text-body transition-colors hover:border-quiet md:inline-flex"
+            className="inline-flex items-center gap-1.5 rounded-full border border-edge bg-surface px-3 py-1.5 text-[11.5px] text-body transition-colors hover:border-quiet"
           >
             <Icon name="open" size={11} />
             Buka preview
           </a>
-          {previewOrigin && (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-edge bg-surface px-3 py-1.5 font-mono text-[11px] text-quiet">
-              <i className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
-              live · {previewOrigin}
-            </span>
-          )}
+          <span className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-edge bg-surface px-3 py-1.5 font-mono text-[11px] text-quiet">
+            <i className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden="true" />
+            <span className="truncate">{previewUrl}</span>
+          </span>
         </div>
       )}
       <button

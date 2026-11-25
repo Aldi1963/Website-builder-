@@ -4,7 +4,7 @@ import { Icon, Spinner, Wordmark } from './ui'
 import { api, auth, ChatHandlers, chatStream, Project, exportProjectZip, type User } from './api'
 import { AuthGate, UserBar } from './auth'
 import { matchPath, navigate, usePath } from './router'
-import { ChatPanel, CodePane, PreviewPane, SettingsSheet, type ChatAudit, type ChatPlan } from './panels'
+import { ChatPanel, CodePane, PreviewPane, SettingsSheet, type ChatAudit, type ChatPlan, type InlineEvent } from './panels'
 import { useActivity } from './activity'
 
 /* Right-side session menu (Emergent-style): a single 3-dot button in the chat
@@ -771,6 +771,7 @@ function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle:
   const [files, setFiles] = useState<{ path: string }[]>([])
   const [previewPort, setPreviewPort] = useState<number>(0)
   const [previewOn, setPreviewOn] = useState(false)
+  const [inlineEvents, setInlineEvents] = useState<InlineEvent[]>([])
   const [booting, setBooting] = useState(false)
   const [status, setStatus] = useState('')
   const [plan, setPlan] = useState<ChatPlan | null>(null)
@@ -847,6 +848,7 @@ function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle:
     setAudit(null)
     setStreamText('')
     setChangedFiles([])
+    setInlineEvents([])
     resetActivity()
     pushActivity({ kind: 'status', text: 'menyiapkan', at: Date.now() })
     setMessages((m) => [...m, { role: 'user', content: text }])
@@ -863,6 +865,7 @@ function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle:
       onAudit: (event) => setAudit(event),
       onFile: async (path, action) => {
         pushActivity({ kind: 'file', path, action, at: Date.now() })
+        if (action !== 'mkdir') setInlineEvents((prev) => [...prev, { kind: 'file', path, action }])
         const { files } = await api.files(projectId)
         setFiles(files.map((f) => ({ path: f.path })))
         if (action === 'mkdir') return // folder baru: bukan file yang diubah, tak perlu preview ulang
@@ -873,10 +876,12 @@ function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle:
       onBuild: (ok, log) => {
         setBuildLog({ ok, log })
         pushActivity({ kind: 'terminal', title: 'npm run build', log, ok, at: Date.now() })
+        setInlineEvents((prev) => [...prev, { kind: 'terminal', title: 'npm run build', log, ok }])
         if (!ok) setTab('code')
       },
       onInstall: (ok, log) => {
         pushActivity({ kind: 'terminal', title: 'npm install', log, ok, at: Date.now() })
+        setInlineEvents((prev) => [...prev, { kind: 'terminal', title: 'npm install', log, ok }])
       },
       onAssistantDelta: (d) => {
         setStreamText((prev) => {
@@ -1073,6 +1078,13 @@ function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle:
             onCancel={() => abortRef.current?.abort()}
             onOpenSettings={() => setSettingsOpen(true)}
             waitingForDiscovery={!!pendingDiscovery}
+            inlineEvents={inlineEvents}
+            onOpenFile={(path) => {
+              setTab('code')
+              void openFileAt(path)
+            }}
+            previewOpen={previewOn && !sending}
+            previewUrl={slug ? publicUrl(slug) : previewPort ? `http://127.0.0.1:${previewPort}/` : ''}
           />
         </section>
 
