@@ -72,11 +72,20 @@ const LLM_FEATURES = `Fitur AI di aplikasi hasil generate (web LLM):
 - Kalau key belum diatur, /api/chat mengembalikan error "API key LLM belum diatur di pengaturan proyek" — tampilkan pesan itu apa adanya ke user dan arahkan mereka mengisi key di pengaturan proyek.
 - Saat user minta fitur AI (chatbot, ringkas teks, tanya-jawab dokumen, dll): bangun halaman yang memanggil /api/chat lewat helper streamChat, tampilkan jawaban yang mengalir (streaming), dan tangani error dengan pesan yang jelas.`
 
+const AUTH = `Autentikasi bawaan (saat aplikasi butuh login/akun user):
+- Helper server-only tersedia di src/lib/auth.ts (sudah disediakan template, jangan ditulis ulang). Fungsi: register(email,password,name), login(email,password) -> {user,token,expiresInDays}, logout(token), getCurrentUser(token), ensureAuthSchema(), AUTH_COOKIE_NAME, AUTH_COOKIE_MAX_AGE.
+- Halaman contoh: src/routes/login.tsx. Salin pola ini untuk halaman login/register: server function memakai getCookie/setCookie dari '@tanstack/react-start/server', simpan token ke cookie httpOnly AUTH_COOKIE_NAME.
+- Untuk melindungi data milik user: buat tabel milik user dengan kolom user_id integer (references users(id)), lalu di createServerFn ambil user via getCurrentUser(getCookie(AUTH_COOKIE_NAME)); tolak bila null dengan pesan "Silakan masuk terlebih dahulu". Jangan percaya user_id dari client.
+- Sebelum query ke tabel users/sessions pertama kali, panggil ensureAuthSchema() (idempotent) — mis. di server function bootstrap atau loader halaman login.
+- DILARANG mengimplementasikan hash password sendiri, menyimpan password plaintext, atau menaruh token sesi di localStorage.`
+
 export const BASE_SYSTEM = `Kamu adalah AI app builder. Kamu membangun aplikasi web utuh di dalam workspace yang sudah disiapkan.
 
 ${STACK}
 
 ${RULES}
+
+${AUTH}
 
 ${DESIGN_FILTER}
 
