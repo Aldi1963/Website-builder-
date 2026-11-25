@@ -2,11 +2,101 @@ import { useEffect, useRef, useState } from 'react'
 import { Tabs } from '@cloudflare/kumo/components/tabs'
 import { Button } from '@cloudflare/kumo/components/button'
 import { Icon, Spinner, Wordmark } from './ui'
-import { api, auth, ChatHandlers, chatStream, Project, type User } from './api'
+import { api, auth, ChatHandlers, chatStream, Project, exportProjectZip, type User } from './api'
 import { AuthGate, UserBar } from './auth'
 import { ChatPanel, CodePane, PreviewPane, SettingsSheet, type ChatAudit, type ChatPlan } from './panels'
 import { useActivity } from './activity'
-import { exportProjectZip } from './api'
+
+/* Right-side session menu (Emergent-style): a single 3-dot button in the chat
+   header that opens a small dropdown with the actions that used to clutter the
+   header row. */
+function SessionMenu({
+  onOpenSettings,
+  onRun,
+  runLabel,
+  running,
+  onExport,
+  canExport,
+  onToggleTheme,
+  dark,
+  usage,
+}: {
+  onOpenSettings: () => void
+  onRun: () => void
+  runLabel: string
+  running: boolean
+  onExport: () => void
+  canExport: boolean
+  onToggleTheme: () => void
+  dark: boolean
+  usage: { requests: number; promptTokens: number; completionTokens: number } | null
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onDoc = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDoc)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  const item =
+    'flex w-full items-center gap-2.5 px-3 py-2 text-left text-[12.5px] text-body transition-colors hover:bg-surface disabled:opacity-50'
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        aria-label="Menu sesi"
+        aria-expanded={open}
+        className="flex h-9 w-9 items-center justify-center rounded-full border border-edge text-body transition-colors hover:border-quiet max-md:h-11 max-md:w-11"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <circle cx="5" cy="12" r="1.8" />
+          <circle cx="12" cy="12" r="1.8" />
+          <circle cx="19" cy="12" r="1.8" />
+        </svg>
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="vb-enter absolute right-0 top-[calc(100%+6px)] z-30 w-56 overflow-hidden rounded-xl border border-edge bg-ink shadow-lg"
+        >
+          {usage && (
+            <div className="border-b border-edge px-3 py-2">
+              <p className="text-[10.5px] uppercase tracking-wide text-quiet">Pemakaian LLM</p>
+              <p className="mt-0.5 font-mono text-[11px] text-body">
+                {usage.requests} req · {usage.promptTokens.toLocaleString('id-ID')} in · {usage.completionTokens.toLocaleString('id-ID')} out
+              </p>
+            </div>
+          )}
+          <button className={item} onClick={() => { setOpen(false); onOpenSettings() }} role="menuitem">
+            <Icon name="rule" size={13} /> Setelan sesi &amp; model
+          </button>
+          <button className={item} onClick={() => { setOpen(false); onRun() }} disabled={running} role="menuitem">
+            <Icon name="run" size={13} /> {running ? 'Sedang build…' : runLabel}
+          </button>
+          <button className={item} onClick={() => { setOpen(false); onExport() }} disabled={!canExport} role="menuitem">
+            <Icon name="download" size={13} /> Export ZIP
+          </button>
+          <button className={item} onClick={() => { setOpen(false); onToggleTheme() }} role="menuitem">
+            <Icon name={dark ? 'sun' : 'moon'} size={13} /> {dark ? 'Mode terang' : 'Mode gelap'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
 
 /* Theme is a real choice here: the shell is used for long sessions next to an
    arbitrary generated app, so both modes ship and both are verified. */
@@ -352,6 +442,7 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
 type Tab = 'chat' | 'code'
 
 function Workspace({ projectId, onTitle }: { projectId: string; onTitle: (n: string) => void }) {
+  const { dark, toggle } = useTheme()
   const [tab, setTab] = useState<Tab>('chat')
   const [messages, setMessages] = useState<{ role: string; content: string; id?: number }[]>([])
   const [streamText, setStreamText] = useState('')
@@ -375,6 +466,7 @@ function Workspace({ projectId, onTitle }: { projectId: string; onTitle: (n: str
   const [publishMsg, setPublishMsg] = useState('')
   const [pubUrl, setPubUrl] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [usage, setUsage] = useState<{ requests: number; promptTokens: number; completionTokens: number } | null>(null)
   const [model, setModel] = useState(() => localStorage.getItem('vb-model') ?? 'auto')
   const [planMode, setPlanMode] = useState(false)
   const { entries: activity, push: pushActivity, reset: resetActivity } = useActivity()
@@ -394,6 +486,7 @@ function Workspace({ projectId, onTitle }: { projectId: string; onTitle: (n: str
 
   useEffect(() => {
     void load()
+    void api.usage().then(setUsage).catch(() => {})
     return () => abortRef.current?.abort()
   }, [projectId])
 
@@ -573,7 +666,7 @@ function Workspace({ projectId, onTitle }: { projectId: string; onTitle: (n: str
           onChange={(e) => setName(e.target.value)}
           onBlur={rename}
           onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-          className="min-w-0 max-w-[240px] flex-1 rounded border border-transparent bg-transparent px-1.5 py-1 text-[13px] font-medium text-body outline-none transition-colors hover:border-edge focus:border-edge"
+          className="min-w-0 max-w-[200px] flex-1 rounded border border-transparent bg-transparent px-1.5 py-1 text-[13px] font-medium text-body outline-none transition-colors hover:border-edge focus:border-edge max-sm:max-w-[130px]"
         />
 
         <Tabs
@@ -588,84 +681,35 @@ function Workspace({ projectId, onTitle }: { projectId: string; onTitle: (n: str
         />
 
         <div className="ml-auto flex items-center gap-2">
-          <Button
-            onClick={() => setSettingsOpen(true)}
-            aria-label="Buka pengaturan sesi"
-            variant="outline"
-            size="sm"
-            className="h-7 max-md:h-11"
-          >
-            <Icon name="rule" size={10} />
-            <span className="max-sm:hidden">{model === 'auto' ? 'Model: Auto' : model.replace(/^[a-z]+\//, '')}</span>
-            <span className="sm:hidden">Setelan</span>
-          </Button>
           {status && (
-            <span className="hidden items-center gap-1.5 text-[11.5px] text-quiet lg:flex">
+            <span className="hidden items-center gap-1.5 text-[11.5px] text-quiet xl:flex">
               <Spinner />
               {status}
             </span>
           )}
-          <Button
-            onClick={startPreview}
-            disabled={booting}
-            variant="outline"
-            size="sm"
-            className="h-7 max-md:h-11"
+          <button
+            onClick={() => setSettingsOpen(true)}
+            aria-label="Kredit dan pemakaian model"
+            title="Pemakaian LLM"
+            className="flex h-8 items-center gap-1.5 rounded-full bg-amber-300 px-3 text-[11.5px] font-semibold text-amber-950 transition-opacity hover:opacity-85 max-md:h-10"
           >
-            {booting ? <Spinner /> : <Icon name="run" size={10} />}
-            {booting ? 'Build' : previewOn ? 'Build ulang' : 'Jalankan'}
-          </Button>
-          {slug ? (
-            <div className="hidden items-center gap-1.5 md:flex">
-              <a
-                href={pubUrl ?? `/p/${slug}`}
-                target="_blank"
-                rel="noreferrer"
-                title={pubUrl ?? undefined}
-                className="flex h-7 max-w-[240px] items-center gap-1.5 rounded border border-accent px-2.5 text-[11.5px] font-medium text-accent transition-opacity hover:opacity-80"
-              >
-                <Icon name="open" size={10} />
-                <span className="truncate">{publicLabel(pubUrl, slug)}</span>
-              </a>
-              <Button onClick={unpublish} variant="ghost" size="xs" className="text-quiet">
-                Tarik
-              </Button>
-            </div>
-          ) : (
-            <Button
-              onClick={publish}
-              disabled={publishing || !files.length}
-              variant="primary"
-              size="sm"
-              className="hidden h-7 md:flex"
-            >
-              {publishing ? <Spinner /> : <Icon name="check" size={10} />}
-              {publishing ? 'Menerbitkan' : 'Terbitkan'}
-            </Button>
-          )}
-          {previewOn && (
-            <a
-              href={`http://127.0.0.1:${previewPort}/`}
-              target="_blank"
-              rel="noreferrer"
-              className="hidden h-7 items-center gap-1.5 rounded border border-edge px-2.5 text-[11.5px] text-body transition-colors hover:border-quiet md:flex"
-            >
-              <Icon name="open" size={10} />
-              Tab baru
-            </a>
-          )}
-          {!!files.length && (
-            <Button
-              onClick={() => void exportProjectZip(projectId).catch(() => {})}
-              variant="outline"
-              size="sm"
-              className="hidden h-7 md:flex"
-              title="Unduh seluruh file proyek sebagai ZIP"
-            >
-              <Icon name="download" size={10} />
-              Export
-            </Button>
-          )}
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
+              <path d="M12 7v10M9.5 9.5h3.5a1.75 1.75 0 0 1 0 3.5H11a1.75 1.75 0 0 0 0 3.5h3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+            {usage ? `${usage.requests}` : '—'}
+          </button>
+          <SessionMenu
+            onOpenSettings={() => setSettingsOpen(true)}
+            onRun={startPreview}
+            runLabel={previewOn ? 'Build ulang' : 'Jalankan'}
+            running={booting}
+            onExport={() => void exportProjectZip(projectId).catch(() => {})}
+            canExport={!!files.length}
+            onToggleTheme={toggle}
+            dark={dark}
+            usage={usage}
+          />
         </div>
       </header>
 
