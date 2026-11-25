@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import { Tabs } from '@cloudflare/kumo/components/tabs'
+import { Button } from '@cloudflare/kumo/components/button'
 import { Icon, Spinner, Wordmark } from './ui'
 import { api, auth, ChatHandlers, chatStream, Project, type User } from './api'
 import { AuthGate, UserBar } from './auth'
@@ -561,8 +563,16 @@ function Workspace({ projectId, onTitle }: { projectId: string; onTitle: (n: str
         />
 
         <div className="flex items-center border border-edge">
-          <TabBtn active={tab === 'chat'} onClick={() => setTab('chat')} label="Chat" />
-          <TabBtn active={tab === 'code'} onClick={() => setTab('code')} label="Kode" />
+          <Tabs
+            variant="segmented"
+            size="sm"
+            selectedValue={tab}
+            onValueChange={(v) => setTab(v as Tab)}
+            tabs={[
+              { value: 'chat', label: 'Chat' },
+              { value: 'code', label: 'Kode' },
+            ]}
+          />
         </div>
 
         <div className="ml-auto flex items-center gap-2">
@@ -581,14 +591,16 @@ function Workspace({ projectId, onTitle }: { projectId: string; onTitle: (n: str
               {status}
             </span>
           )}
-          <button
+          <Button
             onClick={startPreview}
             disabled={booting}
-            className="flex h-7 max-md:h-11 items-center gap-1.5 border border-edge px-2.5 text-[11.5px] text-body transition-colors hover:border-quiet disabled:opacity-50"
+            variant="outline"
+            size="sm"
+            className="h-7 max-md:h-11"
           >
             {booting ? <Spinner /> : <Icon name="run" size={10} />}
             {booting ? 'Build' : previewOn ? 'Build ulang' : 'Jalankan'}
-          </button>
+          </Button>
           {slug ? (
             <div className="hidden items-center gap-1.5 md:flex">
               <a
@@ -609,14 +621,16 @@ function Workspace({ projectId, onTitle }: { projectId: string; onTitle: (n: str
               </button>
             </div>
           ) : (
-            <button
+            <Button
               onClick={publish}
               disabled={publishing || !files.length}
-              className="hidden h-7 items-center gap-1.5 border border-edge px-2.5 text-[11.5px] text-body transition-colors hover:border-quiet disabled:opacity-40 md:flex"
+              variant="outline"
+              size="sm"
+              className="hidden h-7 md:flex"
             >
               {publishing ? <Spinner /> : <Icon name="check" size={10} />}
               {publishing ? 'Menerbitkan' : 'Terbitkan'}
-            </button>
+            </Button>
           )}
           {previewOn && (
             <a
@@ -720,14 +734,14 @@ function Workspace({ projectId, onTitle }: { projectId: string; onTitle: (n: str
 
 function TabBtn({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
   return (
-    <button
+    <Button
       onClick={onClick}
       aria-pressed={active}
-      className={`h-7 px-2.5 text-[11.5px] transition-colors max-md:h-11 ${
-        active ? 'bg-accent text-ink' : 'text-quiet hover:text-body'
-      }`}
+      size="sm"
+      variant="ghost"
+      className={`h-7 max-md:h-11 ${active ? 'bg-accent text-ink' : 'text-quiet'}`}
     >
       {label}
-    </button>
+    </Button>
   )
 }

@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { Activity, Icon, Spinner, useAutoScroll, useCopy } from './ui'
+import { Button } from '@cloudflare/kumo/components/button'
+import { Input } from '@cloudflare/kumo/components/input'
+import { Switch } from '@cloudflare/kumo/components/switch'
+import { Badge } from '@cloudflare/kumo/components/badge'
+import { Tabs } from '@cloudflare/kumo/components/tabs'
+import { Dialog } from '@cloudflare/kumo/components/dialog'
+import { Icon, Activity, useAutoScroll, useCopy } from './ui'
 import { api, type AuditFinding, type PlanStep, type ProjectSettings } from './api'
 
 export type ChatItem = { role: string; content: string; id?: number }
@@ -202,18 +208,19 @@ export function SettingsSheet({
               <p className="mt-1 text-[11px] leading-relaxed text-quiet">
                 Arahkan domain ke {PUBLIC_HINT}. DNS A record ke server ini.
               </p>
-              <div className="mt-2 flex gap-2">
+              <div className="mt-2 flex items-end gap-2">
                 <label className="sr-only" htmlFor="vb-domain">Custom domain</label>
-                <input
+                <Input
                   id="vb-domain"
                   value={domain}
                   onChange={(e) => setDomain(e.target.value)}
                   placeholder="app.contoh.com"
-                  className="h-8 min-w-0 flex-1 border border-edge bg-ink px-2 text-[12px] text-body outline-none focus:border-accent"
+                  size="sm"
+                  className="min-w-0 flex-1"
                 />
-                <button onClick={saveDomain} className="h-8 shrink-0 border border-edge px-2.5 text-[11.5px] text-body hover:border-quiet">
+                <Button variant="outline" size="sm" onClick={saveDomain} className="shrink-0">
                   Simpan
-                </button>
+                </Button>
               </div>
             </section>
 
@@ -239,29 +246,33 @@ export function SettingsSheet({
                 settings && <p className="mt-2 text-[11.5px] text-quiet">Belum ada secret.</p>
               )}
               <div className="mt-2 flex flex-col gap-2">
-                <input
+                <Input
                   value={secretKey}
                   onChange={(e) => setSecretKey(e.target.value)}
                   placeholder="NAMA_ENV"
                   aria-label="Nama secret"
-                  className="h-8 w-full border border-edge bg-ink px-2 font-mono text-[12px] text-body outline-none focus:border-accent"
+                  size="sm"
+                  className="w-full font-mono"
                 />
-                <div className="flex gap-2">
-                  <input
+                <div className="flex items-end gap-2">
+                  <Input
                     type="password"
                     value={secretValue}
                     onChange={(e) => setSecretValue(e.target.value)}
                     placeholder="nilai"
                     aria-label="Nilai secret"
-                    className="h-8 min-w-0 flex-1 border border-edge bg-ink px-2 text-[12px] text-body outline-none focus:border-accent"
+                    size="sm"
+                    className="min-w-0 flex-1"
                   />
-                  <button
+                  <Button
+                    variant="primary"
+                    size="sm"
                     onClick={addSecret}
                     disabled={!secretKey.trim() || !secretValue}
-                    className="h-8 shrink-0 bg-accent px-2.5 text-[11.5px] font-medium text-ink hover:opacity-90 disabled:opacity-40"
+                    className="shrink-0"
                   >
                     Tambah
-                  </button>
+                  </Button>
                 </div>
               </div>
             </section>
@@ -302,19 +313,13 @@ function ToggleRow({
   disabled?: boolean
 }) {
   return (
-    <label className={`flex min-h-[48px] items-center justify-between gap-3 border-b border-edge py-2 ${disabled ? 'opacity-50' : ''}`}>
+    <div className={`flex min-h-[48px] items-center justify-between gap-3 border-b border-edge py-2 ${disabled ? 'opacity-50' : ''}`}>
       <span>
         <span className="block text-[12.5px] text-body">{label}</span>
         <span className="block text-[11px] text-quiet">{hint}</span>
       </span>
-      <input
-        type="checkbox"
-        checked={checked}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.checked)}
-        className="h-4 w-4 shrink-0 accent-[var(--vb-accent)]"
-      />
-    </label>
+      <Switch checked={checked} onCheckedChange={onChange} disabled={disabled} aria-label={label} />
+    </div>
   )
 }
 
@@ -409,22 +414,21 @@ export function ChatPanel({
               Enter kirim, Shift+Enter baris baru
             </span>
             {sending ? (
-              <button
-                onClick={onCancel}
-                className="flex h-8 max-md:h-11 items-center gap-1.5 border border-edge px-2.5 text-[11.5px] text-body transition-colors hover:border-quiet"
-              >
+              <Button variant="outline" size="sm" onClick={onCancel} className="max-md:h-11">
                 <Icon name="stop" size={10} />
                 Hentikan
-              </button>
+              </Button>
             ) : (
-              <button
+              <Button
+                variant="primary"
+                size="sm"
                 onClick={submit}
                 disabled={!input.trim()}
-                className="flex h-8 max-md:h-11 items-center gap-1.5 bg-accent px-2.5 text-[11.5px] font-medium text-ink transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:border disabled:border-edge disabled:bg-transparent disabled:text-quiet"
+                className="max-md:h-11"
               >
                 <Icon name="arrow" size={11} />
                 Kirim
-              </button>
+              </Button>
             )}
           </div>
         </div>
@@ -457,12 +461,21 @@ function AuditCard({ audit }: { audit: ChatAudit }) {
   return (
     <section aria-label="Laporan tinjauan kode" className="border border-edge bg-surface px-3 py-3 text-body">
       <div className="flex items-center justify-between gap-2">
-        <div><p className="text-[11px] font-medium text-accent">TINJAUAN KODE · {audit.nilai}/100</p>
-          <p className="mt-1 text-[11.5px] leading-relaxed">{audit.catatan}</p></div>
+        <div>
+          <div className="flex items-center gap-2">
+            <p className="text-[11px] font-medium text-accent">TINJAUAN KODE</p>
+            <Badge variant={critical ? 'red' : 'green'}>{audit.nilai}/100</Badge>
+          </div>
+          <p className="mt-1 text-[11.5px] leading-relaxed">{audit.catatan}</p>
+        </div>
         <span className="shrink-0 font-mono text-[11px] text-quiet">{audit.temuan.length} temuan</span>
       </div>
       <p className="mt-2 text-[10.5px] text-quiet">{critical} kritis · {important} penting · {audit.temuan.length - critical - important} ringan</p>
-      {!!audit.temuan.length && <button onClick={() => setOpen((v) => !v)} aria-expanded={open} className="mt-2 text-[11px] text-accent underline underline-offset-2">{open ? 'Sembunyikan rincian' : 'Lihat rincian'}</button>}
+      {!!audit.temuan.length && (
+        <Button variant="ghost" size="xs" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="mt-2">
+          {open ? 'Sembunyikan rincian' : 'Lihat rincian'}
+        </Button>
+      )}
       {open && <ul className="mt-2 flex flex-col gap-2 border-t border-edge pt-2">{audit.temuan.map((finding, i) => <li key={`${finding.berkas}-${finding.baris}-${i}`} className="text-[11px] leading-relaxed">
         <p className="font-medium">{finding.tingkat} · {finding.kategori}</p><p className="font-mono text-[10px] text-quiet">{finding.berkas}:{finding.baris}</p>
         <p>{finding.masalah}</p><p className="text-quiet">Perbaikan: {finding.perbaikan}</p>
