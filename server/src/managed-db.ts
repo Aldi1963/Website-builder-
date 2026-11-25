@@ -178,11 +178,28 @@ export async function dropProjectDb(projectId: string): Promise<{ ok: boolean; e
   try {
     const role = roleName(projectId)
     const database = dbName(projectId)
+    // Tutup pool cache DULU: preview memakai koneksi lewat cache ini, dan pool pg
+    // akan membuat koneksi baru bila koneksi lama dimatikan → race saat DROP.
+    await poolCache.get(projectId)?.pool.end().catch(() => {})
+    poolCache.delete(projectId)
     const existsDb = await admin.query(`select 1 from pg_database where datname = $1`, [database])
     if (existsDb.rowCount) {
-      // putuskan koneksi aktif lalu hapus.
-      await admin.query(`select pg_terminate_backend(pid) from pg_stat_activity where datname = $1`, [database])
-      await admin.query(`drop database "${database}"`)
+      // putuskan semua koneksi aktif (termasuk koneksi preview app) lalu hapus, dengan
+      // beberapa percobaan karena proses preview bisa membuka ulang koneksi dalam hitungan ms.
+      let lastErr: unknown = null
+      for (let attempt = 0; attempt < 4; attempt++) {
+        try {
+          await admin.query(`select pg_terminate_backend(pid) from pg_stat_activity where datname = $1`, [database])
+          await new Promise((r) => setTimeout(r, 250))
+          await admin.query(`drop database "${database}"`)
+          lastErr = null
+          break
+        } catch (e) {
+          lastErr = e
+          await new Promise((r) => setTimeout(r, 500))
+        }
+      }
+      if (lastErr) throw lastErr
     }
     const existsRole = await admin.query(`select 1 from pg_roles where rolname = $1`, [role])
     if (existsRole.rowCount) {
@@ -190,8 +207,6 @@ export async function dropProjectDb(projectId: string): Promise<{ ok: boolean; e
       await admin.query(`select pg_terminate_backend(pid) from pg_stat_activity where usename = $1`, [role])
       await admin.query(`drop role "${role}"`)
     }
-    poolCache.get(projectId)?.pool.end().catch(() => {})
-    poolCache.delete(projectId)
     // hapus catatan kredensial proyek di platform DB.
     try {
       const { db } = await import('./db.ts')
