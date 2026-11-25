@@ -23,7 +23,7 @@ export type AgentEvent =
   | { type: 'status'; text: string }
   | { type: 'plan'; ringkasan: string; langkah: PlanStep[]; berkas: string[]; asumsi: string[] }
   | { type: 'audit'; nilai: number; temuan: AuditFinding[]; catatan: string }
-  | { type: 'file'; path: string; action: 'write' | 'delete' }
+  | { type: 'file'; path: string; action: 'write' | 'delete' | 'mkdir' }
   | { type: 'build'; ok: boolean; log: string }
   | { type: 'install'; ok: boolean; log: string }
   | { type: 'assistant'; text: string }
@@ -145,7 +145,7 @@ export type ChatHandlers = {
   onStatus?: (text: string) => void
   onPlan?: (event: Extract<AgentEvent, { type: 'plan' }>) => void
   onAudit?: (event: Extract<AgentEvent, { type: 'audit' }>) => void
-  onFile?: (path: string, action: 'write' | 'delete') => void
+  onFile?: (path: string, action: 'write' | 'delete' | 'mkdir') => void
   onBuild?: (ok: boolean, log: string) => void
   onInstall?: (ok: boolean, log: string) => void
   onAssistantDelta?: (text: string) => void

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
    mirroring Emergent's "agent executing commands" feed. */
 export type ActivityEntry =
   | { kind: 'status'; text: string; at: number }
-  | { kind: 'file'; path: string; action: 'write' | 'delete'; at: number }
+  | { kind: 'file'; path: string; action: 'write' | 'delete' | 'mkdir'; at: number }
   | { kind: 'terminal'; title: string; log: string; ok: boolean; at: number }
 
 const MAX_ENTRIES = 40
@@ -75,7 +75,7 @@ export function ActivityFeed({ entries }: { entries: ActivityEntry[] }) {
     last.kind === 'status'
       ? { label: statusLabel(last.text), text: last.text }
       : last.kind === 'file'
-        ? { label: 'agent file', text: `${last.action === 'delete' ? 'rm' : 'write'} ${last.path}` }
+        ? { label: 'agent file', text: `${last.action === 'delete' ? 'rm' : last.action === 'mkdir' ? 'mkdir' : 'write'} ${last.path}` }
         : { label: 'terminal', text: last.title }
   return (
     <div className="flex flex-col gap-2">
@@ -100,7 +100,7 @@ export function ActivityFeed({ entries }: { entries: ActivityEntry[] }) {
               return <TerminalBlock key={i} title={e.title} log={e.log} ok={e.ok} />
             }
             if (e.kind === 'file') {
-              const cmd = e.action === 'delete' ? `rm ${e.path}` : `write ${e.path}`
+              const cmd = e.action === 'delete' ? `rm ${e.path}` : e.action === 'mkdir' ? `mkdir ${e.path}` : `write ${e.path}`
               return (
                 <div key={i} className="rounded-md border border-[#2d3237] bg-[#16181a] px-3 py-1.5 font-mono text-[11px] text-[#8b959f]">
                   <span className="text-emerald-400">$</span> <span className="text-[#c8d0d8]">{cmd}</span>

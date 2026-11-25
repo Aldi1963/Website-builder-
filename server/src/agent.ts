@@ -1,9 +1,10 @@
-import { complete, STRONG_MODEL, type ChatMessage, type ToolCall } from './llm.ts'
+import { complete, STRONG_MODEL, effectiveAuditModel, type ChatMessage, type ToolCall } from './llm.ts'
 import { appendFileSync } from 'node:fs'
 import { AUDIT_SYSTEM, BASE_SYSTEM, PLAN_SYSTEM, QUICK_EDIT_SYSTEM } from './prompts.ts'
 import {
   readProjectFile,
   writeProjectFile,
+  newDirsForFile,
   deleteProjectFile,
   buildProject,
   installDeps,
@@ -87,7 +88,7 @@ export type AgentEvent =
   | { type: 'status'; text: string }
   | { type: 'plan'; ringkasan: string; langkah: { judul: string; detail: string }[]; berkas: string[]; asumsi: string[] }
   | { type: 'audit'; nilai: number; temuan: { tingkat: string; kategori: string; berkas: string; baris: number; masalah: string; perbaikan: string }[]; catatan: string }
-  | { type: 'file'; path: string; action: 'write' | 'delete' }
+  | { type: 'file'; path: string; action: 'write' | 'delete' | 'mkdir' }
   | { type: 'build'; ok: boolean; log: string }
   | { type: 'install'; ok: boolean; log: string }
   | { type: 'assistant_delta'; text: string }
@@ -103,6 +104,7 @@ export async function runAgent(
   emit: (e: AgentEvent) => void | Promise<void>,
   model?: string,
   forcePlanMode?: boolean,
+  opts?: { userId?: string },
 ): Promise<void> {
   ensureWorkspace(projectId)
   addMessage(projectId, 'user', userPrompt)
@@ -145,7 +147,7 @@ export async function runAgent(
       const cls = await complete([
         { role: 'system', content: 'Klasifikasi permintaan. Balas HANYA JSON: {"kecil": true|false}. Kecil=true bila permintaan hanya mengubah satu bagian kecil yang sudah ada (teks, warna, komponen tunggal, perbaikan kecil). Kecil=false bila menambah fitur, mengubah struktur data, atau membuat halaman/flow baru.' },
         { role: 'user', content: userPrompt },
-      ], { model, temperature: 0, maxTokens: 100 })
+      ], { model, temperature: 0, maxTokens: 100, userId: opts?.userId })
       const raw = typeof cls.message.content === 'string' ? cls.message.content : ''
       const jsonText = raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1)
       quickEdit = JSON.parse(jsonText).kecil === true
@@ -162,7 +164,7 @@ export async function runAgent(
     const planResp = await complete([
       { role: 'system', content: PLAN_SYSTEM },
       { role: 'user', content: `Permintaan: ${userPrompt}\n\nBerkas yang ada:\n${fileIndex(projectId)}` },
-    ], { model, temperature: 0.15, maxTokens: 1800 })
+    ], { model, temperature: 0.15, maxTokens: 1800, userId: opts?.userId })
     const raw = typeof planResp.message.content === 'string' ? planResp.message.content : ''
     const jsonText = raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1)
     const plan = JSON.parse(jsonText)
@@ -191,7 +193,7 @@ export async function runAgent(
         const finalResp = await complete(
           [...messages, { role: 'user', content: 'Beri ringkasan akhir sekarang tanpa memanggil tool.' }],
           {
-            model, temperature: 0.25, maxTokens: 4000,
+            model, temperature: 0.25, maxTokens: 4000, userId: opts?.userId,
             onDelta: async (d) => {
               streamed += d
               await emit({ type: 'assistant_delta', text: d })
@@ -226,7 +228,7 @@ export async function runAgent(
 
     let resp
     try {
-      resp = await complete(messages, { model, tools: TOOLS, temperature: 0.25, maxTokens: 8192 })
+      resp = await complete(messages, { model, tools: TOOLS, temperature: 0.25, maxTokens: 8192, userId: opts?.userId })
     } catch (err) {
       await emit({ type: 'error', text: `LLM gagal: ${(err as Error).message}` })
       return
@@ -271,21 +273,26 @@ export async function runAgent(
       let result = ''
 
       if (name === 'list_files') {
+        await emit({ type: 'status', text: 'Melihat daftar file…' })
         result = listFiles(projectId)
           .map((f) => f.path)
           .join('\n')
       } else if (name === 'read_file') {
+        await emit({ type: 'status', text: `Membaca ${String(args.path ?? '')}…` })
         const content = readProjectFile(projectId, String(args.path ?? ''))
         result = content ?? `ERROR: file ${args.path} tidak ditemukan`
       } else if (name === 'write_file') {
         try {
-          const path = writeProjectFile(projectId, String(args.path ?? ''), String(args.content ?? ''))
-          putFile(projectId, path, String(args.content ?? ''))
-          if (/(^|\/)(src|app|pages|components|routes)\//.test(path) && /\.(tsx|jsx|css|html)$/i.test(path)) touchedUi = true
-          await emit({ type: 'file', path, action: 'write' })
+          const path = String(args.path ?? '')
+          const newDirs = newDirsForFile(projectId, path)
+          const written = writeProjectFile(projectId, path, String(args.content ?? ''))
+          putFile(projectId, written, String(args.content ?? ''))
+          if (/(^|\/)(src|app|pages|components|routes)\//.test(written) && /\.(tsx|jsx|css|html)$/i.test(written)) touchedUi = true
+          for (const d of newDirs) await emit({ type: 'file', path: d, action: 'mkdir' })
+          await emit({ type: 'file', path: written, action: 'write' })
           stepDidWrite = true
           didWrite = true
-          result = `OK: ${path} ditulis (${String(args.content ?? '').length} bytes)`
+          result = `OK: ${written} ditulis (${String(args.content ?? '').length} bytes)`
         } catch (err) {
           result = `ERROR: ${(err as Error).message}`
         }
@@ -317,7 +324,7 @@ export async function runAgent(
           }).filter(Boolean).join('\n')
           if (source.length >= 48_000) emit({ type: 'status', text: 'Audit dibatasi ke 48 KB kode terpilih…' })
           auditCompleted = true // juga menandai selesai bila provider gagal diparse; error dikirim sebagai hasil audit di bawah.
-          const auditResp = await complete([{ role: 'system', content: AUDIT_SYSTEM }, { role: 'user', content: source || '(belum ada file)' }], { model: process.env.VB_MODEL_AUDIT ?? 'cx/gpt-5.6-luna-review', temperature: 0.1, maxTokens: 3500 })
+          const auditResp = await complete([{ role: 'system', content: AUDIT_SYSTEM }, { role: 'user', content: source || '(belum ada file)' }], { model: effectiveAuditModel(), temperature: 0.1, maxTokens: 3500, userId: opts?.userId })
           const raw = typeof auditResp.message.content === 'string' ? auditResp.message.content : ''
           const jsonText = raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1)
           const report = JSON.parse(jsonText)

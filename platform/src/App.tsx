@@ -865,6 +865,7 @@ function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle:
         pushActivity({ kind: 'file', path, action, at: Date.now() })
         const { files } = await api.files(projectId)
         setFiles(files.map((f) => ({ path: f.path })))
+        if (action === 'mkdir') return // folder baru: bukan file yang diubah, tak perlu preview ulang
         if (path) setChangedFiles((prev) => (prev.includes(path) ? prev : [...prev, path]))
         setDirty(true)
         if (previewOn) void reloadPreview()

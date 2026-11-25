@@ -36,6 +36,25 @@ export function writeProjectFile(projectId: string, relPath: string, content: st
   return safe
 }
 
+/* Folder-folder (relatif terhadap proyek, dari yang paling dangkal) yang
+   BELUM ada dan akan dibuat oleh writeProjectFile untuk berkas ini.
+   Dipakai agent supaya pembuatan folder terlihat di feed aktivitas —
+   sebelumnya mkdirSync di atas berjalan diam-diam. */
+export function newDirsForFile(projectId: string, relPath: string): string[] {
+  const dir = projectDir(projectId)
+  const safe = sanitize(relPath)
+  const abs = join(dir, safe)
+  if (!abs.startsWith(dir)) return []
+  const parts = dirname(safe).split('/').filter((s) => s && s !== '.')
+  const out: string[] = []
+  let cur = dir
+  for (const p of parts) {
+    cur = join(cur, p)
+    if (!existsSync(cur)) out.push(cur.slice(dir.length + 1))
+  }
+  return out
+}
+
 export function readProjectFile(projectId: string, relPath: string): string | null {
   const dir = projectDir(projectId)
   const abs = join(dir, sanitize(relPath))
