@@ -692,6 +692,8 @@ function Workspace({ projectId, onTitle }: { projectId: string; onTitle: (n: str
       <SettingsSheet
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
+        projectId={projectId}
+        projectName={name}
         model={model}
         onModel={(m) => {
           setModel(m)

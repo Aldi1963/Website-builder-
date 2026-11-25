@@ -16,6 +16,17 @@ const API_KEY = process.env.VB_LLM_KEY ?? process.env.HERMES_9ROUTER_API_KEY ?? 
 export const FAST_MODEL = process.env.VB_MODEL ?? 'cx/gpt-5.6-luna'
 export const STRONG_MODEL = process.env.VB_MODEL_STRONG ?? FAST_MODEL
 
+/* Pemakaian gateway sejak proses server start — ditampilkan di chip Token. */
+export const llmUsage = { requests: 0, promptTokens: 0, completionTokens: 0 }
+
+function trackUsage(u: unknown) {
+  const o = u as { prompt_tokens?: number; completion_tokens?: number } | undefined
+  if (!o || typeof o !== 'object') return
+  llmUsage.requests += 1
+  llmUsage.promptTokens += Number(o.prompt_tokens ?? 0)
+  llmUsage.completionTokens += Number(o.completion_tokens ?? 0)
+}
+
 type Choice = { message?: ChatMessage & { role: 'assistant' }; delta?: Partial<ChatMessage> & { role?: string } }
 
 /**
@@ -38,7 +49,7 @@ function parseSse(raw: string): { choices: Choice[]; usage?: unknown } {
     } catch {
       continue
     }
-    if (chunk.usage) usage = chunk.usage
+    if (chunk.usage) { usage = chunk.usage; trackUsage(chunk.usage) }
     const d = chunk.choices?.[0]?.delta
     if (!d) continue
     if (typeof d.content === 'string') content += d.content
@@ -118,7 +129,7 @@ export async function complete(
         if (!payload || payload === '[DONE]') continue
         let chunk: any
         try { chunk = JSON.parse(payload) } catch { continue }
-        if (chunk.usage) usage = chunk.usage
+        if (chunk.usage) { usage = chunk.usage; trackUsage(chunk.usage) }
         const d = chunk.choices?.[0]?.delta
         if (!d) continue
         if (typeof d.content === 'string' && d.content) {
@@ -157,6 +168,7 @@ export async function complete(
 
   const message = json.choices?.[0]?.message
   if (!message) throw new Error(`LLM response tanpa message: ${raw.slice(0, 200)}`)
+  if (json.usage) trackUsage(json.usage)
   if (typeof message.content !== 'string' && !message.tool_calls?.length) {
     const finish = (json.choices?.[0] as any)?.finish_reason ?? 'unknown'
     throw new Error(`LLM mengembalikan konten kosong (finish_reason=${finish}); coba model lain atau naikkan max_tokens.`)

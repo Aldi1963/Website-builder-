@@ -108,6 +108,49 @@ export function userOwnsProject(projectId: string, ownerId: string): boolean {
   return Boolean(row)
 }
 
+/* Pengaturan per-proyek: custom domain + secret ENV (kunci disimpan dengan
+   awalan secret_ agar mudah difilter saat menyuntikkan env ke preview). */
+db.exec(`CREATE TABLE IF NOT EXISTS project_settings (
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  key TEXT NOT NULL,
+  value TEXT NOT NULL,
+  PRIMARY KEY (project_id, key)
+);`)
+
+export function setSetting(projectId: string, key: string, value: string) {
+  db.prepare(
+    `INSERT INTO project_settings (project_id, key, value) VALUES (?, ?, ?)
+     ON CONFLICT(project_id, key) DO UPDATE SET value = excluded.value`,
+  ).run(projectId, key, value)
+}
+
+export function getSetting(projectId: string, key: string): string | undefined {
+  const row = db.prepare(`SELECT value FROM project_settings WHERE project_id = ? AND key = ?`).get(projectId, key) as
+    | { value: string }
+    | undefined
+  return row?.value
+}
+
+export function deleteSetting(projectId: string, key: string) {
+  db.prepare(`DELETE FROM project_settings WHERE project_id = ? AND key = ?`).run(projectId, key)
+}
+
+export function listSettings(projectId: string): { key: string; value: string }[] {
+  return db.prepare(`SELECT key, value FROM project_settings WHERE project_id = ? ORDER BY key`).all(projectId) as {
+    key: string
+    value: string
+  }[]
+}
+
+export function projectByDomain(domain: string): Project | undefined {
+  return db
+    .prepare(
+      `SELECT p.* FROM projects p JOIN project_settings s ON s.project_id = p.id
+       WHERE s.key = 'custom_domain' AND LOWER(s.value) = LOWER(?)`,
+    )
+    .get(domain) as Project | undefined
+}
+
 export function setStatus(id: string, status: string) {
   db.prepare(`UPDATE projects SET status = ?, updated_at = ? WHERE id = ?`).run(status, Date.now(), id)
 }

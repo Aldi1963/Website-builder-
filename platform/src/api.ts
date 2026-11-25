@@ -113,6 +113,26 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ prompt }),
     }),
+  settings: (id: string) => req<ProjectSettings>(`/api/projects/${id}/settings`),
+  setDomain: (id: string, domain: string) =>
+    req<{ ok: boolean; customDomain: string }>(`/api/projects/${id}/domain`, {
+      method: 'PUT',
+      body: JSON.stringify({ domain }),
+    }),
+  setSecret: (id: string, key: string, value: string) =>
+    req<{ ok: boolean; key: string }>(`/api/projects/${id}/secrets`, {
+      method: 'PUT',
+      body: JSON.stringify({ key, value }),
+    }),
+  deleteSecret: (id: string, key: string) =>
+    req<{ ok: boolean }>(`/api/projects/${id}/secrets/${encodeURIComponent(key)}`, { method: 'DELETE' }),
+  usage: () => req<{ requests: number; promptTokens: number; completionTokens: number }>('/api/usage'),
+}
+
+export type ProjectSettings = {
+  customDomain: string
+  secrets: { key: string; hint: string }[]
+  overview: { name: string; status: string; slug: string | null; files: number; createdAt: number }
 }
 
 export type ChatHandlers = {

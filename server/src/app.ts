@@ -23,6 +23,11 @@ import {
   projectBySlug,
   claimOrphanProjects,
   userOwnsProject,
+  getSetting,
+  setSetting,
+  deleteSetting,
+  listSettings,
+  projectByDomain,
 } from './db.ts'
 import { db } from './db.ts'
 import { listVersions, getVersionDiff, restoreVersion, snapshotVersion, diffLines } from './versions.ts'
@@ -59,7 +64,7 @@ import {
   type User,
 } from './auth.ts'
 import { runAgent, type AgentEvent } from './agent.ts'
-import { complete, FAST_MODEL } from './llm.ts'
+import { complete, FAST_MODEL, llmUsage } from './llm.ts'
 import { DISCOVERY_SYSTEM } from './prompts.ts'
 
 type Env = { Variables: { user: User } }
@@ -215,7 +220,66 @@ app.get('/api/auth/me', (c) => {
   return c.json({ user: user ?? null, signupOpen: countUsers() === 0 })
 })
 
+/* ---------- project settings: overview / domain / secrets ---------- */
+
+const DOMAIN_RE = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i
+
+app.get('/api/projects/:id/settings', (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  const p = r.project
+  const secrets = listSettings(p.id)
+    .filter((s) => s.key.startsWith('secret_'))
+    .map((s) => ({ key: s.key.slice(7), hint: `••••${s.value.slice(-4)}` }))
+  return c.json({
+    customDomain: getSetting(p.id, 'custom_domain') ?? '',
+    secrets,
+    overview: {
+      name: p.name,
+      status: p.status,
+      slug: p.slug ?? null,
+      files: listFiles(p.id).length,
+      createdAt: p.created_at,
+    },
+  })
+})
+
+app.put('/api/projects/:id/domain', async (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  const body = (await c.req.json().catch(() => ({}))) as { domain?: string }
+  const domain = (body.domain ?? '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '')
+  if (!domain) {
+    deleteSetting(r.project.id, 'custom_domain')
+    return c.json({ ok: true, customDomain: '' })
+  }
+  if (!DOMAIN_RE.test(domain)) return c.json({ error: 'Format domain tidak valid.' }, 400)
+  setSetting(r.project.id, 'custom_domain', domain)
+  return c.json({ ok: true, customDomain: domain })
+})
+
+app.put('/api/projects/:id/secrets', async (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  const body = (await c.req.json().catch(() => ({}))) as { key?: string; value?: string }
+  const key = (body.key ?? '').trim()
+  const value = body.value ?? ''
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) return c.json({ error: 'Nama kunci harus ENV_NAME yang valid.' }, 400)
+  if (!value) return c.json({ error: 'Nilai secret kosong.' }, 400)
+  setSetting(r.project.id, `secret_${key}`, value)
+  return c.json({ ok: true, key })
+})
+
+app.delete('/api/projects/:id/secrets/:key', (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  deleteSetting(r.project.id, `secret_${c.req.param('key')}`)
+  return c.json({ ok: true })
+})
+
 /* ---------- health ---------- */
+
+app.get('/api/usage', (c) => c.json(llmUsage))
 
 app.get('/api/health', (c) =>
   c.json({

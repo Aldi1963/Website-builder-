@@ -2,6 +2,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, write
 import { join, dirname } from 'node:path'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { PROJECTS_DIR, TEMPLATE_DIR, PREVIEW_PORT_BASE, MAX_PREVIEWS } from './paths.ts'
+import { listSettings } from './db.ts'
 
 const SKIP = new Set(['node_modules', 'dist', '.output', '.tanstack', '.git'])
 
@@ -150,11 +151,14 @@ export async function startPreview(projectId: string): Promise<number> {
   const serverFile = join(TEMPLATE_DIR, 'server.mjs')
   if (existsSync(serverFile)) cpSync(serverFile, join(dir, 'server.mjs'))
   const port = previewPort(projectId)
-  const proc = spawn('node', ['server.mjs'], {
-    cwd: dir,
-    env: { ...process.env, PORT: String(port), HOST: '127.0.0.1' },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
+  // Settings stored per project are injected as env so generated apps can read
+  // their own configuration without touching the platform's process env.
+  const env: Record<string, string> = { ...process.env, PORT: String(port), HOST: '127.0.0.1' }
+  for (const s of listSettings(projectId)) {
+    if (s.key.startsWith('secret_')) env[s.key.slice(7)] = s.value
+    else env[`VB_SETTING_${s.key.replace(/[^a-zA-Z0-9_]/g, '_').toUpperCase()}`] = s.value
+  }
+  const proc = spawn('node', ['server.mjs'], { cwd: dir, env, stdio: ['ignore', 'pipe', 'pipe'] })
   proc.stdout?.on('data', () => {})
   proc.stderr?.on('data', () => {})
   proc.on('exit', () => previews.delete(projectId))

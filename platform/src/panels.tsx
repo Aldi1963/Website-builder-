@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Activity, Icon, Spinner, useAutoScroll, useCopy } from './ui'
-import type { AuditFinding, PlanStep } from './api'
+import { api, type AuditFinding, type PlanStep, type ProjectSettings } from './api'
 
 export type ChatItem = { role: string; content: string; id?: number }
 export type ChatPlan = { ringkasan: string; langkah: PlanStep[]; berkas: string[]; asumsi: string[] }
@@ -21,6 +21,8 @@ export const MODEL_CATALOG: ModelOption[] = [
 export function SettingsSheet({
   open,
   onClose,
+  projectId,
+  projectName,
   model,
   onModel,
   planMode,
@@ -28,82 +30,124 @@ export function SettingsSheet({
 }: {
   open: boolean
   onClose: () => void
+  projectId: string
+  projectName: string
   model: string
   onModel: (id: string) => void
   planMode: boolean
   onPlanMode: (v: boolean) => void
 }) {
-  const [picking, setPicking] = useState(false)
+  const [section, setSection] = useState<'menu' | 'model' | 'settings'>('menu')
+  const [settings, setSettings] = useState<ProjectSettings | null>(null)
+  const [loadErr, setLoadErr] = useState('')
+  const [domain, setDomain] = useState('')
+  const [secretKey, setSecretKey] = useState('')
+  const [secretValue, setSecretValue] = useState('')
+  const [msg, setMsg] = useState('')
 
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') (picking ? setPicking(false) : onClose())
+      if (e.key === 'Escape') (section !== 'menu' ? setSection('menu') : onClose())
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [open, picking, onClose])
+  }, [open, section, onClose])
+
+  useEffect(() => {
+    if (!open || section !== 'settings' || !projectId) return
+    setMsg('')
+    api.settings(projectId)
+      .then((s) => {
+        setSettings(s)
+        setDomain(s.customDomain)
+        setLoadErr('')
+      })
+      .catch((e) => setLoadErr((e as Error).message))
+  }, [open, section, projectId])
 
   if (!open) return null
   const current = MODEL_CATALOG.find((m) => m.id === model) ?? MODEL_CATALOG[0]
+
+  const saveDomain = async () => {
+    setMsg('')
+    try {
+      const r = await api.setDomain(projectId, domain)
+      setDomain(r.customDomain)
+      setMsg(r.customDomain ? 'Domain disimpan.' : 'Domain dihapus.')
+    } catch (e) {
+      setMsg((e as Error).message)
+    }
+  }
+
+  const addSecret = async () => {
+    setMsg('')
+    try {
+      await api.setSecret(projectId, secretKey.trim(), secretValue)
+      const s = await api.settings(projectId)
+      setSettings(s)
+      setSecretKey('')
+      setSecretValue('')
+      setMsg('Secret disimpan. Nilai tidak ditampilkan lagi.')
+    } catch (e) {
+      setMsg((e as Error).message)
+    }
+  }
+
+  const removeSecret = async (key: string) => {
+    setMsg('')
+    try {
+      await api.deleteSecret(projectId, key)
+      const s = await api.settings(projectId)
+      setSettings(s)
+    } catch (e) {
+      setMsg((e as Error).message)
+    }
+  }
+
+  const back = section !== 'menu'
 
   return (
     <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/55" onClick={onClose} role="dialog" aria-label="Pengaturan sesi">
       <div
         onClick={(e) => e.stopPropagation()}
-        className="vb-enter w-full max-w-[420px] border border-edge bg-surface px-4 pb-6 pt-4 max-md:px-3"
+        className="vb-enter flex max-h-[86dvh] w-full max-w-[420px] flex-col border border-edge bg-surface px-4 pb-6 pt-4 max-md:px-3"
       >
-        {!picking ? (
-          <>
-            <div className="mb-2 flex items-center justify-between">
-              <h2 className="font-display text-[16px] text-body">Pengaturan</h2>
-              <button onClick={onClose} aria-label="Tutup pengaturan" className="flex h-8 w-8 items-center justify-center text-quiet hover:text-body">
-                <Icon name="close" size={14} />
-              </button>
-            </div>
-
-            <button
-              onClick={() => setPicking(true)}
-              className="flex min-h-[48px] w-full items-center justify-between border-b border-edge py-2 text-left"
-            >
-              <span>
-                <span className="block text-[12.5px] text-body">Model — {current.name}</span>
-                <span className="block text-[11px] text-quiet">{current.note}</span>
-              </span>
-              <Icon name="arrow" size={12} className="text-quiet" />
+        <div className="mb-2 flex items-center justify-between">
+          {back ? (
+            <button onClick={() => setSection('menu')} className="flex h-8 w-8 items-center justify-center text-quiet hover:text-body" aria-label="Kembali">
+              <Icon name="back" size={14} />
             </button>
+          ) : (
+            <h2 className="font-display text-[16px] text-body">Pengaturan</h2>
+          )}
+          <span className="flex-1 truncate px-2 text-center text-[12.5px] text-body">
+            {section === 'model' ? 'Pilih model' : section === 'settings' ? 'Kelola website' : ''}
+          </span>
+          <button onClick={onClose} aria-label="Tutup pengaturan" className="flex h-8 w-8 items-center justify-center text-quiet hover:text-body">
+            <Icon name="close" size={14} />
+          </button>
+        </div>
 
+        {section === 'menu' && (
+          <div className="flex flex-col">
+            <MenuRow label="Model" sub={`${current.name} — ${current.note}`} onClick={() => setSection('model')} />
+            <MenuRow label="Kelola website" sub="Domain, secrets, ringkasan proyek" onClick={() => setSection('settings')} />
             <ToggleRow
               label="Plan mode"
               hint="Rencana kerja ditampilkan dulu sebelum kode ditulis"
               checked={planMode}
               onChange={onPlanMode}
             />
-            <ToggleRow
-              label="Fast mode"
-              hint="Edit kecil langsung diterapkan tanpa tinjauan penuh"
-              checked={false}
-              onChange={() => {}}
-              disabled
-            />
-            <div className="mt-1 border-b border-edge py-2">
-              <p className="text-[12.5px] text-body">Simpan ke GitHub</p>
-              <p className="text-[11px] text-quiet">Ekspor ZIP tersedia di header workspace.</p>
-            </div>
-            <div className="mt-1 border-b border-edge py-2 opacity-50">
+            <div className="border-b border-edge py-2 opacity-50">
               <p className="text-[12.5px] text-body">Fork</p>
               <p className="text-[11px] text-quiet">Belum tersedia di deploy ini.</p>
             </div>
-          </>
-        ) : (
-          <>
-            <div className="mb-2 flex items-center justify-between">
-              <button onClick={() => setPicking(false)} className="flex h-8 w-8 items-center justify-center text-quiet hover:text-body" aria-label="Kembali ke pengaturan">
-                <Icon name="back" size={14} />
-              </button>
-              <h2 className="text-[13px] font-medium text-body">Pilih model</h2>
-              <span className="h-8 w-8" />
-            </div>
+          </div>
+        )}
+
+        {section === 'model' && (
+          <div className="vb-scroll overflow-y-auto">
             <div className="flex flex-col">
               {MODEL_CATALOG.map((m) => {
                 const active = m.id === model
@@ -114,7 +158,7 @@ export function SettingsSheet({
                     disabled={disabled}
                     onClick={() => {
                       onModel(m.id)
-                      setPicking(false)
+                      setSection('menu')
                     }}
                     className={`flex min-h-[52px] items-center justify-between border-b border-edge py-2 text-left transition-colors ${
                       disabled ? 'cursor-not-allowed opacity-40' : 'hover:bg-ink'
@@ -132,10 +176,115 @@ export function SettingsSheet({
                 )
               })}
             </div>
-          </>
+          </div>
+        )}
+
+        {section === 'settings' && (
+          <div className="vb-scroll overflow-y-auto">
+            {loadErr && <p className="mb-2 border-l-2 border-accent pl-2 text-[12px] text-accent">{loadErr}</p>}
+            {msg && <p className="mb-2 border-l-2 border-edge pl-2 text-[12px] text-body">{msg}</p>}
+
+            <section className="border-b border-edge py-3">
+              <p className="text-[11px] font-medium text-accent">OVERVIEW</p>
+              {settings ? (
+                <ul className="mt-1.5 space-y-1 text-[12px] text-body">
+                  <li>Nama: {settings.overview.name}</li>
+                  <li>Status: {settings.overview.status} · {settings.overview.files} file</li>
+                  <li>Publish: {settings.overview.slug ? settings.overview.slug : 'belum diterbitkan'}</li>
+                </ul>
+              ) : (
+                <p className="mt-1 text-[11.5px] text-quiet">Memuat ringkasan…</p>
+              )}
+            </section>
+
+            <section className="border-b border-edge py-3">
+              <p className="text-[11px] font-medium text-accent">DOMAIN</p>
+              <p className="mt-1 text-[11px] leading-relaxed text-quiet">
+                Arahkan domain ke {PUBLIC_HINT}. DNS A record ke server ini.
+              </p>
+              <div className="mt-2 flex gap-2">
+                <label className="sr-only" htmlFor="vb-domain">Custom domain</label>
+                <input
+                  id="vb-domain"
+                  value={domain}
+                  onChange={(e) => setDomain(e.target.value)}
+                  placeholder="app.contoh.com"
+                  className="h-8 min-w-0 flex-1 border border-edge bg-ink px-2 text-[12px] text-body outline-none focus:border-accent"
+                />
+                <button onClick={saveDomain} className="h-8 shrink-0 border border-edge px-2.5 text-[11.5px] text-body hover:border-quiet">
+                  Simpan
+                </button>
+              </div>
+            </section>
+
+            <section className="py-3">
+              <p className="text-[11px] font-medium text-accent">SECRETS</p>
+              <p className="mt-1 text-[11px] leading-relaxed text-quiet">
+                Disuntikkan sebagai environment variable ke preview aplikasi. Nilai tidak pernah ditampilkan lagi.
+              </p>
+              {settings?.secrets.length ? (
+                <ul className="mt-2 flex flex-col gap-1">
+                  {settings.secrets.map((s) => (
+                    <li key={s.key} className="flex items-center justify-between border border-edge px-2 py-1.5">
+                      <span className="font-mono text-[11.5px] text-body">
+                        {s.key} <span className="text-quiet">{s.hint}</span>
+                      </span>
+                      <button onClick={() => removeSecret(s.key)} aria-label={`Hapus ${s.key}`} className="text-[11px] text-quiet hover:text-accent">
+                        hapus
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                settings && <p className="mt-2 text-[11.5px] text-quiet">Belum ada secret.</p>
+              )}
+              <div className="mt-2 flex flex-col gap-2">
+                <input
+                  value={secretKey}
+                  onChange={(e) => setSecretKey(e.target.value)}
+                  placeholder="NAMA_ENV"
+                  aria-label="Nama secret"
+                  className="h-8 w-full border border-edge bg-ink px-2 font-mono text-[12px] text-body outline-none focus:border-accent"
+                />
+                <div className="flex gap-2">
+                  <input
+                    type="password"
+                    value={secretValue}
+                    onChange={(e) => setSecretValue(e.target.value)}
+                    placeholder="nilai"
+                    aria-label="Nilai secret"
+                    className="h-8 min-w-0 flex-1 border border-edge bg-ink px-2 text-[12px] text-body outline-none focus:border-accent"
+                  />
+                  <button
+                    onClick={addSecret}
+                    disabled={!secretKey.trim() || !secretValue}
+                    className="h-8 shrink-0 bg-accent px-2.5 text-[11.5px] font-medium text-ink hover:opacity-90 disabled:opacity-40"
+                  >
+                    Tambah
+                  </button>
+                </div>
+              </div>
+            </section>
+          </div>
         )}
       </div>
     </div>
+  )
+}
+
+const PUBLIC_HINT = typeof import.meta.env.VITE_PUBLIC_ORIGIN === 'string' && import.meta.env.VITE_PUBLIC_ORIGIN
+  ? String(import.meta.env.VITE_PUBLIC_ORIGIN).replace(/^https?:\/\//, '')
+  : 'server platform'
+
+function MenuRow({ label, sub, onClick }: { label: string; sub: string; onClick: () => void }) {
+  return (
+    <button onClick={onClick} className="flex min-h-[48px] items-center justify-between border-b border-edge py-2 text-left transition-colors hover:bg-ink">
+      <span>
+        <span className="block text-[12.5px] text-body">{label}</span>
+        <span className="block text-[11px] text-quiet">{sub}</span>
+      </span>
+      <Icon name="arrow" size={12} className="text-quiet" />
+    </button>
   )
 }
 
