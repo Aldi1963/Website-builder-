@@ -13,6 +13,10 @@ export type ToolCall = {
 const ENDPOINT = process.env.VB_LLM_URL ?? 'http://127.0.0.1:20128/v1/chat/completions'
 const API_KEY = process.env.VB_LLM_KEY ?? process.env.HERMES_9ROUTER_API_KEY ?? ''
 
+/* Diekspos hanya sebagai info (host + apakah key terpasang), bukan nilainya. */
+export const LLM_ENDPOINT = ENDPOINT
+export const LLM_KEY_CONFIGURED = API_KEY.length > 0
+
 export const FAST_MODEL = process.env.VB_MODEL ?? 'cx/gpt-5.6-luna'
 export const STRONG_MODEL = process.env.VB_MODEL_STRONG ?? FAST_MODEL
 

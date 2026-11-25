@@ -1,0 +1,203 @@
+/* VibeBuilder Admin — tata letak mengikuti template Metis (Bootstrap 5).
+   File ini ditulis sendiri; bukan salinan CSS template. */
+
+:root {
+  --vb-admin-sidebar-width: 240px;
+  --vb-admin-sidebar-mini-width: 64px;
+  --vb-admin-header-height: 60px;
+  --vb-admin-primary: #2563eb;
+}
+
+html, body { height: 100%; }
+
+body {
+  font-family: "Inter Variable", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--bs-body-bg);
+}
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 2000;
+  background: var(--bs-primary);
+  color: #fff;
+  padding: .5rem 1rem;
+}
+.skip-link:focus { left: 0; }
+
+.loading-screen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bs-body-bg);
+  z-index: 1500;
+}
+.loading-screen.done { display: none; }
+
+.admin-app { min-height: 100vh; }
+.admin-wrapper { min-height: 100vh; }
+
+/* Header */
+.admin-header {
+  position: sticky;
+  top: 0;
+  z-index: 1030;
+  background: var(--bs-body-bg);
+}
+.admin-header .navbar { min-height: var(--vb-admin-header-height); padding-top: .25rem; padding-bottom: .25rem; }
+.brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--vb-admin-primary);
+  color: #fff;
+  font-weight: 800;
+  margin-right: .5rem;
+}
+.hamburger-menu {
+  border: 1px solid var(--bs-border-color);
+  background: transparent;
+  color: var(--bs-body-color);
+  border-radius: .375rem;
+  width: 38px;
+  height: 38px;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+.hamburger-menu:hover { background: var(--bs-tertiary-bg); }
+.search-container { max-width: 520px; }
+
+/* Sidebar */
+.admin-sidebar {
+  position: fixed;
+  top: var(--vb-admin-header-height);
+  left: 0;
+  bottom: 0;
+  width: var(--vb-admin-sidebar-width);
+  z-index: 1040;
+  background: var(--bs-body-bg);
+  border-right: 1px solid var(--bs-border-color);
+  overflow-y: auto;
+  transition: transform .2s ease, width .2s ease;
+}
+.sidebar-content { padding: .75rem .5rem 1.5rem; }
+.sidebar-nav .nav-link {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  color: var(--bs-secondary-color);
+  border-radius: .5rem;
+  padding: .55rem .75rem;
+  margin-bottom: .125rem;
+  white-space: nowrap;
+}
+.sidebar-nav .nav-link i { font-size: 1rem; width: 1.25rem; text-align: center; flex-shrink: 0; }
+.sidebar-nav .nav-link:hover { background: var(--bs-tertiary-bg); color: var(--bs-body-color); }
+.sidebar-nav .nav-link.active {
+  background: rgba(37, 99, 235, .12);
+  color: var(--vb-admin-primary);
+  font-weight: 600;
+  box-shadow: inset 3px 0 0 var(--vb-admin-primary);
+}
+.sidebar-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, .45);
+  z-index: 1035;
+}
+
+/* Main + footer mengikuti lebar sidebar */
+.admin-main { margin-left: var(--vb-admin-sidebar-width); min-height: calc(100vh - var(--vb-admin-header-height)); }
+.admin-footer {
+  margin-left: var(--vb-admin-sidebar-width);
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--bs-border-color);
+}
+
+/* Sidebar mini (desktop) */
+body.sidebar-collapsed .admin-sidebar { width: var(--vb-admin-sidebar-mini-width); }
+body.sidebar-collapsed .admin-sidebar .nav-link span,
+body.sidebar-collapsed .admin-sidebar .nav-link .badge,
+body.sidebar-collapsed .admin-sidebar small { display: none; }
+body.sidebar-collapsed .admin-sidebar .nav-link { justify-content: center; padding: .55rem .25rem; }
+body.sidebar-collapsed .admin-main,
+body.sidebar-collapsed .admin-footer { margin-left: var(--vb-admin-sidebar-mini-width); }
+
+/* Stat cards ala Metis */
+.stats-card { border: 1px solid var(--bs-border-color); box-shadow: none; }
+.stats-card .card-body { padding: 1.1rem 1.25rem; }
+.stats-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.35rem;
+}
+.card { border: 1px solid var(--bs-border-color); box-shadow: none; }
+.card-header { background: transparent; border-bottom: 1px solid var(--bs-border-color); }
+.card-fill-row { height: 100%; }
+.card-fill-row .card-body { overflow-y: auto; max-height: 420px; }
+
+/* Activity feed ala Metis */
+.activity-feed { display: flex; flex-direction: column; gap: .9rem; }
+.activity-item { display: flex; gap: .75rem; }
+.activity-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--bs-tertiary-bg);
+  color: var(--bs-secondary-color);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.activity-content p { font-size: .9rem; }
+
+/* Tabel */
+.table thead th { font-size: .78rem; text-transform: uppercase; letter-spacing: .02em; }
+.avatar-sm {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--vb-admin-primary);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: .8rem;
+  flex-shrink: 0;
+}
+
+/* Responsif: sidebar jadi overlay di bawah lg */
+@media (max-width: 991.98px) {
+  .admin-sidebar { transform: translateX(-100%); top: 0; padding-top: var(--vb-admin-header-height); }
+  body.sidebar-open .admin-sidebar { transform: translateX(0); }
+  body.sidebar-open .sidebar-backdrop { display: block; }
+  .admin-main, .admin-footer { margin-left: 0; }
+  body.sidebar-collapsed .admin-main,
+  body.sidebar-collapsed .admin-footer { margin-left: 0; }
+  body.sidebar-collapsed .admin-sidebar { width: var(--vb-admin-sidebar-width); }
+  body.sidebar-collapsed .admin-sidebar .nav-link span,
+  body.sidebar-collapsed .admin-sidebar .nav-link .badge,
+  body.sidebar-collapsed .admin-sidebar small { display: inline; }
+}
+
+/* Dark mode: Bootstrap menangani sebagian besar; samakan sidebar/header */
+[data-bs-theme="dark"] .admin-header,
+[data-bs-theme="dark"] .admin-sidebar { background: var(--bs-body-bg); }
+[data-bs-theme="dark"] .sidebar-nav .nav-link.active { background: rgba(37, 99, 235, .22); }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition-duration: .01ms !important; }
+}

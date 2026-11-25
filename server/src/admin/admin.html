@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="id" data-bs-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <title>Admin — VibeBuilder</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource-variable/inter@5.2.5/index.css">
+  <link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body data-page="dashboard" class="admin-layout">
+  <a href="#main-content" class="skip-link">Lewati ke konten utama</a>
+  <div id="loading-screen" class="loading-screen">
+    <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Memuat...</span></div>
+  </div>
+
+  <div class="admin-app">
+    <div class="admin-wrapper" id="admin-wrapper">
+
+      <header class="admin-header">
+        <nav class="navbar navbar-expand-lg border-bottom">
+          <div class="container-fluid">
+            <a class="navbar-brand d-flex align-items-center" href="/admin">
+              <span class="brand-mark">V</span>
+              <span class="h4 mb-0 fw-bold">VibeBuilder <small class="text-muted fw-normal">Admin</small></span>
+            </a>
+            <button class="hamburger-menu" type="button" id="sidebar-toggle" aria-label="Alihkan sidebar">
+              <i class="bi bi-list"></i>
+            </button>
+            <div class="search-container flex-grow-1 mx-4 d-none d-md-block">
+              <div class="position-relative">
+                <input type="search" class="form-control" id="global-search" placeholder="Cari di halaman ini..." aria-label="Cari">
+                <i class="bi bi-search position-absolute top-50 end-0 translate-middle-y me-3"></i>
+              </div>
+            </div>
+            <div class="navbar-nav flex-row">
+              <button class="btn btn-outline-secondary me-2" type="button" id="theme-toggle" title="Alihkan tema">
+                <i class="bi bi-sun-fill" id="theme-icon-light"></i>
+                <i class="bi bi-moon-fill d-none" id="theme-icon-dark"></i>
+              </button>
+              <div class="dropdown">
+                <button class="btn btn-outline-secondary d-flex align-items-center" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                  <i class="bi bi-person-circle me-2"></i>
+                  <span class="d-none d-md-inline" id="user-email-label">Admin</span>
+                  <i class="bi bi-chevron-down ms-1"></i>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                  <li><a class="dropdown-item" href="/"><i class="bi bi-box-arrow-up-left me-2"></i>Kembali ke Builder</a></li>
+                  <li><hr class="dropdown-divider"></li>
+                  <li><a class="dropdown-item" href="#" id="logout-link"><i class="bi bi-box-arrow-right me-2"></i>Keluar</a></li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </nav>
+      </header>
+
+      <aside class="admin-sidebar" id="admin-sidebar">
+        <div class="sidebar-content">
+          <nav class="sidebar-nav">
+            <ul class="nav flex-column">
+              <li class="nav-item"><a class="nav-link active" href="#" data-nav="dashboard"><i class="bi bi-speedometer2"></i><span>Dashboard</span></a></li>
+              <li class="nav-item"><a class="nav-link" href="#" data-nav="users"><i class="bi bi-people"></i><span>Pengguna</span><span class="badge bg-primary rounded-pill ms-auto" id="nav-users-count"></span></a></li>
+              <li class="nav-item"><a class="nav-link" href="#" data-nav="projects"><i class="bi bi-box"></i><span>Proyek</span><span class="badge bg-primary rounded-pill ms-auto" id="nav-projects-count"></span></a></li>
+              <li class="nav-item"><a class="nav-link" href="#" data-nav="usage"><i class="bi bi-graph-up"></i><span>Penggunaan</span></a></li>
+              <li class="nav-item"><a class="nav-link" href="#" data-nav="health"><i class="bi bi-heart-pulse"></i><span>Kesehatan</span><span class="badge rounded-pill ms-auto" id="nav-health-badge"></span></a></li>
+              <li class="nav-item mt-3"><small class="text-muted px-3 text-uppercase fw-bold">Admin</small></li>
+              <li class="nav-item"><a class="nav-link" href="#" data-nav="settings"><i class="bi bi-gear"></i><span>Pengaturan</span></a></li>
+              <li class="nav-item"><a class="nav-link" href="/"><i class="bi bi-box-arrow-up-left"></i><span>Kembali ke Builder</span></a></li>
+            </ul>
+          </nav>
+        </div>
+      </aside>
+      <div class="sidebar-backdrop" id="sidebar-backdrop" aria-hidden="true"></div>
+
+      <main id="main-content" class="admin-main">
+        <div class="container-fluid p-4 p-lg-4">
+
+          <!-- Layar terkunci: belum masuk / bukan admin -->
+          <section id="locked-screen" class="d-none">
+            <div class="row justify-content-center mt-5">
+              <div class="col-md-6">
+                <div class="card text-center">
+                  <div class="card-body p-5">
+                    <i class="bi bi-shield-lock display-4 text-muted"></i>
+                    <h2 class="h4 mt-3" id="locked-title">Halaman admin</h2>
+                    <p class="text-muted" id="locked-text">Masuk dulu untuk membuka panel admin.</p>
+                    <a href="/" class="btn btn-primary" id="locked-action">Buka Builder &amp; Masuk</a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- DASHBOARD -->
+          <section data-page="dashboard">
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3 mb-4">
+              <div>
+                <h1 class="h3 mb-0">Dashboard</h1>
+                <p class="text-muted mb-0" id="dashboard-subtitle">Ringkasan VibeBuilder</p>
+              </div>
+              <div class="d-flex gap-2 flex-shrink-0">
+                <button type="button" class="btn btn-outline-secondary" id="refresh-btn" title="Muat ulang data"><i class="bi bi-arrow-clockwise"></i></button>
+              </div>
+            </div>
+
+            <div class="row g-3 g-lg-4 mb-4">
+              <div class="col-sm-6 col-xl-3">
+                <div class="card stats-card"><div class="card-body"><div class="d-flex align-items-center">
+                  <div class="flex-shrink-0"><div class="stats-icon bg-primary bg-opacity-10 text-primary"><i class="bi bi-people"></i></div></div>
+                  <div class="flex-grow-1 ms-3"><p class="h6 mb-0 text-muted">Total Pengguna</p><div class="h3 mb-0" id="stat-users">–</div><small class="text-muted" id="stat-users-sub"></small></div>
+                </div></div></div>
+              </div>
+              <div class="col-sm-6 col-xl-3">
+                <div class="card stats-card"><div class="card-body"><div class="d-flex align-items-center">
+                  <div class="flex-shrink-0"><div class="stats-icon bg-success bg-opacity-10 text-success"><i class="bi bi-box"></i></div></div>
+                  <div class="flex-grow-1 ms-3"><p class="h6 mb-0 text-muted">Total Proyek</p><div class="h3 mb-0" id="stat-projects">–</div><small class="text-muted" id="stat-projects-sub"></small></div>
+                </div></div></div>
+              </div>
+              <div class="col-sm-6 col-xl-3">
+                <div class="card stats-card"><div class="card-body"><div class="d-flex align-items-center">
+                  <div class="flex-shrink-0"><div class="stats-icon bg-info bg-opacity-10 text-info"><i class="bi bi-chat-dots"></i></div></div>
+                  <div class="flex-grow-1 ms-3"><p class="h6 mb-0 text-muted">Total Pesan</p><div class="h3 mb-0" id="stat-messages">–</div><small class="text-muted" id="stat-messages-sub"></small></div>
+                </div></div></div>
+              </div>
+              <div class="col-sm-6 col-xl-3">
+                <div class="card stats-card"><div class="card-body"><div class="d-flex align-items-center">
+                  <div class="flex-shrink-0"><div class="stats-icon bg-warning bg-opacity-10 text-warning"><i class="bi bi-cpu"></i></div></div>
+                  <div class="flex-grow-1 ms-3"><p class="h6 mb-0 text-muted">Token LLM</p><div class="h3 mb-0" id="stat-tokens">–</div><small class="text-muted" id="stat-tokens-sub"></small></div>
+                </div></div></div>
+              </div>
+            </div>
+
+            <div class="row g-4 mb-4">
+              <div class="col-lg-8">
+                <div class="card">
+                  <div class="card-header d-flex justify-content-between align-items-center">
+                    <h2 class="h5 card-title mb-0">Pesan per Hari (14 hari)</h2>
+                    <span class="badge bg-light text-dark" id="chart-range-label"></span>
+                  </div>
+                  <div class="card-body"><canvas id="messagesChart" style="min-height: 300px;"></canvas></div>
+                </div>
+              </div>
+              <div class="col-lg-4">
+                <div class="card card-fill-row">
+                  <div class="card-header"><h2 class="h5 card-title mb-0">Aktivitas Terbaru</h2></div>
+                  <div class="card-body"><div class="activity-feed" id="activity-feed"></div></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="row g-4 mb-4">
+              <div class="col-lg-6">
+                <div class="card">
+                  <div class="card-header"><h2 class="h5 card-title mb-0">Status Proyek</h2></div>
+                  <div class="card-body"><canvas id="statusChart" style="min-height: 260px;"></canvas></div>
+                </div>
+              </div>
+              <div class="col-lg-6">
+                <div class="card">
+                  <div class="card-header"><h2 class="h5 card-title mb-0">Pengguna Teraktif</h2></div>
+                  <div class="card-body"><div class="table-responsive"><table class="table table-hover mb-0">
+                    <thead class="table-light"><tr><th>Pengguna</th><th>Proyek</th><th>Pesan</th></tr></thead>
+                    <tbody id="top-users-body"></tbody>
+                  </table></div></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- PENGGUNA -->
+          <section data-page="users" class="d-none">
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3 mb-4">
+              <div><h1 class="h3 mb-0">Pengguna</h1><p class="text-muted mb-0" id="users-subtitle"></p></div>
+            </div>
+            <div class="card">
+              <div class="card-body">
+                <div class="table-responsive"><table class="table table-hover mb-0" data-filterable>
+                  <thead class="table-light"><tr><th>Pengguna</th><th>Dibuat</th><th>Proyek</th><th>Pesan</th><th>Terakhir aktif</th><th>Status</th><th class="text-end">Aksi</th></tr></thead>
+                  <tbody id="users-body"></tbody>
+                </table></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- PROYEK -->
+          <section data-page="projects" class="d-none">
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3 mb-4">
+              <div><h1 class="h3 mb-0">Proyek</h1><p class="text-muted mb-0" id="projects-subtitle"></p></div>
+            </div>
+            <div class="card">
+              <div class="card-body">
+                <div class="table-responsive"><table class="table table-hover mb-0" data-filterable>
+                  <thead class="table-light"><tr><th>Proyek</th><th>Pemilik</th><th>Status</th><th>Pesan</th><th>File</th><th>Slug</th><th>Diperbarui</th><th class="text-end">Aksi</th></tr></thead>
+                  <tbody id="projects-body"></tbody>
+                </table></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- PENGGUNAAN -->
+          <section data-page="usage" class="d-none">
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3 mb-4">
+              <div><h1 class="h3 mb-0">Penggunaan</h1><p class="text-muted mb-0">Token LLM sejak server start &amp; aktivitas 14 hari terakhir.</p></div>
+            </div>
+            <div class="row g-3 g-lg-4 mb-4">
+              <div class="col-sm-6 col-xl-3"><div class="card stats-card"><div class="card-body"><p class="h6 mb-0 text-muted">Permintaan LLM</p><div class="h3 mb-0" id="usage-requests">–</div><small class="text-muted">sejak server start</small></div></div></div>
+              <div class="col-sm-6 col-xl-3"><div class="card stats-card"><div class="card-body"><p class="h6 mb-0 text-muted">Token Prompt</p><div class="h3 mb-0" id="usage-prompt">–</div><small class="text-muted">sejak server start</small></div></div></div>
+              <div class="col-sm-6 col-xl-3"><div class="card stats-card"><div class="card-body"><p class="h6 mb-0 text-muted">Token Completion</p><div class="h3 mb-0" id="usage-completion">–</div><small class="text-muted">sejak server start</small></div></div></div>
+              <div class="col-sm-6 col-xl-3"><div class="card stats-card"><div class="card-body"><p class="h6 mb-0 text-muted">Total Token</p><div class="h3 mb-0" id="usage-total">–</div><small class="text-muted">prompt + completion</small></div></div></div>
+            </div>
+            <div class="row g-4 mb-4">
+              <div class="col-lg-8">
+                <div class="card">
+                  <div class="card-header"><h2 class="h5 card-title mb-0">Aktivitas Harian</h2></div>
+                  <div class="card-body"><canvas id="usageChart" style="min-height: 300px;"></canvas></div>
+                </div>
+              </div>
+              <div class="col-lg-4">
+                <div class="card">
+                  <div class="card-header"><h2 class="h5 card-title mb-0">Pesan per Pengguna</h2></div>
+                  <div class="card-body"><div class="table-responsive"><table class="table table-hover mb-0">
+                    <thead class="table-light"><tr><th>Pengguna</th><th>Pesan</th></tr></thead>
+                    <tbody id="usage-byuser-body"></tbody>
+                  </table></div></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- KESEHATAN -->
+          <section data-page="health" class="d-none">
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3 mb-4">
+              <div><h1 class="h3 mb-0">Kesehatan Sistem</h1><p class="text-muted mb-0">Status server, LLM, dan preview yang berjalan.</p></div>
+            </div>
+            <div class="row g-3 g-lg-4 mb-4" id="health-cards"></div>
+            <div class="row g-4 mb-4">
+              <div class="col-lg-6">
+                <div class="card">
+                  <div class="card-header"><h2 class="h5 card-title mb-0">LLM Gateway</h2></div>
+                  <div class="card-body" id="llm-status-body"></div>
+                </div>
+              </div>
+              <div class="col-lg-6">
+                <div class="card">
+                  <div class="card-header"><h2 class="h5 card-title mb-0">Preview Berjalan</h2></div>
+                  <div class="card-body" id="previews-body"></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- PENGATURAN -->
+          <section data-page="settings" class="d-none">
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3 mb-4">
+              <div><h1 class="h3 mb-0">Pengaturan</h1><p class="text-muted mb-0">Konfigurasi server saat ini (tampilan saja).</p></div>
+            </div>
+            <div class="row g-4 mb-4">
+              <div class="col-lg-7">
+                <div class="card">
+                  <div class="card-header"><h2 class="h5 card-title mb-0">Konfigurasi</h2></div>
+                  <div class="card-body"><dl class="row mb-0" id="settings-list"></dl></div>
+                </div>
+              </div>
+              <div class="col-lg-5">
+                <div class="card">
+                  <div class="card-header"><h2 class="h5 card-title mb-0">Admin</h2></div>
+                  <div class="card-body" id="admin-identity-body"></div>
+                </div>
+                <div class="card mt-4">
+                  <div class="card-header"><h2 class="h5 card-title mb-0">Catatan</h2></div>
+                  <div class="card-body">
+                    <p class="text-muted mb-0">Model dan provider dibaca dari environment saat server start. Mengubahnya butuh edit environment lalu restart server (service <code>vibebuilder</code>). Akun admin adalah akun pertama yang dibuat, kecuali <code>VB_ADMIN_EMAIL</code> diset.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+        </div>
+      </main>
+
+      <footer class="admin-footer">
+        <div class="container-fluid">
+          <div class="row">
+            <div class="col-md-6"><p class="mb-0 text-muted">© 2026 VibeBuilder Admin</p></div>
+            <div class="col-md-6 text-md-end"><p class="mb-0 text-muted">UI mengikuti template Metis (Bootstrap 5, MIT)</p></div>
+          </div>
+        </div>
+      </footer>
+    </div>
+  </div>
+
+  <div aria-live="polite" aria-atomic="true" class="position-fixed top-0 end-0 p-3" style="z-index: 1080">
+    <div id="toast-container"></div>
+  </div>
+
+  <div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title" id="confirm-title">Konfirmasi</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button></div>
+        <div class="modal-body"><p id="confirm-text" class="mb-0"></p></div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light" data-bs-dismiss="modal">Batal</button>
+          <button type="button" class="btn btn-danger" id="confirm-yes">Ya, lanjutkan</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="/admin/admin.js"></script>
+</body>
+</html>

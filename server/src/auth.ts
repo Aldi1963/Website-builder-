@@ -15,6 +15,7 @@ export type User = {
   email: string
   name: string
   created_at: number
+  disabled?: number
 }
 
 db.exec(`
@@ -43,6 +44,14 @@ CREATE TABLE IF NOT EXISTS password_resets (
   used_at INTEGER
 );
 `)
+
+/* Akun nonaktif: tidak bisa masuk dan sesi lamanya dianggap mati. Kolom
+   ditambah di tempat supaya database lama tetap jalan. */
+try {
+  db.exec(`ALTER TABLE users ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0`)
+} catch {
+  /* sudah ada */
+}
 
 export function hashPassword(password: string): string {
   const salt = randomBytes(16)
@@ -92,7 +101,7 @@ export function userByEmail(email: string): (User & { password_hash: string }) |
 }
 
 export function userById(id: string): User | undefined {
-  return db.prepare(`SELECT id, email, name, created_at FROM users WHERE id = ?`).get(id) as User | undefined
+  return db.prepare(`SELECT id, email, name, created_at, disabled FROM users WHERE id = ?`).get(id) as User | undefined
 }
 
 export function countUsers(): number {
@@ -122,7 +131,9 @@ export function userByToken(token: string | undefined): User | undefined {
     db.prepare(`DELETE FROM sessions WHERE token_hash = ?`).run(tokenHash(token))
     return undefined
   }
-  return userById(row.user_id)
+  const user = userById(row.user_id)
+  if (!user || user.disabled) return undefined
+  return user
 }
 
 export function destroySession(token: string | undefined) {

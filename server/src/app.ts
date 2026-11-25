@@ -67,6 +67,7 @@ import {
 import { runAgent, type AgentEvent } from './agent.ts'
 import { complete, FAST_MODEL, llmUsage } from './llm.ts'
 import { DISCOVERY_SYSTEM } from './prompts.ts'
+import { registerAdmin } from './admin.ts'
 
 type Env = { Variables: { user: User } }
 
@@ -179,6 +180,7 @@ app.post('/api/auth/login', async (c) => {
   if (!row || !verifyPassword(body.password ?? '', row.password_hash)) {
     return c.json({ ok: false, error: 'Email atau password salah.' }, 401)
   }
+  if (row.disabled) return c.json({ ok: false, error: 'Akun ini dinonaktifkan. Hubungi admin.' }, 403)
   const { password_hash: _drop, ...user } = row
   const { token, expiresAt } = createSession(user.id, remember)
   c.header('set-cookie', sessionCookie(token, Math.floor((expiresAt - Date.now()) / 1000)))
@@ -658,6 +660,10 @@ app.post('/api/projects/:id/screenshots', async (c) => {
     return c.json({ ok: false, error: `Screenshot gagal: ${(err as Error).message}` }, 503)
   }
 })
+
+/* ---------- panel admin (Metis) ---------- */
+
+registerAdmin(app)
 
 /* ---------- static UI ---------- */
 

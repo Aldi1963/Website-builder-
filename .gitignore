@@ -10,3 +10,4 @@ server/data/
 *.png
 /tmp/
 data/*.db-*
+template-metis/
