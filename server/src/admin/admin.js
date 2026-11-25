@@ -825,6 +825,9 @@
     $('#credit-set-days').value = s.settings.freeDays
     $('#credit-set-cap').value = s.settings.freeDailyCap
     $('#credit-set-min').value = s.settings.minBalance
+    $('#credit-set-daily-free').value = s.settings.dailyCapFree
+    $('#credit-set-daily-paid').value = s.settings.dailyCapPaid
+    $('#credit-set-calls-hour').value = s.settings.maxCallsPerHour
   }
   async function searchCreditUsers() {
     const q = $('#credit-search').value.trim()
@@ -906,6 +909,9 @@
               freeDays: Number($('#credit-set-days').value),
               freeDailyCap: Number($('#credit-set-cap').value),
               minBalance: Number($('#credit-set-min').value),
+              dailyCapFree: Number($('#credit-set-daily-free').value),
+              dailyCapPaid: Number($('#credit-set-daily-paid').value),
+              maxCallsPerHour: Number($('#credit-set-calls-hour').value),
             }),
           })
           toast('Pengaturan credit disimpan.')

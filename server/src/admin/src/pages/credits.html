@@ -76,6 +76,13 @@
         <input type="number" min="0" class="form-control" id="credit-set-cap"></div>
       <div class="col-md-3"><label class="form-label" for="credit-set-min">Saldo minimal gate AI</label>
         <input type="number" min="0" class="form-control" id="credit-set-min"></div>
+      <div class="col-md-3"><label class="form-label" for="credit-set-daily-free">Cap harian total — Gratis</label>
+        <input type="number" min="0" class="form-control" id="credit-set-daily-free"></div>
+      <div class="col-md-3"><label class="form-label" for="credit-set-daily-paid">Cap harian total — Berbayar</label>
+        <input type="number" min="0" class="form-control" id="credit-set-daily-paid"></div>
+      <div class="col-md-3"><label class="form-label" for="credit-set-calls-hour">Maks. panggilan AI / jam</label>
+        <input type="number" min="0" class="form-control" id="credit-set-calls-hour"></div>
+      <div class="col-12"><p class="text-muted small mb-0">Fase 5 (anti-abuse): cap harian total membatasi credit yang dipotong per pengguna per hari (0 = tanpa batas) — terpisah dari "cap harian bucket gratis" di atas yang hanya membatasi bucket gratis. Pengguna berbayar = punya plan selain Gratis. Batas panggilan/jam dihitung dari pemakaian tercatat.</p></div>
       <div class="col-12"><button type="submit" class="btn btn-primary">Simpan Pengaturan</button></div>
     </form>
   </div>

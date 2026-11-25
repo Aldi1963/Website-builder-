@@ -16,12 +16,33 @@ export const FREE_GRANT_CREDITS = 100
 export const FREE_GRANT_DAYS = 30
 export const FREE_DAILY_CAP = 50
 export const MIN_BALANCE_TO_CALL = 10
+/* ---- Anti-abuse fase 5 ----
+   DAILY_CAP_FREE: total credit yang boleh dipotong per pengguna per hari
+   (hari lokal server) untuk plan Gratis — default 200/hari.
+   DAILY_CAP_PAID: sama untuk pengguna berbayar (punya plan selain
+   Gratis) — default 1.000/hari. Cap ini MEMBATASI LAJU, bukan jatah:
+   saldo tetap yang membatasi total; cap hanya mencegah satu akun
+   menghabiskan saldo besar dalam sehari (mis. kunci bocor / abuse).
+   MAX_CALLS_PER_HOUR: maks. panggilan complete() per pengguna per jam
+   bergulir — pengaman laju yang bekerja tanpa agent.ts (dihitung dari
+   credit_usage). Default 120/jam ≈ 4 run penuh 30 turn per jam. */
+export const DAILY_CAP_FREE = 200
+export const DAILY_CAP_PAID = 1000
+export const MAX_CALLS_PER_HOUR = 120
 
 /* ---- Angka credit yang bisa diubah admin (fase 4) ----
    Disimpan di admin_settings (key credit.*); bila belum diatur dipakai
    default yang disetujui user 25 Nov 2026 di atas. Dibaca per panggilan
    supaya perubahan dari panel admin berlaku tanpa restart server. */
-export type CreditSettings = { freeGrant: number; freeDays: number; freeDailyCap: number; minBalance: number }
+export type CreditSettings = {
+  freeGrant: number
+  freeDays: number
+  freeDailyCap: number
+  minBalance: number
+  dailyCapFree: number
+  dailyCapPaid: number
+  maxCallsPerHour: number
+}
 
 function creditSettingRaw(key: string): string | undefined {
   try {
@@ -42,6 +63,9 @@ export function getCreditSettings(): CreditSettings {
     freeDays: num('credit.free_days', FREE_GRANT_DAYS, 1, 3650),
     freeDailyCap: num('credit.free_daily_cap', FREE_DAILY_CAP, 0, 100000),
     minBalance: num('credit.min_balance', MIN_BALANCE_TO_CALL, 0, 100000),
+    dailyCapFree: num('credit.daily_cap_free', DAILY_CAP_FREE, 0, 100000),
+    dailyCapPaid: num('credit.daily_cap_paid', DAILY_CAP_PAID, 0, 100000),
+    maxCallsPerHour: num('credit.max_calls_per_hour', MAX_CALLS_PER_HOUR, 0, 100000),
   }
 }
 
@@ -54,6 +78,9 @@ export function updateCreditSettings(patch: Partial<CreditSettings>): CreditSett
     freeDays: patch.freeDays !== undefined ? Math.min(3650, Math.max(1, Math.floor(Number(patch.freeDays) || 1))) : cur.freeDays,
     freeDailyCap: patch.freeDailyCap !== undefined ? Math.min(100000, Math.max(0, Math.floor(Number(patch.freeDailyCap) || 0))) : cur.freeDailyCap,
     minBalance: patch.minBalance !== undefined ? Math.min(100000, Math.max(0, Math.floor(Number(patch.minBalance) || 0))) : cur.minBalance,
+    dailyCapFree: patch.dailyCapFree !== undefined ? Math.min(100000, Math.max(0, Math.floor(Number(patch.dailyCapFree) || 0))) : cur.dailyCapFree,
+    dailyCapPaid: patch.dailyCapPaid !== undefined ? Math.min(100000, Math.max(0, Math.floor(Number(patch.dailyCapPaid) || 0))) : cur.dailyCapPaid,
+    maxCallsPerHour: patch.maxCallsPerHour !== undefined ? Math.min(100000, Math.max(0, Math.floor(Number(patch.maxCallsPerHour) || 0))) : cur.maxCallsPerHour,
   }
   const now = Date.now()
   const put = (key: string, v: number) =>
@@ -65,12 +92,96 @@ export function updateCreditSettings(patch: Partial<CreditSettings>): CreditSett
   put('credit.free_days', next.freeDays)
   put('credit.free_daily_cap', next.freeDailyCap)
   put('credit.min_balance', next.minBalance)
+  put('credit.daily_cap_free', next.dailyCapFree)
+  put('credit.daily_cap_paid', next.dailyCapPaid)
+  put('credit.max_calls_per_hour', next.maxCallsPerHour)
   return next
 }
 
 /* Saldo minimal untuk memanggil AI (dipakai gate di llm.ts). */
 export function minBalanceToCall(): number {
   return getCreditSettings().minBalance
+}
+
+/* ---- Cap harian total + batas laju panggilan (fase 5, anti-abuse) ----
+   Cap dihitung dari credit_usage yang tercatat hari itu (kolom credit =
+   yang benar-benar dipotong; shortfall tidak dihitung) dengan hari lokal
+   server — konsisten dengan cap harian bucket free fase 1. Cap berbayar
+   berlaku untuk pengguna yang punya plan (plan_id terisi); tanpa plan
+   dianggap Gratis. Nilai 0 = cap dimatikan (tanpa batas). Gate di llm.ts
+   memanggil checkDailyCap/checkCallRate SEBELUM fetch LLM, jadi
+   pemakaian yang melewati cap tidak pernah memanggil LLM. */
+
+export function usedCreditToday(userId: string, now = Date.now()): number {
+  try {
+    const row = db
+      .prepare(
+        `SELECT COALESCE(SUM(credit), 0) AS used FROM credit_usage WHERE user_id = ? AND created_at >= ?`,
+      )
+      .get(userId, startOfToday(now)) as { used: number }
+    return Math.round((row?.used ?? 0) * 1e6) / 1e6
+  } catch {
+    return 0
+  }
+}
+
+export function dailyCapFor(userId: string): number {
+  const s = getCreditSettings()
+  try {
+    return getUserPlan(userId).planId ? s.dailyCapPaid : s.dailyCapFree
+  } catch {
+    return s.dailyCapFree
+  }
+}
+
+export function dailyCapError(used: number, cap: number): Error {
+  const err = new Error(
+    `Batas harian credit tercapai — sudah memakai ${used.toFixed(1)} dari ${cap} credit hari ini. Batas direset besok. Top up tidak menambah batas harian; hubungi admin bila butuh batas lebih tinggi.`,
+  )
+  ;(err as Error & { code: string }).code = 'CREDIT_LIMIT_HARIAN'
+  return err
+}
+
+/* Lempar CREDIT_LIMIT_HARIAN bila pemakaian hari ini sudah mencapai cap.
+   Mengembalikan sisa cap hari ini bila masih ada. */
+export function checkDailyCap(userId: string): { used: number; cap: number; remaining: number } {
+  const cap = dailyCapFor(userId)
+  const used = usedCreditToday(userId)
+  if (cap > 0 && used >= cap) throw dailyCapError(used, cap)
+  return { used, cap, remaining: cap > 0 ? Math.round((cap - used) * 1e6) / 1e6 : Infinity }
+}
+
+export function callsLastHour(userId: string, now = Date.now()): number {
+  try {
+    const row = db
+      .prepare(`SELECT COUNT(*) AS n FROM credit_usage WHERE user_id = ? AND created_at >= ?`)
+      .get(userId, now - 60 * 60 * 1000) as { n: number }
+    return row?.n ?? 0
+  } catch {
+    return 0
+  }
+}
+
+export function callRateError(count: number, max: number): Error {
+  const err = new Error(
+    `Terlalu banyak panggilan AI — ${count} panggilan dalam satu jam terakhir (maks. ${max}/jam). Tunggu sebentar lalu coba lagi.`,
+  )
+  ;(err as Error & { code: string }).code = 'CREDIT_LIMIT_PANGGILAN_JAM'
+  return err
+}
+
+/* Lempar CREDIT_LIMIT_PANGGILAN_JAM bila panggilan dalam 1 jam terakhir
+   sudah mencapai batas. Dihitung dari credit_usage (satu baris per
+   panggilan complete() yang selesai dicatat) — pengaman laju yang
+   sepenuhnya bekerja tanpa agent.ts. Trade-off: panggilan yang gagal
+   sebelum usage tercatat (mis. LLM error tanpa usage) tidak terhitung,
+   dan batas ini menghitung PANGGILAN, bukan turn agent — satu run 30
+   turn memakai ~30 panggilan. */
+export function checkCallRate(userId: string): { count: number; max: number } {
+  const max = getCreditSettings().maxCallsPerHour
+  const count = callsLastHour(userId)
+  if (max > 0 && count >= max) throw callRateError(count, max)
+  return { count, max }
 }
 
 export const LUNA_RATE_IN = 1

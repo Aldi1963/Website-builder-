@@ -1000,11 +1000,16 @@ export function registerAdmin(app: Hono<AdminEnv>) {
   /* (a) cari pengguna -> saldo (3 bucket + kedaluwarsa + reset jatah) */
   /*     + riwayat pemakaian + top-up + transaksi; (b) tambah/kurangi/  */
   /*     cabut credit (tercatat di credit_transactions + log audit);   */
-  /*     (c) pengaturan angka credit (admin_settings, tanpa ubah kode).*/
+  /* (c) pengaturan angka credit (admin_settings, tanpa ubah kode).
+     Fase 5 menambah: cap harian total Gratis/berbayar + maks. panggilan
+     AI per jam (anti-abuse, berlaku tanpa restart). */
   /* ---------------------------------------------------------------- */
 
   app.get('/api/admin/credits/settings', (c) => {
-    return c.json({ settings: getCreditSettings(), defaults: { freeGrant: 100, freeDays: 30, freeDailyCap: 50, minBalance: 10 } })
+    return c.json({
+      settings: getCreditSettings(),
+      defaults: { freeGrant: 100, freeDays: 30, freeDailyCap: 50, minBalance: 10, dailyCapFree: 200, dailyCapPaid: 1000, maxCallsPerHour: 120 },
+    })
   })
 
   app.put('/api/admin/credits/settings', async (c) => {
@@ -1013,6 +1018,9 @@ export function registerAdmin(app: Hono<AdminEnv>) {
       freeDays?: number
       freeDailyCap?: number
       minBalance?: number
+      dailyCapFree?: number
+      dailyCapPaid?: number
+      maxCallsPerHour?: number
     }
     const before = getCreditSettings()
     const after = updateCreditSettings(body)

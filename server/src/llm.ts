@@ -1,7 +1,7 @@
 import { BASE_SYSTEM } from './prompts.ts'
 import { db } from './db.ts'
 import { userById } from './auth.ts'
-import { deduct, getBalance, minBalanceToCall, type UsageInput } from './credits.ts'
+import { checkCallRate, checkDailyCap, deduct, getBalance, minBalanceToCall, type UsageInput } from './credits.ts'
 
 export type ChatMessage =
   | { role: 'system' | 'user' | 'assistant'; content: string; tool_calls?: ToolCall[] }
@@ -117,14 +117,18 @@ function parseSse(raw: string, noteUsage: (u: unknown) => void = trackUsage): { 
   return { choices: [{ message }], usage }
 }
 
-/* ---- Gate + metering credit (fase 1) ----
+/* ---- Gate + metering credit (fase 1, ditambah anti-abuse fase 5) ----
    Panggilan DENGAN userId (chat builder + review): saldo dicek SEBELUM
-   fetch (minimal 10 credit) dan usage final dipotong tepat sekali sesudah
-   respons — juga saat LLM error setelah usage sebagian diterima. Panggilan
-   TANPA userId (mis. /api/discovery): tanpa gate, tanpa potong (biaya
-   sistem, ditanggung owner). noteUsage bisa terpanggil berkali-kali
-   (tiap chunk SSE yang membawa usage); yang dipakai hanya usage TERAKHIR
-   (= total final dari upstream), dan deduct() dipanggil tepat sekali. */
+   fetch (minimal 10 credit), lalu cap harian total (CREDIT_LIMIT_HARIAN)
+   dan batas laju panggilan/jam (CREDIT_LIMIT_PANGGILAN_JAM); maks. 1 run
+   bersamaan per pengguna (CREDIT_RUN_BERSAMAAN); review maks. 1× per run
+   bila pemanggil meneruskan runId + kind 'review'. Usage final dipotong
+   tepat sekali sesudah respons — juga saat LLM error setelah usage
+   sebagian diterima. Panggilan TANPA userId (mis. /api/discovery): tanpa
+   gate, tanpa potong (biaya sistem, ditanggung owner). noteUsage bisa
+   terpanggil berkali-kali (tiap chunk SSE yang membawa usage); yang dipakai
+   hanya usage TERAKHIR (= total final dari upstream), dan deduct()
+   dipanggil tepat sekali. */
 export function creditHabisError(balance: number): Error {
   const err = new Error(
     `Credit habis — saldo ${balance.toFixed(1)} credit, minimal ${minBalanceToCall()} credit untuk memakai AI. Top up credit untuk melanjutkan.`,
@@ -133,9 +137,115 @@ export function creditHabisError(balance: number): Error {
   return err
 }
 
+/* ---- Anti-abuse fase 5: 1 run bersamaan per pengguna ----
+   Panggilan dalam satu run bersifat berurutan (agent menunggu tiap
+   complete() sebelum memanggil lagi), jadi penjaga ini hanya menolak run
+   KEDUA yang tumpang tindih — mis. pengguna membuka dua chat dan
+   mengirim bersamaan. Tanpa userId (discovery, tes admin) tidak dijaga. */
+const activeRuns = new Set<string>()
+
+export function concurrentRunError(): Error {
+  const err = new Error(
+    'Masih ada proses AI yang berjalan untuk akun ini — tunggu sampai selesai, lalu coba lagi.',
+  )
+  ;(err as Error & { code: string }).code = 'CREDIT_RUN_BERSAMAAN'
+  return err
+}
+
+/* ---- Mekanisme batas turn + review per run (fase 5) ----
+   Batasan ini HIDUP di loop agent (agent.ts — MILIK HERMES, belum
+   tersambung; lihat catatan di bawah). Yang disediakan di sini:
+   - registerTurn(runId): hitung 1 turn; lempar RUN_MAX_TURN bila > 30.
+   - registerReviewCall(runId): hitung 1 review; lempar
+     REVIEW_MAX_1_PER_RUN bila review ke-2 dalam run yang sama.
+     complete() memanggilnya sendiri bila opts.kind === 'review' dan
+     opts.runId terisi, jadi begitu agent.ts meneruskan runId + kind,
+     batas review langsung aktif tanpa perubahan lain di sini.
+   - shouldSkipReview(change): heuristik edit sepele (≤1 file dan ≤10
+     baris berubah) — agent.ts yang memutuskan memakainya sebelum review.
+   Entri run dibersihkan malas setelah 2 jam tidak disentuh. */
+export const MAX_TURNS_PER_RUN = 30
+export const MAX_REVIEW_PER_RUN = 1
+/* Edit sepele: review boleh dilewati bila perubahan sekecil ini. */
+export const TRIVIAL_EDIT_MAX_FILES = 1
+export const TRIVIAL_EDIT_MAX_LINES = 10
+
+type RunTrack = { turns: number; reviews: number; lastSeen: number }
+const runTracks = new Map<string, RunTrack>()
+const RUN_TRACK_TTL_MS = 2 * 60 * 60 * 1000
+
+function pruneRunTracks(now = Date.now()) {
+  for (const [id, t] of runTracks) if (now - t.lastSeen > RUN_TRACK_TTL_MS) runTracks.delete(id)
+}
+
+function trackFor(runId: string): RunTrack {
+  pruneRunTracks()
+  let t = runTracks.get(runId)
+  if (!t) {
+    t = { turns: 0, reviews: 0, lastSeen: Date.now() }
+    runTracks.set(runId, t)
+  }
+  t.lastSeen = Date.now()
+  return t
+}
+
+export function registerTurn(runId: string): number {
+  const t = trackFor(runId)
+  t.turns += 1
+  if (t.turns > MAX_TURNS_PER_RUN) {
+    const err = new Error(
+      `Run ini sudah melewati batas ${MAX_TURNS_PER_RUN} turn — hentikan dan mulai chat baru dengan instruksi yang lebih ringkas.`,
+    )
+    ;(err as Error & { code: string }).code = 'RUN_MAX_TURN'
+    throw err
+  }
+  return t.turns
+}
+
+export function turnsUsed(runId: string): number {
+  return runTracks.get(runId)?.turns ?? 0
+}
+
+export function registerReviewCall(runId: string): number {
+  const t = trackFor(runId)
+  t.reviews += 1
+  if (t.reviews > MAX_REVIEW_PER_RUN) {
+    const err = new Error(
+      `Review sudah dilakukan ${MAX_REVIEW_PER_RUN}× dalam run ini — review tambahan tidak diizinkan.`,
+    )
+    ;(err as Error & { code: string }).code = 'REVIEW_MAX_1_PER_RUN'
+    throw err
+  }
+  return t.reviews
+}
+
+export function reviewsUsed(runId: string): number {
+  return runTracks.get(runId)?.reviews ?? 0
+}
+
+export function endRunTracking(runId: string) {
+  runTracks.delete(runId)
+}
+
+export function shouldSkipReview(change: { filesChanged: number; linesAdded: number; linesRemoved: number }): boolean {
+  const lines = Math.max(0, change.linesAdded) + Math.max(0, change.linesRemoved)
+  return change.filesChanged <= TRIVIAL_EDIT_MAX_FILES && lines <= TRIVIAL_EDIT_MAX_LINES
+}
+
 export async function complete(
   messages: ChatMessage[],
-  opts: { model?: string; tools?: unknown[]; temperature?: number; maxTokens?: number; onDelta?: (text: string) => void | Promise<void>; userId?: string } = {},
+  opts: {
+    model?: string
+    tools?: unknown[]
+    temperature?: number
+    maxTokens?: number
+    onDelta?: (text: string) => void | Promise<void>
+    userId?: string
+    /* Fase 5: runId + kind dipakai mekanisme batas review/turn per run.
+       Tanpa runId, batas review tidak bisa dilacak dan dilewati. */
+    runId?: string
+    kind?: 'chat' | 'review'
+  } = {},
 ): Promise<{ message: ChatMessage & { role: 'assistant' }; usage?: unknown }> {
   /* Konfigurasi diselesaikan per panggilan supaya perubahan dari panel admin
      berlaku tanpa restart server. */
@@ -147,7 +257,32 @@ export async function complete(
   if (opts.userId) {
     const bal = getBalance(opts.userId)
     if (bal.total < minBalanceToCall()) throw creditHabisError(bal.total)
+    /* Fase 5: cap harian total + batas laju panggilan — juga sebelum LLM. */
+    checkDailyCap(opts.userId)
+    checkCallRate(opts.userId)
   }
+
+  /* Fase 5: maks. 1 run bersamaan per pengguna — dilepas di finally. */
+  const guarded = Boolean(opts.userId)
+  if (guarded && activeRuns.has(opts.userId as string)) throw concurrentRunError()
+  if (guarded) activeRuns.add(opts.userId as string)
+  try {
+    /* Fase 5: review maks. 1× per run (bila runId diteruskan pemanggil).
+       Di dalam try supaya guard dilepas bila registrasi ini menolak. */
+    if (opts.userId && opts.kind === 'review' && opts.runId) registerReviewCall(opts.runId)
+    return await completeInner(messages, opts, endpoint, apiKey, model)
+  } finally {
+    if (guarded) activeRuns.delete(opts.userId as string)
+  }
+}
+
+async function completeInner(
+  messages: ChatMessage[],
+  opts: { model?: string; tools?: unknown[]; temperature?: number; maxTokens?: number; onDelta?: (text: string) => void | Promise<void>; userId?: string; runId?: string; kind?: 'chat' | 'review' },
+  endpoint: string,
+  apiKey: string,
+  model: string,
+): Promise<{ message: ChatMessage & { role: 'assistant' }; usage?: unknown }> {
 
   /* Usage final (terakhir yang diterima) — dipotong tepat sekali. */
   let finalUsage: UsageInput | undefined
