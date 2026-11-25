@@ -1932,6 +1932,7 @@ export function registerAdmin(app: Hono<AdminEnv>) {
     usage: 'usage.html',
     builds: 'builds.html',
     biaya: 'cost.html',
+    providers: 'providers.html',
     billing: 'billing.html',
     domain: 'domain.html',
     messages: 'messages.html',

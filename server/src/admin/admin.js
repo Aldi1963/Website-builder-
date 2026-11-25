@@ -229,6 +229,7 @@
     { title: 'Kelola Credit', url: '/admin/credits', type: 'halaman' },
     { title: 'Penggunaan', url: '/admin/usage', type: 'halaman' },
     { title: 'Biaya LLM', url: '/admin/biaya', type: 'halaman' },
+    { title: 'Provider LLM', url: '/admin/providers', type: 'halaman' },
     { title: 'Pembayaran', url: '/admin/billing', type: 'halaman' },
     { title: 'Build', url: '/admin/builds', type: 'halaman' },
     { title: 'Domain', url: '/admin/domain', type: 'halaman' },
@@ -295,6 +296,7 @@
     else if (name === 'credits') await loadCredits()
     else if (name === 'usage') await loadUsage()
     else if (name === 'biaya') await loadCost()
+    else if (name === 'providers') await loadProviders()
     else if (name === 'billing') await loadBilling()
     else if (name === 'builds') await loadBuilds()
     else if (name === 'messages') await loadMessages()
@@ -724,6 +726,210 @@
     try {
       const next = { ...costPricesCache, [String(vals.model).trim()]: { prompt_per_1k: Number(vals.prompt) || 0, completion_per_1k: Number(vals.completion) || 0, currency: 'IDR' } }
       await saveCostPrices(next)
+    } catch (err) { toast(err.message, 'error') }
+  })
+
+  /* ---------- provider LLM ---------- */
+  /* Nilai key TIDAK PERNAH ditampilkan atau diisi ulang — hanya status
+     terpasang/belum. Simpan mengirim isi field apa adanya; field yang
+     dikosongkan (dengan konfirmasi) menghapus key tersimpan di panel. */
+  const PROVIDER_NOTES = {
+    '9router': 'Provider default builder. Key juga bisa diatur di Pengaturan AI — nilai <code>llm.key</code> di sana mengalahkan key panel ini. Endpoint chat efektif mengikuti <code>llm.url</code> bila diisi.',
+    commandcode: 'TERBLOKIR — paket Go $1/bln tidak termasuk akses API (chat ditolak 403 upgrade_required). Upgrade yang membuka API: <strong>GOAT $10/bln</strong> (membuka API, credit pool + rolling window) atau <strong>Provider $15/bln</strong> (+$1,01 fee, termasuk $15 credit, PAYG tanpa markup — rute paling bersih). Lihat harga di <a href="https://commandcode.ai/billing" target="_blank" rel="noopener">commandcode.ai/billing</a>. Model gratis (:free) tetap terblokir — blokir di level paket, bukan model.',
+    gater: '<strong>PRO habis 2 Des 2026 13:38 WIB</strong> — sesudahnya belum ada pernyataan resmi; kemungkinan akses berhenti total, bukan turun ke free. <strong>Tanpa harga = belum bisa dipakai</strong>: isi tarif per model di bawah dulu. Batas per key (konservatif): maks 5 koneksi bersamaan + ~40 RPM. Varian <code>-uncen</code> boleh diaktifkan lewat sakelar model (keputusan user 25 Nov 2026).',
+    sumopod: 'Cara buat key: buat akun di <a href="https://ai.sumopod.com" target="_blank" rel="noopener">ai.sumopod.com</a> → isi AI Balance → menu API Keys → buat key, lalu tempel di bawah ini. Tarif dari katalog 27 Okt 2026 — bisa tertinggal, sinkronkan saat key terpasang.',
+  }
+  function fmtRate(v) {
+    return v === null || v === undefined ? '–' : `$${v}`
+  }
+  function providerStatusBadges(p) {
+    const badges = [p.active
+      ? '<span class="badge bg-success">Aktif</span>'
+      : '<span class="badge bg-secondary">Nonaktif</span>']
+    if (p.id === 'commandcode') badges.push('<span class="badge bg-danger">Terblokir paket Go</span>')
+    if (!p.keyConfigured) badges.push('<span class="badge bg-warning text-dark">Key belum terpasang</span>')
+    const priced = (p.models || []).filter((m) => m.rateInUsdPer1M !== null && m.rateOutUsdPer1M !== null).length
+    if (priced === 0) badges.push('<span class="badge bg-warning text-dark">Tanpa harga</span>')
+    if (p.id === 'gater') badges.push('<span class="badge bg-warning text-dark">PRO habis 2 Des 2026</span>')
+    return badges.join(' ')
+  }
+  function modelBadges(m) {
+    const badges = []
+    if (m.messagesOnly) badges.push('<span class="badge bg-danger">/messages-only</span>')
+    if (m.rateInUsdPer1M === 0 && m.rateOutUsdPer1M === 0) badges.push('<span class="badge bg-success">Gratis $0</span>')
+    if (m.rateInUsdPer1M === null || m.rateOutUsdPer1M === null) badges.push('<span class="badge bg-warning text-dark">Tanpa tarif — tidak bisa dipakai</span>')
+    if (m.toolsConfirmed === true) badges.push('<span class="badge bg-info text-dark">tools terkonfirmasi</span>')
+    if (m.toolsConfirmed === false) badges.push('<span class="badge bg-secondary">tools belum terkonfirmasi</span>')
+    if (m.contextLength) badges.push(`<span class="badge bg-secondary">konteks ${fmtNum(m.contextLength)}</span>`)
+    if (m.id.endsWith('-uncen')) badges.push('<span class="badge bg-info text-dark">-uncen</span>')
+    return badges.join(' ')
+  }
+  function parseRateInput(raw) {
+    const s = String(raw ?? '').trim()
+    if (s === '') return null
+    const n = Number(s)
+    if (!Number.isFinite(n) || n < 0) return undefined
+    return n
+  }
+  async function loadProviders() {
+    const list = $('#providers-list')
+    const data = await api('/api/admin/llm/providers')
+    const providers = data.providers || []
+    list.innerHTML = providers.length ? providers.map((p) => {
+      const models = p.models || []
+      return `<div class="card mb-4">
+        <div class="card-header d-flex flex-wrap align-items-center gap-2">
+          <h2 class="h5 card-title mb-0">${esc(p.name)}</h2>
+          ${providerStatusBadges(p)}
+          <div class="form-check form-switch ms-auto mb-0">
+            <input class="form-check-input" type="checkbox" role="switch" id="prov-toggle-${esc(p.id)}" data-act="toggle-provider" data-provider="${esc(p.id)}"${p.active ? ' checked' : ''}>
+            <label class="form-check-label" for="prov-toggle-${esc(p.id)}">${p.active ? 'Aktif' : 'Nonaktif'}</label>
+          </div>
+        </div>
+        <div class="card-body">
+          <p class="text-muted small mb-2">Base URL: <code>${esc(p.baseUrl)}</code>${p.keyEnv ? ` · env key: <code>${esc(p.keyEnv)}</code>` : ''} · ${fmtNum(models.length)} model · ${fmtNum(models.filter((m) => m.active).length)} aktif</p>
+          ${p.notes ? `<div class="alert alert-warning py-2 mb-2 small" role="alert">${esc(p.notes)}</div>` : ''}
+          ${PROVIDER_NOTES[p.id] ? `<div class="alert alert-info py-2 mb-3 small" role="alert">${PROVIDER_NOTES[p.id]}</div>` : ''}
+          <div class="row g-2 align-items-end mb-3">
+            <div class="col-md-6">
+              <label class="form-label" for="prov-key-${esc(p.id)}">API key
+                ${p.keyConfigured
+                  ? '<span class="badge bg-primary">terpasang</span>'
+                  : '<span class="badge bg-secondary">belum terpasang</span>'}
+              </label>
+              <input type="password" class="form-control font-monospace" id="prov-key-${esc(p.id)}" data-key-input="${esc(p.id)}" autocomplete="new-password"
+                placeholder="${p.keyConfigured ? '•••••••• (terpasang — isi untuk mengganti)' : 'Belum ada key — tempel API key'}">
+              <div class="form-text">Nilai key tidak pernah ditampilkan. Kosongkan lalu simpan (dengan konfirmasi) untuk menghapus key panel.</div>
+            </div>
+            <div class="col-auto d-flex gap-2 flex-wrap">
+              <button class="btn btn-primary btn-sm" type="button" data-act="save-key" data-provider="${esc(p.id)}">Simpan key</button>
+              <button class="btn btn-outline-secondary btn-sm" type="button" data-act="test-provider" data-provider="${esc(p.id)}">Tes koneksi</button>
+              <button class="btn btn-outline-secondary btn-sm" type="button" data-act="sync-provider" data-provider="${esc(p.id)}">Sinkronkan model</button>
+            </div>
+          </div>
+          <div class="small mb-3" data-result="${esc(p.id)}"></div>
+          <div class="table-responsive"><table class="table table-hover table-sm mb-0">
+            <thead class="table-light"><tr><th>Model</th><th style="min-width:110px">In $ / 1 jt token</th><th style="min-width:110px">Out $ / 1 jt token</th><th>Aktif</th><th></th></tr></thead>
+            <tbody>
+              ${models.length ? models.map((m) => `<tr>
+                <td>
+                  <span class="font-monospace">${esc(m.id)}</span>
+                  ${m.name && m.name !== m.id ? `<br><small class="text-muted">${esc(m.name)}</small>` : ''}
+                  <div class="mt-1 d-flex flex-wrap gap-1">${modelBadges(m)}</div>
+                  ${m.notes ? `<br><small class="text-muted">${esc(m.notes)}</small>` : ''}
+                </td>
+                <td><input type="number" class="form-control form-control-sm" data-field="in" data-provider="${esc(p.id)}" data-model="${esc(m.id)}" min="0" step="any" value="${m.rateInUsdPer1M === null ? '' : esc(m.rateInUsdPer1M)}" placeholder="belum diketahui" aria-label="Tarif input ${esc(m.id)}"></td>
+                <td><input type="number" class="form-control form-control-sm" data-field="out" data-provider="${esc(p.id)}" data-model="${esc(m.id)}" min="0" step="any" value="${m.rateOutUsdPer1M === null ? '' : esc(m.rateOutUsdPer1M)}" placeholder="belum diketahui" aria-label="Tarif output ${esc(m.id)}"></td>
+                <td><div class="form-check form-switch"><input class="form-check-input" type="checkbox" role="switch" data-act="toggle-model" data-provider="${esc(p.id)}" data-model="${esc(m.id)}"${m.active ? ' checked' : ''} aria-label="Aktif ${esc(m.id)}"></div></td>
+                <td class="text-end text-nowrap"><button class="btn btn-sm btn-outline-primary" type="button" data-act="save-rate" data-provider="${esc(p.id)}" data-model="${esc(m.id)}">Simpan tarif</button></td>
+              </tr>`).join('') : '<tr><td colspan="5" class="text-muted">Belum ada model di registry provider ini.</td></tr>'}
+            </tbody>
+          </table></div>
+          <p class="text-muted small mt-2 mb-0">Tarif kosong = harga belum diketahui → model tidak bisa dipakai. Tarif $0 = gratis, sah dipakai. Tarif yang disimpan di sini juga dipakai pemotongan credit; sinkronkan ke halaman Biaya LLM dengan tombol di atas.</p>
+        </div>
+      </div>`
+    }).join('') : '<p class="text-muted">Belum ada provider di registry.</p>'
+
+    const setResult = (providerId, html) => {
+      const box = list.querySelector(`[data-result="${providerId}"]`)
+      if (box) box.innerHTML = html
+    }
+    $$('#providers-list [data-act="toggle-provider"]').forEach((el) => el.addEventListener('change', async () => {
+      const providerId = el.dataset.provider
+      try {
+        await api(`/api/admin/llm/providers/${encodeURIComponent(providerId)}`, { method: 'PUT', body: JSON.stringify({ active: el.checked }) })
+        toast(`Provider ${providerId} ${el.checked ? 'diaktifkan' : 'dinonaktifkan'}.`)
+        loadProviders()
+      } catch (err) { toast(err.message, 'error'); loadProviders() }
+    }))
+    $$('#providers-list [data-act="toggle-model"]').forEach((el) => el.addEventListener('change', async () => {
+      const providerId = el.dataset.provider
+      const modelId = el.dataset.model
+      try {
+        await api(`/api/admin/llm/providers/${encodeURIComponent(providerId)}/models/${encodeURIComponent(modelId)}`, { method: 'PUT', body: JSON.stringify({ active: el.checked }) })
+        toast(`Model ${modelId} ${el.checked ? 'diaktifkan' : 'dinonaktifkan'}.`)
+      } catch (err) { toast(err.message, 'error'); loadProviders() }
+    }))
+    $$('#providers-list [data-act="save-rate"]').forEach((btn) => btn.addEventListener('click', async () => {
+      const providerId = btn.dataset.provider
+      const modelId = btn.dataset.model
+      const row = btn.closest('tr')
+      const rin = parseRateInput(row.querySelector('[data-field="in"]').value)
+      const rout = parseRateInput(row.querySelector('[data-field="out"]').value)
+      if (rin === undefined || rout === undefined) {
+        toast('Tarif harus angka ≥ 0, atau dikosongkan bila belum diketahui.', 'error')
+        return
+      }
+      try {
+        await api(`/api/admin/llm/providers/${encodeURIComponent(providerId)}/models/${encodeURIComponent(modelId)}`, { method: 'PUT', body: JSON.stringify({ rateInUsdPer1M: rin, rateOutUsdPer1M: rout }) })
+        toast(`Tarif ${modelId} disimpan (${rin === null ? 'belum diketahui' : fmtRate(rin)} / ${rout === null ? 'belum diketahui' : fmtRate(rout)}).`)
+        loadProviders()
+      } catch (err) { toast(err.message, 'error') }
+    }))
+    $$('#providers-list [data-act="save-key"]').forEach((btn) => btn.addEventListener('click', async () => {
+      const providerId = btn.dataset.provider
+      const input = list.querySelector(`[data-key-input="${providerId}"]`)
+      const key = input ? input.value.trim() : ''
+      const configured = providers.find((x) => x.id === providerId)?.keyConfigured
+      if (key === '') {
+        if (!configured) { toast('Tidak ada key tersimpan untuk provider ini.'); return }
+        const ok = await confirmDialog('Hapus key', `Hapus API key ${providerId} yang tersimpan di panel? Model provider ini kembali memakai key environment (bila ada) atau tidak bisa dipakai.`, 'Ya, hapus key')
+        if (!ok) return
+      } else if (key.length < 8) {
+        toast('API key terlalu pendek (min 8 karakter).', 'error')
+        return
+      }
+      try {
+        const r = await api(`/api/admin/llm/providers/${encodeURIComponent(providerId)}/key`, { method: 'PUT', body: JSON.stringify({ key }) })
+        toast(r.keyConfigured ? `Key ${providerId} disimpan — terpasang.` : `Key ${providerId} dihapus — belum terpasang.`)
+        loadProviders()
+      } catch (err) { toast(err.message, 'error') }
+    }))
+    $$('#providers-list [data-act="test-provider"]').forEach((btn) => btn.addEventListener('click', async () => {
+      const providerId = btn.dataset.provider
+      btn.disabled = true
+      setResult(providerId, '<p class="text-muted mb-0"><span class="spinner-border spinner-border-sm me-2"></span>Menghubungi GET /models provider…</p>')
+      try {
+        const r = await api(`/api/admin/llm/providers/${encodeURIComponent(providerId)}/test`, { method: 'POST' })
+        setResult(providerId, r.ok
+          ? `<p class="mb-0"><span class="badge bg-success">Berhasil</span> GET /models balas ${r.status ?? 200}${r.models !== undefined ? ` — ${fmtNum(r.models)} model upstream` : ''}.</p>`
+          : `<p class="mb-0"><span class="badge bg-danger">Gagal</span></p><p class="text-danger mb-0">${esc(r.error || 'Tes koneksi gagal.')}</p>`)
+      } catch (err) {
+        setResult(providerId, `<p class="mb-0"><span class="badge bg-danger">Gagal</span></p><p class="text-danger mb-0">${esc(err.message)}</p>`)
+      } finally {
+        btn.disabled = false
+      }
+    }))
+    $$('#providers-list [data-act="sync-provider"]').forEach((btn) => btn.addEventListener('click', async () => {
+      const providerId = btn.dataset.provider
+      btn.disabled = true
+      setResult(providerId, '<p class="text-muted mb-0"><span class="spinner-border spinner-border-sm me-2"></span>Mengambil daftar model upstream…</p>')
+      try {
+        const r = await api(`/api/admin/llm/providers/${encodeURIComponent(providerId)}/sync`, { method: 'POST' })
+        const missing = r.missing || []
+        setResult(providerId, `<p class="mb-1"><span class="badge bg-success">Berhasil</span> Upstream: ${fmtNum((r.upstream || []).length)} model · sudah di registry: ${fmtNum(r.inRegistry)} · belum ada: ${fmtNum(missing.length)}.</p>` +
+          (missing.length
+            ? `<details><summary class="text-muted">Model upstream yang belum ada di registry (${fmtNum(missing.length)}) — belum ditambahkan otomatis</summary><p class="font-monospace small mb-0 mt-1" style="word-break: break-all;">${missing.map((m) => esc(m)).join(', ')}</p></details>`
+            : '<p class="text-muted mb-0">Semua model upstream sudah ada di registry.</p>'))
+      } catch (err) {
+        setResult(providerId, `<p class="mb-0"><span class="badge bg-danger">Gagal</span></p><p class="text-danger mb-0">${esc(err.message)}</p>`)
+      } finally {
+        btn.disabled = false
+      }
+    }))
+  }
+
+  const providersReloadBtn = $('#providers-reload-btn')
+  if (providersReloadBtn) providersReloadBtn.addEventListener('click', () => loadProviders())
+
+  const providersSyncPricesBtn = $('#providers-sync-prices-btn')
+  if (providersSyncPricesBtn) providersSyncPricesBtn.addEventListener('click', async () => {
+    const box = $('#providers-prices-result')
+    try {
+      const r = await api('/api/admin/llm/prices/sync', { method: 'POST' })
+      const msg = `Harga disinkronkan ke Biaya LLM: ${fmtNum(r.added)} harga baru ditambahkan, ${fmtNum(r.skipped)} sudah ada (tidak ditimpa). Model tanpa tarif tidak diisi.`
+      if (box) box.textContent = msg
+      toast(msg)
     } catch (err) { toast(err.message, 'error') }
   })
 

@@ -293,9 +293,16 @@ export function resetRegistryCache() {
 
 export function providerKey(provider: Provider): string {
   if (provider.id === '9router') {
-    /* Kompatibilitas legacy: override admin llm.key mengalahkan env. */
+    /* Kompatibilitas legacy: override admin llm.key mengalahkan env.
+       llm.key.9router (ditulis endpoint admin PUT …/key) dibaca juga —
+       tanpa ini key 9router yang disimpan lewat panel Provider LLM
+       tidak pernah terbaca (sebelumnya hanya llm.key/env yang dicek). */
     return (
-      setting('llm.key') ?? process.env.VB_LLM_KEY ?? process.env.HERMES_9ROUTER_API_KEY ?? ''
+      setting('llm.key') ??
+      setting('llm.key.9router') ??
+      process.env.VB_LLM_KEY ??
+      process.env.HERMES_9ROUTER_API_KEY ??
+      ''
     ).trim()
   }
   const stored = setting(`llm.key.${provider.id}`)

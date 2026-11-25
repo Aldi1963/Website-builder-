@@ -20,6 +20,7 @@ const pages = [
   { id: 'usage', title: 'Penggunaan', file: 'usage.html' },
   { id: 'builds', title: 'Build', file: 'builds.html' },
   { id: 'biaya', title: 'Biaya LLM', file: 'cost.html' },
+  { id: 'providers', title: 'Provider LLM', file: 'providers.html' },
   { id: 'billing', title: 'Pembayaran', file: 'billing.html' },
   { id: 'domain', title: 'Domain', file: 'domain.html' },
   { id: 'messages', title: 'Pesan', file: 'messages.html' },
