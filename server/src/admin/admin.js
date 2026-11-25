@@ -808,10 +808,16 @@
             </div>
           </div>
           <div class="small mb-3" data-result="${esc(p.id)}"></div>
+          <div class="row g-2 align-items-center mb-2">
+            <div class="col-md-5">
+              <input type="search" class="form-control form-control-sm" data-model-search="${esc(p.id)}" placeholder="Cari model…" aria-label="Cari model ${esc(p.name)}">
+            </div>
+            <div class="col-auto"><span class="text-muted small" data-model-count="${esc(p.id)}">${fmtNum(models.length)} model</span></div>
+          </div>
           <div class="table-responsive"><table class="table table-hover table-sm mb-0">
             <thead class="table-light"><tr><th>Model</th><th style="min-width:110px">In $ / 1 jt token</th><th style="min-width:110px">Out $ / 1 jt token</th><th>Aktif</th><th></th></tr></thead>
             <tbody>
-              ${models.length ? models.map((m) => `<tr>
+              ${models.length ? models.map((m) => `<tr data-search="${esc(((m.id || '') + ' ' + (m.name || '')).toLowerCase())}">
                 <td>
                   <span class="font-monospace">${esc(m.id)}</span>
                   ${m.name && m.name !== m.id ? `<br><small class="text-muted">${esc(m.name)}</small>` : ''}
@@ -823,6 +829,7 @@
                 <td><div class="form-check form-switch"><input class="form-check-input" type="checkbox" role="switch" data-act="toggle-model" data-provider="${esc(p.id)}" data-model="${esc(m.id)}"${m.active ? ' checked' : ''} aria-label="Aktif ${esc(m.id)}"></div></td>
                 <td class="text-end text-nowrap"><button class="btn btn-sm btn-outline-primary" type="button" data-act="save-rate" data-provider="${esc(p.id)}" data-model="${esc(m.id)}">Simpan tarif</button></td>
               </tr>`).join('') : '<tr><td colspan="5" class="text-muted">Belum ada model di registry provider ini.</td></tr>'}
+              <tr data-no-match style="display:none"><td colspan="5" class="text-muted">Tidak ada model yang cocok dengan pencarian.</td></tr>
             </tbody>
           </table></div>
           <p class="text-muted small mt-2 mb-0">Tarif kosong = harga belum diketahui → model tidak bisa dipakai. Tarif $0 = gratis, sah dipakai. Tarif yang disimpan di sini juga dipakai pemotongan credit; sinkronkan ke halaman Biaya LLM dengan tombol di atas.</p>
@@ -834,6 +841,23 @@
       const box = list.querySelector(`[data-result="${providerId}"]`)
       if (box) box.innerHTML = html
     }
+    $$('#providers-list [data-model-search]').forEach((input) => input.addEventListener('input', () => {
+      const q = input.value.trim().toLowerCase()
+      const card = input.closest('.card')
+      if (!card) return
+      const rows = card.querySelectorAll('tbody tr[data-search]')
+      const total = rows.length
+      let visible = 0
+      rows.forEach((tr) => {
+        const hit = !q || (tr.dataset.search || '').includes(q)
+        tr.style.display = hit ? '' : 'none'
+        if (hit) visible++
+      })
+      const noMatch = card.querySelector('tbody tr[data-no-match]')
+      if (noMatch) noMatch.style.display = q && visible === 0 && total > 0 ? '' : 'none'
+      const count = card.querySelector('[data-model-count]')
+      if (count) count.textContent = q ? `${visible} dari ${total} model` : `${total} model`
+    }))
     $$('#providers-list [data-act="toggle-provider"]').forEach((el) => el.addEventListener('change', async () => {
       const providerId = el.dataset.provider
       try {
