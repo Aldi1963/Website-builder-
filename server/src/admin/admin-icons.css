@@ -14,6 +14,7 @@
    File ini terpisah dari CSS template agar tidak tertimpa bila template
    di-vendor ulang. */
 .bi-box-arrow-up-left:before { content: "\f1c4"; }
+.bi-credit-card:before { content: "\f2dc"; }
 .bi-chat-left-text:before { content: "\f252"; }
 .bi-cpu:before { content: "\f2d6"; }
 .bi-database:before { content: "\f8c4"; }

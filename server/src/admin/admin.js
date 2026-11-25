@@ -229,6 +229,7 @@
     { title: 'Kelola Credit', url: '/admin/credits', type: 'halaman' },
     { title: 'Penggunaan', url: '/admin/usage', type: 'halaman' },
     { title: 'Biaya LLM', url: '/admin/biaya', type: 'halaman' },
+    { title: 'Pembayaran', url: '/admin/billing', type: 'halaman' },
     { title: 'Build', url: '/admin/builds', type: 'halaman' },
     { title: 'Domain', url: '/admin/domain', type: 'halaman' },
     { title: 'Pesan', url: '/admin/messages', type: 'halaman' },
@@ -294,6 +295,7 @@
     else if (name === 'credits') await loadCredits()
     else if (name === 'usage') await loadUsage()
     else if (name === 'biaya') await loadCost()
+    else if (name === 'billing') await loadBilling()
     else if (name === 'builds') await loadBuilds()
     else if (name === 'messages') await loadMessages()
     else if (name === 'pemeliharaan') await loadMaintenance()
@@ -980,6 +982,96 @@
       box.innerHTML = `<p class="mb-1"><span class="badge bg-success">Berhasil</span> <small class="text-muted">${r.latencyMs} ms · model <code>${esc(r.model)}</code></small></p><p class="mb-0">Balasan: <strong>${esc(r.reply)}</strong></p>`
     } catch (err) {
       box.innerHTML = `<p class="mb-1"><span class="badge bg-danger">Gagal</span></p><p class="text-danger mb-0">${esc(err.message)}</p>`
+    }
+  })
+
+  /* ---------- pembayaran (Clipku Pay) ---------- */
+  /* Nilai key/secret TIDAK PERNAH ditampilkan atau diisi ulang — hanya
+     status terpasang/belum. Simpan mengirim kedua field apa adanya;
+     field yang dikosongkan menghapus nilai tersimpan itu. */
+  async function loadBilling() {
+    const s = await api('/api/admin/billing')
+    $('#billing-api-key').value = ''
+    $('#billing-api-key').placeholder = s.configured
+      ? '•••••••• (terpasang — isi untuk mengganti)'
+      : 'Belum ada key — tempel merchant API key Clipku Pay'
+    $('#billing-api-key-src').innerHTML = s.configured
+      ? (s.apiKeyFromEnv
+        ? '<span class="badge bg-warning text-dark">env</span>'
+        : '<span class="badge bg-primary">panel</span>')
+      : '<span class="badge bg-secondary">belum</span>'
+    $('#billing-webhook-secret').value = ''
+    $('#billing-webhook-secret').placeholder = s.hasWebhookSecret
+      ? '•••••••• (terpasang — isi untuk mengganti)'
+      : 'Belum ada secret (opsional)'
+    $('#billing-webhook-secret-src').innerHTML = s.hasWebhookSecret
+      ? '<span class="badge bg-primary">panel</span>'
+      : '<span class="badge bg-secondary">belum</span>'
+    $('#billing-webhook-url').value = s.webhookUrl || ''
+    const envWarn = $('#billing-env-warning')
+    if (s.apiKeyFromEnv) {
+      envWarn.classList.remove('d-none')
+      envWarn.textContent = 'Key aktif saat ini berasal dari environment server (env menang atas panel). Mengisi key di halaman ini belum berpengaruh sampai entri VB_CLIPKUPAY_API_KEY di env VPS dihapus/diubah.'
+    } else {
+      envWarn.classList.add('d-none')
+      envWarn.textContent = ''
+    }
+    $('#billing-status-list').innerHTML = [
+      ['API key', s.configured ? 'Terpasang' : 'Belum terpasang'],
+      ['Sumber key', s.configured ? (s.apiKeyFromEnv ? 'Environment server' : 'Panel ini') : '–'],
+      ['Webhook secret', s.hasWebhookSecret ? 'Terpasang' : 'Belum terpasang (HMAC nonaktif)'],
+      ['Webhook URL', s.webhookUrl || '–'],
+    ].map(([k, v]) => `<dt class="col-sm-4">${esc(k)}</dt><dd class="col-sm-8 font-monospace">${esc(v)}</dd>`).join('')
+    $('#billing-packages-list').innerHTML = (s.packages || []).map((p) =>
+      `<li>Rp ${fmtNum(p.amountIdr)} = ${fmtNum(p.credits)} credit</li>`).join('')
+    const counts = s.orderCounts || {}
+    const entries = Object.entries(counts)
+    $('#billing-order-counts').innerHTML = entries.length
+      ? entries.map(([st, n]) => `<span class="badge bg-secondary me-1">${esc(st)}: ${fmtNum(n)}</span>`).join('')
+      : '<span class="text-muted">Belum ada order.</span>'
+    const evs = s.recentWebhookEvents || []
+    $('#billing-events-body').innerHTML = evs.length
+      ? evs.map((e) => `<tr>
+          <td class="font-monospace">${esc(e.order_id)}</td>
+          <td>${esc(e.event)}</td>
+          <td>${e.signature_valid ? '<span class="badge bg-success">Valid</span>' : '<span class="badge bg-secondary">–</span>'}</td>
+          <td>${esc(e.result || '–')}</td>
+          <td class="text-nowrap">${esc(fmtDate(e.created_at))}</td>
+        </tr>`).join('')
+      : '<tr><td colspan="5" class="text-muted">Belum ada event webhook.</td></tr>'
+  }
+
+  const billingForm = $('#billing-form')
+  if (billingForm) billingForm.addEventListener('submit', async (e) => {
+    e.preventDefault()
+    try {
+      const r = await api('/api/admin/billing', {
+        method: 'PUT',
+        body: JSON.stringify({
+          apiKey: $('#billing-api-key').value.trim(),
+          webhookSecret: $('#billing-webhook-secret').value.trim(),
+        }),
+      })
+      toast(r.configured
+        ? 'Kredensial pembayaran disimpan — API key terpasang.'
+        : 'Kredensial pembayaran disimpan — API key belum terpasang.')
+      $('#billing-api-key').value = ''
+      $('#billing-webhook-secret').value = ''
+      loadBilling()
+    } catch (err) { toast(err.message, 'error') }
+  })
+
+  const billingCopyBtn = $('#billing-copy-webhook')
+  if (billingCopyBtn) billingCopyBtn.addEventListener('click', async () => {
+    const url = $('#billing-webhook-url').value
+    if (!url) return
+    try {
+      await navigator.clipboard.writeText(url)
+      toast('Webhook URL disalin.')
+    } catch {
+      $('#billing-webhook-url').select()
+      document.execCommand('copy')
+      toast('Webhook URL disalin.')
     }
   })
 
