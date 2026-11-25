@@ -1,6 +1,7 @@
 import type { Hono, Context, Next } from 'hono'
 import { statSync } from 'node:fs'
 import { join } from 'node:path'
+import { resolveCname, resolve4 } from 'node:dns/promises'
 import { db, deleteProject } from './db.ts'
 import { stopPreview, runningPreviews } from './workspace.ts'
 import { SESSION_COOKIE, readCookie, tokenHash, userByToken, type User } from './auth.ts'
@@ -126,6 +127,41 @@ function aiSettingsView() {
 
 export function registerAdmin(app: Hono<AdminEnv>) {
   ensureDefaultPlan()
+  /* FITUR 3 — Moderasi proyek: tanda (flag) + penangguhan.
+     Penangguhan TIDAK memakai nilai status (idle/working/building/error)
+     supaya arti status yang sudah ada tidak berubah; kolom suspended
+     sendiri yang menandainya. Penegakan di jalur publik (blokir
+     preview/publish proyek ditangguhkan) TERTUNDA — butuh perubahan di
+     app.ts/workspace.ts yang di luar lingkup trek ini. */
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS project_flags (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id TEXT NOT NULL,
+      admin_email TEXT NOT NULL DEFAULT '',
+      reason TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_flags_project ON project_flags(project_id);
+  `)
+  try {
+    db.exec(`ALTER TABLE projects ADD COLUMN suspended INTEGER NOT NULL DEFAULT 0`)
+  } catch {
+    /* sudah ada */
+  }
+  /* FITUR 6 — Domain kustom: pencatatan domain + status verifikasi DNS.
+     Routing + SSL otomatis TERTUNDA — butuh pipeline deploy VPS yang
+     belum diputuskan; tabel ini hanya mencatat dan memverifikasi DNS. */
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS custom_domains (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id TEXT NOT NULL,
+      domain TEXT NOT NULL UNIQUE,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at INTEGER NOT NULL,
+      verified_at INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_custom_domains_project ON custom_domains(project_id);
+  `)
   app.use('/api/admin/*', requireAdmin)
 
   app.get('/api/admin/overview', (c) => {
@@ -674,6 +710,184 @@ export function registerAdmin(app: Hono<AdminEnv>) {
   })
 
   /* ---------------------------------------------------------------- */
+  /* FITUR 3 — Moderasi proyek                                       */
+  /* Tandai (dengan alasan) / hapus tanda / tangguhkan / buka          */
+  /* penangguhan. Penangguhan TIDAK dikaitkan dengan kuota/token       */
+  /* (sistem akan memakai kredit; pemblokiran berbasis token_limit     */
+  /* ditahan) dan TIDAK memblokir apa pun di jalur publik sampai       */
+  /* penegakan di app.ts/workspace.ts dibangun (tertunda).             */
+  /* ---------------------------------------------------------------- */
+
+  app.get('/api/admin/moderation', (c) => {
+    const rows = db
+      .prepare(
+        `SELECT p.id, p.name, p.status, p.slug, p.created_at, p.updated_at, p.owner_id,
+           COALESCE(p.suspended, 0) AS suspended,
+           u.email AS owner_email, u.name AS owner_name,
+           (SELECT f.reason FROM project_flags f WHERE f.project_id = p.id ORDER BY f.id DESC LIMIT 1) AS flag_reason,
+           (SELECT f.admin_email FROM project_flags f WHERE f.project_id = p.id ORDER BY f.id DESC LIMIT 1) AS flag_by,
+           (SELECT f.created_at FROM project_flags f WHERE f.project_id = p.id ORDER BY f.id DESC LIMIT 1) AS flagged_at
+         FROM projects p LEFT JOIN users u ON u.id = p.owner_id ORDER BY p.updated_at DESC`,
+      )
+      .all() as {
+      id: string
+      name: string
+      status: string
+      slug: string | null
+      created_at: number
+      updated_at: number
+      owner_id: string | null
+      suspended: number
+      owner_email: string | null
+      owner_name: string | null
+      flag_reason: string | null
+      flag_by: string | null
+      flagged_at: number | null
+    }[]
+    return c.json({
+      projects: rows.map((p) => ({ ...p, flagged: p.flag_reason !== null, suspended: p.suspended === 1 })),
+    })
+  })
+
+  app.post('/api/admin/projects/:id/flag', async (c) => {
+    const me = c.get('user')
+    const id = c.req.param('id')
+    const row = db.prepare(`SELECT id, name FROM projects WHERE id = ?`).get(id) as
+      | { id: string; name: string }
+      | undefined
+    if (!row) return c.json({ error: 'Proyek tidak ditemukan.' }, 404)
+    const body = (await c.req.json().catch(() => ({}))) as { reason?: string }
+    const reason = String(body.reason ?? '').trim()
+    if (!reason) return c.json({ error: 'Alasan penandaan wajib diisi.' }, 400)
+    if (reason.length > 500) return c.json({ error: 'Alasan maksimal 500 karakter.' }, 400)
+    db.prepare(`DELETE FROM project_flags WHERE project_id = ?`).run(id)
+    const r = db
+      .prepare(`INSERT INTO project_flags (project_id, admin_email, reason, created_at) VALUES (?, ?, ?, ?)`)
+      .run(id, me.email, reason, now())
+    return c.json({ ok: true, flagId: Number(r.lastInsertRowid) })
+  })
+
+  app.delete('/api/admin/projects/:id/flag', (c) => {
+    const id = c.req.param('id')
+    const row = db.prepare(`SELECT id FROM projects WHERE id = ?`).get(id)
+    if (!row) return c.json({ error: 'Proyek tidak ditemukan.' }, 404)
+    const r = db.prepare(`DELETE FROM project_flags WHERE project_id = ?`).run(id)
+    if (Number(r.changes ?? 0) === 0) return c.json({ error: 'Proyek ini tidak ditandai.' }, 404)
+    return c.json({ ok: true })
+  })
+
+  app.post('/api/admin/projects/:id/suspend', (c) => {
+    const id = c.req.param('id')
+    const row = db.prepare(`SELECT id FROM projects WHERE id = ?`).get(id)
+    if (!row) return c.json({ error: 'Proyek tidak ditemukan.' }, 404)
+    db.prepare(`UPDATE projects SET suspended = 1, updated_at = ? WHERE id = ?`).run(now(), id)
+    try {
+      stopPreview(id)
+    } catch {
+      /* preview tidak jalan, lanjut */
+    }
+    return c.json({ ok: true, suspended: true })
+  })
+
+  app.post('/api/admin/projects/:id/unsuspend', (c) => {
+    const id = c.req.param('id')
+    const row = db.prepare(`SELECT id FROM projects WHERE id = ?`).get(id)
+    if (!row) return c.json({ error: 'Proyek tidak ditemukan.' }, 404)
+    db.prepare(`UPDATE projects SET suspended = 0, updated_at = ? WHERE id = ?`).run(now(), id)
+    return c.json({ ok: true, suspended: false })
+  })
+
+  /* ---------------------------------------------------------------- */
+  /* FITUR 6 — Domain kustom                                           */
+  /* Target DNS yang diharapkan: CNAME ke domain utama platform        */
+  /* clidi.net (juga diterima <apa pun>.clidi.net). SSL: belum ada     */
+  /* pipeline pemasangan — status SSL selalu dilaporkan                */
+  /* "belum dipasang", JANGAN diklaim aktif.                           */
+  /* ---------------------------------------------------------------- */
+
+  const DOMAIN_RE = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i
+  const EXPECTED_CNAME_SUFFIX = 'clidi.net'
+
+  app.get('/api/admin/domains', (c) => {
+    const rows = db
+      .prepare(
+        `SELECT d.id, d.project_id, d.domain, d.status, d.created_at, d.verified_at,
+           p.name AS project_name, p.slug AS project_slug
+         FROM custom_domains d LEFT JOIN projects p ON p.id = d.project_id
+         ORDER BY d.created_at DESC`,
+      )
+      .all()
+    return c.json({ domains: rows, expectedCname: EXPECTED_CNAME_SUFFIX, ssl: 'belum dipasang' })
+  })
+
+  app.post('/api/admin/domains', async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { projectId?: string; domain?: string }
+    const projectId = String(body.projectId ?? '').trim()
+    const domain = String(body.domain ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/^https?:\/\//, '')
+      .replace(/\/.*$/, '')
+    if (!projectId) return c.json({ error: 'Proyek wajib dipilih.' }, 400)
+    const project = db.prepare(`SELECT id FROM projects WHERE id = ?`).get(projectId)
+    if (!project) return c.json({ error: 'Proyek tidak ditemukan.' }, 404)
+    if (!DOMAIN_RE.test(domain)) return c.json({ error: 'Format domain tidak valid.' }, 400)
+    try {
+      const r = db
+        .prepare(`INSERT INTO custom_domains (project_id, domain, status, created_at) VALUES (?, ?, 'pending', ?)`)
+        .run(projectId, domain, now())
+      return c.json({ ok: true, id: Number(r.lastInsertRowid) })
+    } catch {
+      return c.json({ error: 'Domain sudah terdaftar.' }, 400)
+    }
+  })
+
+  app.delete('/api/admin/domains/:id', (c) => {
+    const id = c.req.param('id')
+    const row = db.prepare(`SELECT id FROM custom_domains WHERE id = ?`).get(id)
+    if (!row) return c.json({ error: 'Domain tidak ditemukan.' }, 404)
+    db.prepare(`DELETE FROM custom_domains WHERE id = ?`).run(id)
+    return c.json({ ok: true })
+  })
+
+  app.post('/api/admin/domains/:id/verify', async (c) => {
+    const id = c.req.param('id')
+    const row = db.prepare(`SELECT id, domain FROM custom_domains WHERE id = ?`).get(id) as
+      | { id: number; domain: string }
+      | undefined
+    if (!row) return c.json({ error: 'Domain tidak ditemukan.' }, 404)
+    const timeout = (ms: number) =>
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('DNS timeout')), ms))
+    const [cnameRes, aRes] = await Promise.all([
+      Promise.race([resolveCname(row.domain), timeout(5000)]).catch((e: Error) => ({ error: e.message })),
+      Promise.race([resolve4(row.domain), timeout(5000)]).catch((e: Error) => ({ error: e.message })),
+    ])
+    const cnames: string[] = Array.isArray(cnameRes) ? cnameRes : []
+    const addresses: string[] = Array.isArray(aRes) ? aRes : []
+    const cnameError = !Array.isArray(cnameRes) ? (cnameRes as { error: string }).error : null
+    const aError = !Array.isArray(aRes) ? (aRes as { error: string }).error : null
+    const matched = cnames.some((t) => t.toLowerCase() === EXPECTED_CNAME_SUFFIX || t.toLowerCase().endsWith(`.${EXPECTED_CNAME_SUFFIX}`))
+    if (matched) {
+      db.prepare(`UPDATE custom_domains SET status = 'verified', verified_at = ? WHERE id = ?`).run(now(), id)
+    }
+    return c.json({
+      ok: true,
+      domain: row.domain,
+      expectedCname: EXPECTED_CNAME_SUFFIX,
+      cnames,
+      addresses,
+      cnameError,
+      aError,
+      matched,
+      status: matched ? 'verified' : 'pending',
+      note: matched
+        ? 'CNAME cocok dengan target platform.'
+        : 'Perlu penyesuaian manual: arahkan CNAME domain ke clidi.net, lalu periksa lagi.',
+      ssl: 'belum dipasang',
+    })
+  })
+
+  /* ---------------------------------------------------------------- */
   /* Halaman admin (Metis) — disajikan dari server, terpisah dari     */
   /* React builder. Data semuanya dari /api/admin/*, tanpa mock.       */
   /* Halaman dibuat dari template Metis asli (lihat server/src/admin/  */
@@ -688,7 +902,9 @@ export function registerAdmin(app: Hono<AdminEnv>) {
     plans: 'plans.html',
     usage: 'usage.html',
     builds: 'builds.html',
+    domain: 'domain.html',
     messages: 'messages.html',
+    moderasi: 'moderasi.html',
     sessions: 'sessions.html',
     health: 'health.html',
     'ai-settings': 'ai-settings.html',
