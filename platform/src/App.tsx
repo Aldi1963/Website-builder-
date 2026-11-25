@@ -10,11 +10,7 @@ import { exportProjectZip } from './api'
 /* Theme is a real choice here: the shell is used for long sessions next to an
    arbitrary generated app, so both modes ship and both are verified. */
 function useTheme() {
-  const [dark, setDark] = useState(() => {
-    const saved = localStorage.getItem('vb-theme')
-    if (saved) return saved === 'dark'
-    return window.matchMedia('(prefers-color-scheme: dark)').matches
-  })
+  const [dark, setDark] = useState(() => localStorage.getItem('vb-theme') === 'dark')
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark)
