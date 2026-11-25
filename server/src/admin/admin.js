@@ -230,6 +230,8 @@
     { title: 'Pesan', url: '/admin/messages', type: 'halaman' },
     { title: 'Sesi', url: '/admin/sessions', type: 'halaman' },
     { title: 'Kesehatan Sistem', url: '/admin/health', type: 'halaman' },
+    { title: 'Cadangan & Pulihkan', url: '/admin/cadangan', type: 'halaman' },
+    { title: 'Pembersihan', url: '/admin/pembersihan', type: 'halaman' },
     { title: 'Pengaturan AI', url: '/admin/ai-settings', type: 'halaman' },
     { title: 'Pengaturan', url: '/admin/settings', type: 'halaman' },
   ]
@@ -284,6 +286,8 @@
     else if (name === 'messages') await loadMessages()
     else if (name === 'sessions') await loadSessions()
     else if (name === 'health') await loadHealth()
+    else if (name === 'cadangan') await loadBackup()
+    else if (name === 'pembersihan') await loadCleanup()
     else if (name === 'ai-settings') await loadAiSettings()
     else if (name === 'settings') await loadSettings()
   }
@@ -749,6 +753,113 @@
          <p class="text-muted mb-0">Ditentukan lewat ${s.admin.via === 'env' ? 'environment <code>VB_ADMIN_EMAIL</code>' : 'akun pertama yang dibuat (pemilik instalasi)'}.</p>`
       : '<p class="text-muted mb-0">Belum ada pengguna, jadi belum ada admin.</p>'
   }
+
+  /* ---------- cadangan & pulihkan ---------- */
+  async function loadBackup() {
+    const data = await api('/api/admin/backup/list')
+    const cards = [
+      { icon: 'bi-database', color: 'primary', label: 'Ukuran database', value: fmtBytes(data.dbSize), sub: 'file vibebuilder.db aktif' },
+      { icon: 'bi-people', color: 'success', label: 'Pengguna', value: fmtNum(data.counts.users), sub: `${fmtNum(data.counts.projects)} proyek` },
+      { icon: 'bi-chat-dots', color: 'info', label: 'Pesan', value: fmtNum(data.counts.messages), sub: `${fmtNum(data.counts.builds)} build tercatat` },
+      { icon: 'bi-archive', color: 'warning', label: 'File cadangan', value: fmtNum(data.files.length), sub: 'di direktori data server' },
+    ]
+    $('#backup-cards').innerHTML = cards.map((c) => `<div class="col-sm-6 col-xl-3"><div class="card stats-card"><div class="card-body"><div class="d-flex align-items-center">
+      <div class="flex-shrink-0"><div class="stats-icon bg-${c.color} bg-opacity-10 text-${c.color}"><i class="bi ${c.icon}"></i></div></div>
+      <div class="flex-grow-1 ms-3"><p class="h6 mb-0 text-muted">${c.label}</p><div class="h5 mb-0">${c.value}</div><small class="text-muted">${c.sub}</small></div>
+    </div></div></div>`).join('')
+    $('#backup-files-body').innerHTML = data.files.length
+      ? data.files.map((f) => `<tr>
+          <td class="font-monospace text-break">${esc(f.name)}${f.isAutoBackup ? ' <span class="badge bg-secondary">otomatis</span>' : ''}</td>
+          <td>${fmtBytes(f.size)}</td>
+          <td>${esc(fmtDate(f.mtime))}</td>
+          <td class="text-end text-nowrap">
+            ${f.isAutoBackup ? `<button class="btn btn-sm btn-outline-warning" data-act="restore-backup" data-name="${esc(f.name)}">Pulihkan</button>` : '<span class="text-muted small">–</span>'}
+          </td>
+        </tr>`).join('')
+      : '<tr><td colspan="4" class="text-muted">Belum ada file cadangan. Unduh cadangan dulu, atau pulihkan sekali — cadangan otomatis akan muncul di sini.</td></tr>'
+    $$('#backup-files-body [data-act="restore-backup"]').forEach((btn) => btn.addEventListener('click', async () => {
+      const ok = await confirmDialog('Pulihkan dari cadangan otomatis', `Ganti database aktif dengan ${btn.dataset.name}? Database aktif saat ini disimpan dulu sebagai cadangan otomatis baru, lalu server restart sendiri.`, 'Ya, pulihkan')
+      if (!ok) return
+      try {
+        await api('/api/admin/restore', { method: 'POST', body: JSON.stringify({ backup: btn.dataset.name }) })
+        $('#restore-result').innerHTML = '<p class="mb-0"><span class="badge bg-success">Berhasil</span> Server sedang restart dengan database yang dipulihkan. Tunggu beberapa detik lalu muat ulang halaman ini.</p>'
+        toast('Pemulihan diterima — server sedang restart.')
+      } catch (err) { toast(err.message, 'error') }
+    }))
+  }
+
+  const restoreForm = $('#restore-form')
+  if (restoreForm) restoreForm.addEventListener('submit', async (e) => {
+    e.preventDefault()
+    const input = $('#restore-file')
+    if (!input.files || !input.files[0]) { toast('Pilih dulu file cadangan (.db).', 'error'); return }
+    const ok = await confirmDialog('Pulihkan database', 'Ganti database aktif dengan file yang diunggah? Database aktif saat ini disimpan dulu sebagai cadangan otomatis baru, lalu server restart sendiri.', 'Ya, pulihkan')
+    if (!ok) return
+    const box = $('#restore-result')
+    const btn = $('#restore-submit')
+    btn.disabled = true
+    box.innerHTML = '<p class="text-muted mb-0"><span class="spinner-border spinner-border-sm me-2"></span>Memvalidasi dan memulihkan…</p>'
+    try {
+      const form = new FormData()
+      form.append('file', input.files[0])
+      const res = await fetch('/api/admin/restore', { method: 'POST', body: form })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) throw new Error((data && data.error) || `Pemulihan gagal (${res.status}).`)
+      box.innerHTML = `<p class="mb-0"><span class="badge bg-success">Berhasil</span> Server sedang restart dengan database yang dipulihkan. Cadangan otomatis: <code>${esc(data.autoBackup || '')}</code>. Tunggu beberapa detik lalu muat ulang halaman ini.</p>`
+      toast('Pemulihan diterima — server sedang restart.')
+    } catch (err) {
+      box.innerHTML = `<p class="text-danger mb-0">${esc(err.message)}</p>`
+    } finally {
+      btn.disabled = false
+    }
+  })
+
+  /* ---------- pembersihan ---------- */
+  async function loadCleanup() {
+    const data = await api('/api/admin/cleanup')
+    const s = data.settings
+    const cards = [
+      { icon: 'bi-hammer', color: 'primary', label: 'Build lama', value: fmtNum(data.counts.builds), sub: `lebih lama dari ${s.retentionDays} hari` },
+      { icon: 'bi-key', color: 'warning', label: 'Sesi kedaluwarsa', value: fmtNum(data.counts.sessions), sub: 'sesi login yang sudah lewat masa berlaku' },
+      { icon: 'bi-activity', color: 'success', label: 'Preview berjalan', value: fmtNum(data.counts.previewsRunning), sub: 'tidak pernah dihentikan pembersihan' },
+    ]
+    $('#cleanup-cards').innerHTML = cards.map((c) => `<div class="col-sm-6 col-xl-4"><div class="card stats-card"><div class="card-body"><div class="d-flex align-items-center">
+      <div class="flex-shrink-0"><div class="stats-icon bg-${c.color} bg-opacity-10 text-${c.color}"><i class="bi ${c.icon}"></i></div></div>
+      <div class="flex-grow-1 ms-3"><p class="h6 mb-0 text-muted">${c.label}</p><div class="h5 mb-0">${c.value}</div><small class="text-muted">${c.sub}</small></div>
+    </div></div></div>`).join('')
+    $('#cleanup-retention').value = s.retentionDays
+    $('#cleanup-auto').checked = !!s.auto
+    const last = data.lastRun
+    $('#cleanup-last-body').innerHTML = last
+      ? `<dl class="row mb-0">
+          <dt class="col-sm-5">Waktu</dt><dd class="col-sm-7">${esc(fmtDate(last.at))}</dd>
+          <dt class="col-sm-5">Build dihapus</dt><dd class="col-sm-7">${fmtNum(last.builds)}</dd>
+          <dt class="col-sm-5">Sesi dihapus</dt><dd class="col-sm-7">${fmtNum(last.sessions)}</dd>
+          <dt class="col-sm-5">Preview dihapus</dt><dd class="col-sm-7">${fmtNum(last.previews)} (tidak pernah)</dd>
+        </dl>`
+      : '<p class="text-muted mb-0">Belum pernah ada pembersihan.</p>'
+  }
+
+  const cleanupRunBtn = $('#cleanup-run-btn')
+  if (cleanupRunBtn) cleanupRunBtn.addEventListener('click', async () => {
+    const ok = await confirmDialog('Jalankan pembersihan', 'Hapus sekarang semua build lama dan sesi kedaluwarsa sesuai retensi yang tersimpan? Preview yang berjalan tidak disentuh.', 'Ya, bersihkan')
+    if (!ok) return
+    try {
+      const r = await api('/api/admin/cleanup/run', { method: 'POST' })
+      toast(`Pembersihan selesai: ${fmtNum(r.deleted.builds)} build, ${fmtNum(r.deleted.sessions)} sesi dihapus.`)
+      loadCleanup()
+    } catch (err) { toast(err.message, 'error') }
+  })
+
+  const cleanupSettingsForm = $('#cleanup-settings-form')
+  if (cleanupSettingsForm) cleanupSettingsForm.addEventListener('submit', async (e) => {
+    e.preventDefault()
+    try {
+      await api('/api/admin/cleanup/settings', { method: 'PUT', body: JSON.stringify({ retentionDays: Number($('#cleanup-retention').value), auto: $('#cleanup-auto').checked }) })
+      toast('Pengaturan pembersihan disimpan.')
+      loadCleanup()
+    } catch (err) { toast(err.message, 'error') }
+  })
 
   /* ---------- boot per-route ---------- */
   const refreshBtn = $('#refresh-btn')
