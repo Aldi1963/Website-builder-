@@ -1,0 +1,14 @@
+/* Ikon Bootstrap yang hilang dari main.css template.
+   CSS template (main-G_CDnMN9.css) hanya membawa 158 aturan .bi- (subset
+   ikon yang dipakai halaman demo template). Font bootstrap-icons.woff2
+   lengkap (2078 glyph), jadi yang kurang hanya aturan content ini.
+   Codepoint diverifikasi ada di font vendor (fontTools, 25 Nov 2026).
+   File ini terpisah dari CSS template agar tidak tertimpa bila template
+   di-vendor ulang. */
+.bi-box-arrow-up-left:before { content: "\f1c5"; }
+.bi-chat-left-text:before { content: "\f26b"; }
+.bi-cpu:before { content: "\f2e2"; }
+.bi-hammer:before { content: "\f68a"; }
+.bi-heart-pulse:before { content: "\f76d"; }
+.bi-lightning:before { content: "\f46b"; }
+.bi-robot:before { content: "\f6d2"; }

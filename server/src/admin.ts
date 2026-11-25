@@ -725,6 +725,7 @@ export function registerAdmin(app: Hono<AdminEnv>) {
   }
   app.get('/admin/', (c) => c.redirect('/admin', 302))
   app.get('/admin/assets/admin.js', (c) => serveAdminFile(c, 'admin.js', 'text/javascript; charset=utf-8'))
+  app.get('/admin/assets/admin-icons.css', (c) => serveAdminFile(c, 'admin-icons.css', 'text/css; charset=utf-8'))
   app.get('/admin/assets/*', (c) => {
     const rest = decodeURIComponent(c.req.path).replace(/^\/admin\/assets\//, '')
     if (!rest || rest.includes('..') || rest.startsWith('/')) return c.text('Tidak ditemukan.', 404)
