@@ -3,6 +3,7 @@ import { Button } from '@cloudflare/kumo/components/button'
 import { Icon, Spinner, Wordmark } from './ui'
 import { api, auth, ChatHandlers, chatStream, Project, exportProjectZip, type User } from './api'
 import { AuthGate, UserBar } from './auth'
+import { matchPath, navigate, usePath } from './router'
 import { ChatPanel, CodePane, PreviewPane, SettingsSheet, type ChatAudit, type ChatPlan } from './panels'
 import { useActivity } from './activity'
 
@@ -150,21 +151,31 @@ function publicLabel(url: string | null, slug: string) {
 }
 
 export default function App() {
+  const path = usePath()
   const [user, setUser] = useState<User | null>(null)
   const [sessionChecked, setSessionChecked] = useState(false)
   const [projects, setProjects] = useState<Project[]>([])
-  const [activeId, setActiveId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [navOpen, setNavOpen] = useState(false)
   const { dark, toggle } = useTheme()
+
+  // Routing: '/' home, '/proyek/:id' workspace, '/profil' account page.
+  const projectRoute = matchPath('/proyek/:id', path)
+  const profileRoute = matchPath('/profil', path)
+  const activeId = projectRoute?.id ?? null
+
+  useEffect(() => {
+    if (projectRoute && !projects.some((p) => p.id === activeId) && projects.length) {
+      navigate('/', { replace: true })
+    }
+  }, [path, projects])
 
   const refresh = async () => {
     try {
       const { projects } = await api.listProjects()
       setProjects(projects)
       setLoadError('')
-      if (!activeId && projects[0]) setActiveId(projects[0].id)
     } catch (err) {
       setLoadError((err as Error).message)
     } finally {
@@ -191,20 +202,19 @@ export default function App() {
     await auth.logout().catch(() => {})
     setUser(null)
     setProjects([])
-    setActiveId(null)
+    navigate('/', { replace: true })
   }
 
   const createProject = async () => {
     const { project } = await api.createProject('Proyek tanpa nama')
     setProjects((p) => [project, ...p])
-    setActiveId(project.id)
-    setNavOpen(false)
+    navigate(`/proyek/${project.id}`)
   }
 
   const removeProject = async (id: string) => {
     await api.deleteProject(id)
     setProjects((p) => p.filter((x) => x.id !== id))
-    if (activeId === id) setActiveId(null)
+    if (activeId === id) navigate('/', { replace: true })
   }
 
   if (!sessionChecked) {
@@ -217,39 +227,344 @@ export default function App() {
 
   if (!user) return <AuthGate onUser={setUser} />
 
+  const onSelect = (id: string) => {
+    navigate(`/proyek/${id}`)
+    setNavOpen(false)
+  }
+
+  if (projectRoute && activeId) {
+    return (
+      <div className="flex h-dvh overflow-hidden bg-ink text-body">
+        <Sidebar
+          user={user}
+          onLogout={logout}
+          projects={projects}
+          activeId={activeId}
+          loading={loading}
+          loadError={loadError}
+          dark={dark}
+          onToggleTheme={toggle}
+          onSelect={onSelect}
+          onCreate={createProject}
+          onDelete={removeProject}
+          open={navOpen}
+          onClose={() => setNavOpen(false)}
+        />
+        <Workspace
+          key={activeId}
+          projectId={activeId}
+          onMenu={() => setNavOpen(true)}
+          onTitle={(name) => setProjects((p) => p.map((x) => (x.id === activeId ? { ...x, name } : x)))}
+        />
+      </div>
+    )
+  }
+
+  if (profileRoute) {
+    return (
+      <ProfilePage
+        user={user}
+        projects={projects}
+        dark={dark}
+        onToggleTheme={toggle}
+        onLogout={logout}
+        onCreate={createProject}
+        onSelect={onSelect}
+        onMenu={() => setNavOpen(true)}
+        navOpen={navOpen}
+        onCloseNav={() => setNavOpen(false)}
+      />
+    )
+  }
+
   return (
     <div className="flex h-dvh overflow-hidden bg-ink text-body">
       <Sidebar
         user={user}
         onLogout={logout}
         projects={projects}
-        activeId={activeId}
+        activeId={null}
         loading={loading}
         loadError={loadError}
         dark={dark}
         onToggleTheme={toggle}
-        onSelect={(id) => {
-          setActiveId(id)
-          setNavOpen(false)
-        }}
+        onSelect={onSelect}
         onCreate={createProject}
         onDelete={removeProject}
         open={navOpen}
         onClose={() => setNavOpen(false)}
       />
+      <HomePage
+        projects={projects}
+        loading={loading}
+        onCreate={createProject}
+        onSelect={onSelect}
+        user={user}
+        dark={dark}
+        onToggleTheme={toggle}
+        onLogout={logout}
+        onMenu={() => setNavOpen(true)}
+        navOpen={navOpen}
+        onCloseNav={() => setNavOpen(false)}
+      />
+    </div>
+  )
+}
 
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {activeId ? (
-          <Workspace
-            key={activeId}
-            projectId={activeId}
-            onMenu={() => setNavOpen(true)}
-            onTitle={(name) => setProjects((p) => p.map((x) => (x.id === activeId ? { ...x, name } : x)))}
-          />
-        ) : (
-          <EmptyState onCreate={createProject} />
-        )}
+/* Home: overview of all projects with quick actions. */
+function HomePage({
+  projects,
+  loading,
+  onCreate,
+  onSelect,
+  user,
+  dark,
+  onToggleTheme,
+  onLogout,
+  onMenu,
+  navOpen,
+  onCloseNav,
+}: {
+  projects: Project[]
+  loading: boolean
+  onCreate: () => void
+  onSelect: (id: string) => void
+  user: User
+  dark: boolean
+  onToggleTheme: () => void
+  onLogout: () => void
+  onMenu: () => void
+  navOpen: boolean
+  onCloseNav: () => void
+}) {
+  const working = projects.filter((p) => p.status === 'working').length
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-edge bg-ink px-3">
+        <button
+          onClick={onMenu}
+          aria-label="Buka menu"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-edge text-body hover:bg-surface max-md:h-11 max-md:w-11"
+        >
+          <Icon name="back" size={15} />
+        </button>
+        <h1 className="text-[13px] font-medium text-body">Beranda</h1>
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={onToggleTheme}
+            aria-label={dark ? 'Mode terang' : 'Mode gelap'}
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-edge text-quiet hover:text-body"
+          >
+            <Icon name={dark ? 'sun' : 'moon'} size={13} />
+          </button>
+          <button
+            onClick={onLogout}
+            className="flex h-8 items-center rounded-full border border-edge px-3 text-[11.5px] text-quiet hover:text-body"
+          >
+            Keluar
+          </button>
+        </div>
+      </header>
+      <div className="flex-1 overflow-y-auto px-5 py-8 max-md:px-4 max-md:py-6">
+        <div className="mx-auto max-w-3xl">
+          <p className="text-[11.5px] uppercase tracking-wide text-quiet">Halo, {user.name || user.email}</p>
+          <h2 className="mt-1 font-display text-[26px] leading-tight text-body max-md:text-[22px]">
+            Ruang kerja untuk membangun aplikasi
+          </h2>
+          <div className="mt-5 flex flex-wrap gap-2">
+            <button
+              onClick={onCreate}
+              className="flex h-9 max-md:h-11 items-center gap-2 bg-accent px-3 text-[12.5px] font-medium text-ink transition-opacity hover:opacity-90"
+            >
+              <Icon name="plus" size={12} />
+              Proyek baru
+            </button>
+            <a
+              href="/profil"
+              className="flex h-9 max-md:h-11 items-center border border-edge px-3 text-[12.5px] text-body hover:bg-surface"
+            >
+              Profil akun
+            </a>
+          </div>
+
+          <div className="mt-8 grid grid-cols-3 gap-3 max-sm:grid-cols-1">
+            <StatCard label="Total proyek" value={String(projects.length)} />
+            <StatCard label="Sedang jalan" value={String(working)} />
+            <StatCard label="Selesai" value={String(projects.filter((p) => p.status === 'idle').length)} />
+          </div>
+
+          <h3 className="mt-9 text-[12.5px] font-medium text-body">Proyek kamu</h3>
+          {loading ? (
+            <p className="mt-3 text-[12.5px] text-quiet">Memuat…</p>
+          ) : !projects.length ? (
+            <p className="mt-3 text-[12.5px] leading-relaxed text-quiet">
+              Belum ada proyek. Tekan Proyek baru untuk memulai yang pertama.
+            </p>
+          ) : (
+            <ul className="mt-3 divide-y divide-edge border border-edge bg-surface">
+              {projects.map((p) => (
+                <li key={p.id}>
+                  <button
+                    onClick={() => onSelect(p.id)}
+                    className="flex min-h-[52px] w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-ink"
+                  >
+                    <StatusMark status={p.status} />
+                    <span className="min-w-0 flex-1 truncate text-[13px] text-body">{p.name}</span>
+                    <span className="shrink-0 text-[11px] text-quiet">{p.status}</span>
+                    <Icon name="back" size={12} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
+      <MobileNavOverlay open={navOpen} onClose={onCloseNav} />
+    </div>
+  )
+}
+
+function StatCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="border border-edge bg-surface px-4 py-3">
+      <p className="text-[10.5px] uppercase tracking-wide text-quiet">{label}</p>
+      <p className="mt-1 font-display text-[22px] text-body">{value}</p>
+    </div>
+  )
+}
+
+function MobileNavOverlay({ open, onClose }: { open: boolean; onClose: () => void }) {
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [open, onClose])
+  if (!open) return null
+  return (
+    <div
+      onClick={onClose}
+      aria-hidden="true"
+      className="fixed inset-0 z-20 bg-black/55 md:hidden"
+    />
+  )
+}
+
+/* Account profile page at /profil. */
+function ProfilePage({
+  user,
+  projects,
+  dark,
+  onToggleTheme,
+  onLogout,
+  onCreate,
+  onSelect,
+  onMenu,
+  navOpen,
+  onCloseNav,
+}: {
+  user: User
+  projects: Project[]
+  dark: boolean
+  onToggleTheme: () => void
+  onLogout: () => void
+  onCreate: () => void
+  onSelect: (id: string) => void
+  onMenu: () => void
+  navOpen: boolean
+  onCloseNav: () => void
+}) {
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-edge bg-ink px-3">
+        <button
+          onClick={onMenu}
+          aria-label="Buka menu"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-edge text-body hover:bg-surface max-md:h-11 max-md:w-11"
+        >
+          <Icon name="back" size={15} />
+        </button>
+        <h1 className="text-[13px] font-medium text-body">Profil</h1>
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={onToggleTheme}
+            aria-label={dark ? 'Mode terang' : 'Mode gelap'}
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-edge text-quiet hover:text-body"
+          >
+            <Icon name={dark ? 'sun' : 'moon'} size={13} />
+          </button>
+          <button
+            onClick={onLogout}
+            className="flex h-8 items-center rounded-full border border-edge px-3 text-[11.5px] text-quiet hover:text-body"
+          >
+            Keluar
+          </button>
+        </div>
+      </header>
+      <div className="flex-1 overflow-y-auto px-5 py-8 max-md:px-4 max-md:py-6">
+        <div className="mx-auto max-w-2xl">
+          <div className="border border-edge bg-surface px-4 py-4">
+            <p className="text-[10.5px] uppercase tracking-wide text-quiet">Akun</p>
+            <p className="mt-1 text-[15px] font-medium text-body">{user.name || 'Tanpa nama'}</p>
+            <p className="text-[12.5px] text-quiet">{user.email}</p>
+            <button
+              onClick={onLogout}
+              className="mt-4 flex h-8 items-center border border-edge px-3 text-[11.5px] text-body hover:bg-ink"
+            >
+              Keluar dari akun
+            </button>
+          </div>
+
+          <div className="mt-6 border border-edge bg-surface px-4 py-4">
+            <p className="text-[10.5px] uppercase tracking-wide text-quiet">Tema</p>
+            <button
+              onClick={onToggleTheme}
+              className="mt-2 flex h-8 items-center gap-2 border border-edge px-3 text-[12px] text-body hover:bg-ink"
+            >
+              <Icon name={dark ? 'sun' : 'moon'} size={12} />
+              {dark ? 'Aktifkan mode terang' : 'Aktifkan mode gelap'}
+            </button>
+          </div>
+
+          <div className="mt-6">
+            <div className="flex items-center justify-between">
+              <p className="text-[10.5px] uppercase tracking-wide text-quiet">Proyek ({projects.length})</p>
+              <button onClick={onCreate} className="flex h-7 items-center gap-1 text-[11.5px] text-accent">
+                <Icon name="plus" size={11} />
+                Baru
+              </button>
+            </div>
+            {!projects.length ? (
+              <p className="mt-3 text-[12.5px] text-quiet">Belum ada proyek.</p>
+            ) : (
+              <ul className="mt-3 divide-y divide-edge border border-edge bg-surface">
+                {projects.map((p) => (
+                  <li key={p.id}>
+                    <button
+                      onClick={() => onSelect(p.id)}
+                      className="flex min-h-[48px] w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-ink"
+                    >
+                      <StatusMark status={p.status} />
+                      <span className="min-w-0 flex-1 truncate text-[12.5px] text-body">{p.name}</span>
+                      <span className="shrink-0 text-[11px] text-quiet">{p.status}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <a
+            href="/"
+            className="mt-8 inline-flex h-8 items-center text-[12px] text-quiet hover:text-body"
+          >
+            ← Kembali ke beranda
+          </a>
+        </div>
+      </div>
+      <MobileNavOverlay open={navOpen} onClose={onCloseNav} />
     </div>
   )
 }

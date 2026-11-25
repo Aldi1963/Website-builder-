@@ -676,6 +676,20 @@ app.get('/', async (c) => {
   return c.html(html)
 })
 
+// SPA fallback: client-side routes (/proyek/:id, /profil, ...) semuanya
+// memakai index.html yang sama. API dan aset statis tidak ikut fallback.
+app.get('*', async (c) => {
+  const p = c.req.path
+  if (p.startsWith('/api/') || p.startsWith('/assets/') || p.startsWith('/p/')) {
+    return c.json({ error: 'Not found' }, 404)
+  }
+  const fs = await import('node:fs/promises')
+  const html = await fs.readFile(`${UI_DIR}index.html`, 'utf8').catch(() => null)
+  if (!html) return c.text('UI belum di-build. Jalankan: cd platform && npm run build', 503)
+  c.header('Cache-Control', 'no-store')
+  return c.html(html)
+})
+
 function slugify(input: string) {
   return input
     .toLowerCase()
