@@ -14,6 +14,7 @@ import { putFile, removeFile, listFiles, addMessage, listMessages } from './db.t
 import { savePendingPlan, clearPendingPlan } from './pending-plan.ts'
 import { snapshotVersion, restoreVersion, listVersions } from './versions.ts'
 import { captureScreenshot } from './screenshots.ts'
+import { isManagedDbEnabled, execProjectSql } from './managed-db.ts'
 
 const TOOLS = [
   {
@@ -73,6 +74,30 @@ const TOOLS = [
       name: 'audit',
       description: 'Tinjau keamanan, data, UI, dan aksesibilitas seluruh kode proyek setelah implementasi. Hasil dikirim sebagai temuan terstruktur.',
       parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'db_schema',
+      description: 'Buat atau ubah tabel di database proyek (Postgres terkelola, permanen). Gunakan untuk CREATE/ALTER TABLE, index. Data tersimpan permanen, tidak hilang saat restart.',
+      parameters: {
+        type: 'object',
+        properties: { sql: { type: 'string', description: 'Satu pernyataan SQL DDL. Contoh: CREATE TABLE IF NOT EXISTS notes (id serial primary key, user_email text not null, title text not null, body text, created_at timestamptz default now())' } },
+        required: ['sql'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'db_query',
+      description: 'Jalankan pernyataan SQL (SELECT/INSERT/UPDATE/DELETE) di database proyek untuk memverifikasi skema atau seed data. JANGAN pakai untuk operasi administratif.',
+      parameters: {
+        type: 'object',
+        properties: { sql: { type: 'string', description: 'Satu pernyataan SQL.' } },
+        required: ['sql'],
+      },
     },
   },
   {
@@ -422,6 +447,16 @@ export async function runAgent(
           auditCompleted = true
           result = note
         }
+        }
+      } else if (name === 'db_schema' || name === 'db_query') {
+        await emit({ type: 'status', text: name === 'db_schema' ? 'Menyiapkan tabel database…' : 'Menjalankan query database…' })
+        if (!isManagedDbEnabled()) {
+          result = 'ERROR: Database terkelola belum aktif di server.'
+        } else {
+          const r = await execProjectSql(projectId, String(args.sql ?? ''))
+          stepDidWrite = true
+          didWrite = true
+          result = r.ok ? `OK: ${JSON.stringify(r.result)}` : `ERROR: ${r.error}`
         }
       } else if (name === 'install') {
         await emit({ type: 'status', text: 'Install dependency…' })

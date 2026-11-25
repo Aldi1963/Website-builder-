@@ -11,6 +11,8 @@
     "@supabase/supabase-js": "^2.119.2",
     "@tanstack/react-router": "^1.169.0",
     "@tanstack/react-start": "^1.169.7",
+    "@types/pg": "^8.23.1",
+    "pg": "^8.23.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "srvx": "^1.0.8"

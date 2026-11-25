@@ -3,6 +3,7 @@ import { join, dirname } from 'node:path'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { PROJECTS_DIR, TEMPLATE_DIR, PREVIEW_PORT_BASE, MAX_PREVIEWS } from './paths.ts'
 import { listSettings } from './db.ts'
+import { projectDbUrl } from './managed-db.ts'
 
 const SKIP = new Set(['node_modules', 'dist', '.output', '.tanstack', '.git'])
 
@@ -190,6 +191,10 @@ export async function startPreview(projectId: string): Promise<number> {
   // proyek) — pola db.server.ts memakainya, fallback-nya path yang sama, supaya
   // data aplikasi persisten melewati restart preview/server.
   const env: Record<string, string> = { ...process.env, PORT: String(port), HOST: '127.0.0.1', VB_APP_DB_PATH: join(dir, 'data', 'app.db') }
+  // Database terkelola (Postgres per-proyek): suntik koneksi ke env supaya app
+  // hasil generate bisa memakai DB permanen tanpa mengelola kredensial sendiri.
+  const pgUrl = await projectDbUrl(projectId)
+  if (pgUrl) env.VB_APP_DATABASE_URL = pgUrl
   for (const s of listSettings(projectId)) {
     if (s.key.startsWith('secret_')) env[s.key.slice(7)] = s.value
     else env[`VB_SETTING_${s.key.replace(/[^a-zA-Z0-9_]/g, '_').toUpperCase()}`] = s.value
