@@ -162,7 +162,7 @@ const GATER: Provider = {
   baseUrl: 'https://api.gater.ai.id/v1',
   keyEnv: 'GATER_API_KEY',
   active: false,
-  notes: 'HARGA PER MODEL TIDAK DITEMUKAN di dokumentasi publik — TANPA HARGA model TIDAK BOLEH dipakai (risiko rugi). PRO habis 2 Des 2026 13:38 WIB; sesudahnya tidak ada pernyataan resmi — kemungkinan akses berhenti total, bukan turun ke free; tidak ada tier gratis yang disebut di mana pun. Batas per key (konservatif, dipakai pembatas): maks 5 koneksi bersamaan + ~40 RPM; config Hermes mencatat 10 IP, 5 koneksi, 500 RPM (antre di atas 100 RPM), situs resmi menyebut RPM normal 50/mnt (antre mulai 40), model premium 15/mnt/key. Tes koneksi hanya GET /v1/models — /v1/key, /v1/credits, /v1/me, /v1/usage, /v1/balance semua 404. Nama model Luna di sini gpt-6-luna, BUKAN cx/gpt-5.6-luna (9router).',
+  notes: 'HARGA PER MODEL TIDAK DITEMUKAN di dokumentasi publik — TANPA HARGA model TIDAK BOLEH dipakai (risiko rugi). Batas per key (konservatif, dipakai pembatas): maks 5 koneksi bersamaan + ~40 RPM; config Hermes mencatat 10 IP, 5 koneksi, 500 RPM (antre di atas 100 RPM), situs resmi menyebut RPM normal 50/mnt (antre mulai 40), model premium 15/mnt/key. Tes koneksi hanya GET /v1/models — /v1/key, /v1/credits, /v1/me, /v1/usage, /v1/balance semua 404. Nama model Luna di sini gpt-6-luna, BUKAN cx/gpt-5.6-luna (9router).',
   models: GATER_IDS.map((id) => ({
     id,
     active: true,

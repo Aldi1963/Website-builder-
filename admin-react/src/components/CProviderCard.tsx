@@ -44,7 +44,7 @@ const PROVIDER_NOTES: Record<string, string> = {
   commandcode:
     'TERBLOKIR — paket Go $1/bln tidak termasuk akses API (chat ditolak 403 upgrade_required). Upgrade yang membuka API: <strong>GOAT $10/bln</strong> (membuka API, credit pool + rolling window) atau <strong>Provider $15/bln</strong> (+$1,01 fee, termasuk $15 credit, PAYG tanpa markup — rute paling bersih). Lihat harga di <a href="https://commandcode.ai/billing" target="_blank" rel="noopener">commandcode.ai/billing</a>. Model gratis (:free) tetap terblokir — blokir di level paket, bukan model.',
   gater:
-    '<strong>PRO habis 2 Des 2026 13:38 WIB</strong> — sesudahnya belum ada pernyataan resmi; kemungkinan akses berhenti total, bukan turun ke free. <strong>Tanpa harga = belum bisa dipakai</strong>: isi tarif per model di bawah dulu. Batas per key (konservatif): maks 5 koneksi bersamaan + ~40 RPM. Varian <code>-uncen</code> boleh diaktifkan lewat sakelar model (keputusan user 25 Nov 2026).',
+    '<strong>Tanpa harga = belum bisa dipakai</strong>: isi tarif per model di bawah dulu. Batas per key (konservatif): maks 5 koneksi bersamaan + ~40 RPM. Varian <code>-uncen</code> boleh diaktifkan lewat sakelar model (keputusan user 25 Nov 2026).',
   sumopod:
     'Cara buat key: buat akun di <a href="https://ai.sumopod.com" target="_blank" rel="noopener">ai.sumopod.com</a> → isi AI Balance → menu API Keys → buat key, lalu tempel di bawah ini. Tarif dari katalog 27 Okt 2026 — bisa tertinggal, sinkronkan saat key terpasang.',
 }
@@ -74,9 +74,6 @@ function providerBadges(p: Provider): ReactNode {
   const priced = (p.models || []).filter((m) => m.rateInUsdPer1M !== null && m.rateOutUsdPer1M !== null).length
   if (priced === 0) {
     badges.push(<Badge key="price" tone="warning">Tanpa harga</Badge>)
-  }
-  if (p.id === 'gater') {
-    badges.push(<Badge key="gater" tone="warning">PRO habis 2 Des 2026</Badge>)
   }
   return badges
 }
