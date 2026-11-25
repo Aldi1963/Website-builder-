@@ -55,10 +55,20 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const auth = {
   me: () => req<{ user: User | null; signupOpen: boolean }>('/api/auth/me'),
-  login: (email: string, password: string) =>
+  login: (email: string, password: string, remember = true) =>
     req<{ ok: boolean; user: User }>('/api/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, remember }),
+    }),
+  forgotPassword: (email: string) =>
+    req<{ ok: boolean; message: string }>('/api/auth/forgot', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+  resetPassword: (token: string, password: string) =>
+    req<{ ok: boolean; message: string }>('/api/auth/reset', {
+      method: 'POST',
+      body: JSON.stringify({ token, password }),
     }),
   signup: (email: string, name: string, password: string) =>
     req<{ ok: boolean; user: User }>('/api/auth/signup', {

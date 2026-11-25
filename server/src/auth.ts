@@ -6,6 +6,8 @@ const SCRYPT_r = 8
 const SCRYPT_p = 1
 const KEYLEN = 64
 const SESSION_TTL = 1000 * 60 * 60 * 24 * 30
+const SESSION_TTL_SHORT = 1000 * 60 * 60 * 24 * 3
+const RESET_TTL = 1000 * 60 * 30
 export const SESSION_COOKIE = 'vb_session'
 
 export type User = {
@@ -32,6 +34,14 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+
+CREATE TABLE IF NOT EXISTS password_resets (
+  token_hash TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  used_at INTEGER
+);
 `)
 
 export function hashPassword(password: string): string {
@@ -89,10 +99,10 @@ export function countUsers(): number {
   return (db.prepare(`SELECT count(*) AS n FROM users`).get() as { n: number }).n
 }
 
-export function createSession(userId: string): { token: string; expiresAt: number } {
+export function createSession(userId: string, remember = true): { token: string; expiresAt: number } {
   const token = randomBytes(32).toString('base64url')
   const now = Date.now()
-  const expiresAt = now + SESSION_TTL
+  const expiresAt = now + (remember ? SESSION_TTL : SESSION_TTL_SHORT)
   db.prepare(`INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)`).run(
     tokenHash(token),
     userId,
@@ -136,6 +146,36 @@ export function readCookie(header: string | undefined, name: string): string | u
 
 export function sessionCookie(token: string, maxAgeSec: number) {
   return `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSec}`
+}
+
+/* Password reset: store only the hash of the emailed token. */
+export function createResetToken(email: string): { token: string; userId: string } | null {
+  const row = userByEmail(email)
+  if (!row) return null
+  const token = randomBytes(24).toString('base64url')
+  const now = Date.now()
+  db.prepare(`DELETE FROM password_resets WHERE user_id = ?`).run(row.id)
+  db.prepare(`INSERT INTO password_resets (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)`).run(
+    tokenHash(token),
+    row.id,
+    now,
+    now + RESET_TTL,
+  )
+  return { token, userId: row.id }
+}
+
+export function consumeResetToken(token: string): string | null {
+  if (!token) return null
+  const row = db
+    .prepare(`SELECT user_id, expires_at, used_at FROM password_resets WHERE token_hash = ?`)
+    .get(tokenHash(token)) as { user_id: string; expires_at: number; used_at: number | null } | undefined
+  if (!row) return null
+  if (row.used_at !== null || row.expires_at < Date.now()) {
+    db.prepare(`DELETE FROM password_resets WHERE token_hash = ?`).run(tokenHash(token))
+    return null
+  }
+  db.prepare(`UPDATE password_resets SET used_at = ? WHERE token_hash = ?`).run(Date.now(), tokenHash(token))
+  return row.user_id
 }
 
 export function clearCookie() {

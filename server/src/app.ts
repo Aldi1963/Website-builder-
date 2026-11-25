@@ -24,6 +24,7 @@ import {
   claimOrphanProjects,
   userOwnsProject,
 } from './db.ts'
+import { db } from './db.ts'
 import { listVersions, getVersionDiff, restoreVersion, snapshotVersion, diffLines } from './versions.ts'
 import { projectZip } from './export.ts'
 import {
@@ -52,6 +53,9 @@ import {
   verifyPassword,
   countUsers,
   userById,
+  createResetToken,
+  consumeResetToken,
+  hashPassword,
   type User,
 } from './auth.ts'
 import { runAgent, type AgentEvent } from './agent.ts'
@@ -163,15 +167,41 @@ app.post('/api/auth/signup', async (c) => {
 })
 
 app.post('/api/auth/login', async (c) => {
-  const body = (await c.req.json().catch(() => ({}))) as { email?: string; password?: string }
+  const body = (await c.req.json().catch(() => ({}))) as { email?: string; password?: string; remember?: boolean }
+  const remember = body.remember !== false
   const row = userByEmail((body.email ?? '').trim())
   if (!row || !verifyPassword(body.password ?? '', row.password_hash)) {
     return c.json({ ok: false, error: 'Email atau password salah.' }, 401)
   }
   const { password_hash: _drop, ...user } = row
-  const { token } = createSession(user.id)
-  c.header('set-cookie', sessionCookie(token, 60 * 60 * 24 * 30))
+  const { token, expiresAt } = createSession(user.id, remember)
+  c.header('set-cookie', sessionCookie(token, Math.floor((expiresAt - Date.now()) / 1000)))
   return c.json({ ok: true, user })
+})
+
+/* Forgot password: without a mail provider, the reset link is returned in the
+   response so the flow stays usable on a self-hosted deploy. */
+app.post('/api/auth/forgot', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { email?: string }
+  const email = (body.email ?? '').trim()
+  const created = createResetToken(email)
+  const generic = { ok: true, message: 'Jika email terdaftar, tautan atur ulang sudah dikirim.' }
+  if (!created) return c.json(generic)
+  const origin = new URL(c.req.url).origin
+  const link = `${origin}/?reset=${encodeURIComponent(created.token)}`
+  console.log(`[auth] reset link untuk ${email}: ${link}`)
+  return c.json({ ...generic, resetUrl: link })
+})
+
+app.post('/api/auth/reset', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { token?: string; password?: string }
+  const password = body.password ?? ''
+  if (password.length < 8) return c.json({ ok: false, error: 'Password minimal 8 karakter.' }, 400)
+  const userId = consumeResetToken(body.token ?? '')
+  if (!userId) return c.json({ ok: false, error: 'Tautan tidak valid atau sudah kedaluwarsa.' }, 400)
+  db.prepare(`UPDATE users SET password_hash = ? WHERE id = ?`).run(hashPassword(password), userId)
+  db.prepare(`DELETE FROM sessions WHERE user_id = ?`).run(userId)
+  return c.json({ ok: true, message: 'Password sudah diperbarui. Silakan masuk.' })
 })
 
 app.post('/api/auth/logout', (c) => {
