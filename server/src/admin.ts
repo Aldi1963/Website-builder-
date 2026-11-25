@@ -24,6 +24,13 @@ import {
 } from './llm.ts'
 import { ROOT } from './paths.ts'
 import { registerBilling } from './billing.ts'
+import {
+  getBalance,
+  getUserPlan,
+  getCreditSettings,
+  updateCreditSettings,
+  adjustCredit,
+} from './credits.ts'
 
 type AdminEnv = { Variables: { user: User } }
 
@@ -147,13 +154,35 @@ function alertThresholds(): { buildFailCount: number; buildFailPct: number; disk
   }
 }
 
-/* Plan bawaan pertama kali — hanya dibuat bila tabel plans masih kosong. */
+/* Plan bawaan pertama kali — hanya dibuat bila tabel plans masih kosong.
+   Fase 4 (hybrid, disetujui user 25 Nov 2026): Gratis Rp0/bln = 100
+   credit/bln; Pro Rp49.000/bln = 2.000 credit/bln. Jatah diisi malas
+   (lazy) oleh credits.ts saat saldo dibaca/dipotong. */
 function ensureDefaultPlan() {
   if (count(`SELECT count(*) AS n FROM plans`) === 0) {
     db.prepare(
-      `INSERT INTO plans (id, name, token_limit, price_idr, description, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    ).run('gratis', 'Gratis', 0, 0, 'Paket bawaan: tanpa batas token.', now(), now())
+      `INSERT INTO plans (id, name, token_limit, price_idr, description, monthly_credits, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run('gratis', 'Gratis', 0, 0, 'Paket bawaan: tanpa batas token.', 100, now(), now())
+  } else {
+    /* DB lama: Gratis belum punya jatah bulanan — isi 100 bila masih 0. */
+    db.prepare(`UPDATE plans SET monthly_credits = 100 WHERE id = 'gratis' AND monthly_credits = 0`).run()
+  }
+  const pro = db.prepare(`SELECT id FROM plans WHERE id = 'pro'`).get()
+  if (!pro) {
+    db.prepare(
+      `INSERT INTO plans (id, name, token_limit, price_idr, description, monthly_credits, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      'pro',
+      'Pro',
+      0,
+      49000,
+      'Paket Pro: 2.000 credit/bulan, diperbarui tiap bulan (tidak menumpuk).',
+      2000,
+      now(),
+      now(),
+    )
   }
 }
 
@@ -833,12 +862,14 @@ export function registerAdmin(app: Hono<AdminEnv>) {
     return c.json({ ok: true, ...aiSettingsView() })
   })
 
-  /* Tes koneksi LLM dengan konfigurasi efektif saat ini. */
+  /* Tes koneksi LLM dengan konfigurasi efektif saat ini.
+     KEPUTUSAN FASE 4 (ditunda fase 1): tes ini diagnostik — SENGAJA tanpa
+     userId, jadi TIDAK melewati gate dan TIDAK memotong saldo admin.
+     Biaya kecil tes ditanggung owner, sama seperti /api/discovery. */
   app.post('/api/admin/ai-settings/test', async (c) => {
-    const me = c.get('user')
     const t0 = Date.now()
     try {
-      const reply = await completeText('Jawab singkat saja: berapa 1+1?', effectiveModel(), 'Kamu asisten yang menjawab sangat singkat.', me.id)
+      const reply = await completeText('Jawab singkat saja: berapa 1+1?', effectiveModel(), 'Kamu asisten yang menjawab sangat singkat.')
       return c.json({ ok: true, model: effectiveModel(), latencyMs: Date.now() - t0, reply: reply.slice(0, 500) })
     } catch (err) {
       return c.json({ ok: false, model: effectiveModel(), latencyMs: Date.now() - t0, error: (err as Error).message.slice(0, 300) })
@@ -867,17 +898,19 @@ export function registerAdmin(app: Hono<AdminEnv>) {
       tokenLimit?: number
       priceIdr?: number
       description?: string
+      monthlyCredits?: number
     }
     const name = (body.name ?? '').trim()
     if (!name || name.length > 80) return c.json({ error: 'Nama plan wajib diisi (maks 80 karakter).' }, 400)
     const tokenLimit = Math.max(0, Math.floor(Number(body.tokenLimit ?? 0) || 0))
     const priceIdr = Math.max(0, Math.floor(Number(body.priceIdr ?? 0) || 0))
+    const monthlyCredits = Math.max(0, Math.floor(Number(body.monthlyCredits ?? 0) || 0))
     const description = String(body.description ?? '').slice(0, 500)
     const id = `plan_${Math.random().toString(36).slice(2, 8)}`
     db.prepare(
-      `INSERT INTO plans (id, name, token_limit, price_idr, description, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    ).run(id, name, tokenLimit, priceIdr, description, now(), now())
+      `INSERT INTO plans (id, name, token_limit, price_idr, description, monthly_credits, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(id, name, tokenLimit, priceIdr, description, monthlyCredits, now(), now())
     logAdmin(c, 'plan.create', 'plan', id, `${name} (Rp ${priceIdr})`)
     return c.json({ ok: true, id })
   })
@@ -893,6 +926,7 @@ export function registerAdmin(app: Hono<AdminEnv>) {
       tokenLimit?: number
       priceIdr?: number
       description?: string
+      monthlyCredits?: number
     }
     const sets: string[] = []
     const params: unknown[] = []
@@ -909,6 +943,10 @@ export function registerAdmin(app: Hono<AdminEnv>) {
     if (body.priceIdr !== undefined) {
       sets.push('price_idr = ?')
       params.push(Math.max(0, Math.floor(Number(body.priceIdr) || 0)))
+    }
+    if (body.monthlyCredits !== undefined) {
+      sets.push('monthly_credits = ?')
+      params.push(Math.max(0, Math.floor(Number(body.monthlyCredits) || 0)))
     }
     if (body.description !== undefined) {
       sets.push('description = ?')
@@ -950,8 +988,149 @@ export function registerAdmin(app: Hono<AdminEnv>) {
     } else {
       db.prepare(`DELETE FROM user_plans WHERE user_id = ?`).run(id)
     }
+    /* Ganti plan = jatah plan baru langsung masuk: nolkan reset_at supaya
+       refill malas (credits.ts) mengisi ulang pada baca saldo berikutnya. */
+    db.prepare(`UPDATE credits SET plan_credits_reset_at = NULL WHERE user_id = ?`).run(id)
     logAdmin(c, 'user.assign_plan', 'user', id, planId ? `plan ${planId}` : 'tanpa plan')
     return c.json({ ok: true, planId })
+  })
+
+  /* ---------------------------------------------------------------- */
+  /* Fase 4 — Kelola credit di panel admin                             */
+  /* (a) cari pengguna -> saldo (3 bucket + kedaluwarsa + reset jatah) */
+  /*     + riwayat pemakaian + top-up + transaksi; (b) tambah/kurangi/  */
+  /*     cabut credit (tercatat di credit_transactions + log audit);   */
+  /*     (c) pengaturan angka credit (admin_settings, tanpa ubah kode).*/
+  /* ---------------------------------------------------------------- */
+
+  app.get('/api/admin/credits/settings', (c) => {
+    return c.json({ settings: getCreditSettings(), defaults: { freeGrant: 100, freeDays: 30, freeDailyCap: 50, minBalance: 10 } })
+  })
+
+  app.put('/api/admin/credits/settings', async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as {
+      freeGrant?: number
+      freeDays?: number
+      freeDailyCap?: number
+      minBalance?: number
+    }
+    const before = getCreditSettings()
+    const after = updateCreditSettings(body)
+    const changed = (Object.keys(after) as (keyof typeof after)[])
+      .filter((k) => after[k] !== before[k])
+      .map((k) => `${k}: ${before[k]} → ${after[k]}`)
+    logAdmin(c, 'credit.settings.update', 'credit_settings', 'credit', changed.length ? changed.join(', ') : 'disimpan (tanpa perubahan)')
+    return c.json({ ok: true, settings: after })
+  })
+
+  app.get('/api/admin/credits/users', (c) => {
+    const q = (c.req.query('q') ?? '').trim()
+    const rows = db
+      .prepare(
+        `SELECT u.id, u.email, u.name, u.created_at,
+           up.plan_id AS plan_id, COALESCE(pl.name, 'Gratis') AS plan_name,
+           COALESCE(cr.free_balance, 0) AS free_balance,
+           COALESCE(cr.purchased_balance, 0) AS purchased_balance,
+           COALESCE(cr.plan_credits, 0) AS plan_credits
+         FROM users u
+         LEFT JOIN user_plans up ON up.user_id = u.id
+         LEFT JOIN plans pl ON pl.id = up.plan_id
+         LEFT JOIN credits cr ON cr.user_id = u.id
+         WHERE (? = '' OR lower(u.email) LIKE '%' || lower(?) || '%' OR lower(COALESCE(u.name, '')) LIKE '%' || lower(?) || '%')
+         ORDER BY u.created_at ASC LIMIT 50`,
+      )
+      .all(q, q, q) as {
+      id: string
+      email: string
+      name: string | null
+      created_at: number
+      plan_id: string | null
+      plan_name: string
+      free_balance: number
+      purchased_balance: number
+      plan_credits: number
+    }[]
+    return c.json({
+      users: rows.map((u) => ({
+        ...u,
+        total: Math.round((u.free_balance + u.purchased_balance + u.plan_credits) * 1e6) / 1e6,
+      })),
+    })
+  })
+
+  app.get('/api/admin/credits/users/:id', (c) => {
+    const id = c.req.param('id')
+    const user = db.prepare(`SELECT id, email, name, created_at, disabled FROM users WHERE id = ?`).get(id) as
+      | { id: string; email: string; name: string | null; created_at: number; disabled: number }
+      | undefined
+    if (!user) return c.json({ error: 'Pengguna tidak ditemukan.' }, 404)
+    const plan = getUserPlan(id)
+    const balance = getBalance(id)
+    const raw = db.prepare(
+      `SELECT free_expires_at, purchased_expires_at, plan_credits_expires_at, plan_credits_reset_at, updated_at
+       FROM credits WHERE user_id = ?`,
+    ).get(id) as
+      | {
+          free_expires_at: number | null
+          purchased_expires_at: number | null
+          plan_credits_expires_at: number | null
+          plan_credits_reset_at: number | null
+          updated_at: number
+        }
+      | undefined
+    const usage = db
+      .prepare(
+        `SELECT model, prompt_tokens, completion_tokens, cost_usd, credit, shortfall_credit, created_at
+         FROM credit_usage WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT 50`,
+      )
+      .all(id)
+    const orders = db
+      .prepare(
+        `SELECT order_id, package, amount_idr, credits, status, created_at, paid_at
+         FROM credit_orders WHERE user_id = ? ORDER BY created_at DESC, order_id DESC LIMIT 20`,
+      )
+      .all(id)
+    const transactions = db
+      .prepare(
+        `SELECT kind, bucket, amount, balance_after, reason, order_id, created_at
+         FROM credit_transactions WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT 100`,
+      )
+      .all(id)
+    return c.json({
+      user,
+      plan,
+      balance,
+      raw: raw ?? null,
+      usage,
+      orders,
+      transactions,
+    })
+  })
+
+  app.post('/api/admin/credits/users/:id/adjust', async (c) => {
+    const id = c.req.param('id')
+    const target = db.prepare(`SELECT id, email FROM users WHERE id = ?`).get(id) as
+      | { id: string; email: string }
+      | undefined
+    if (!target) return c.json({ error: 'Pengguna tidak ditemukan.' }, 404)
+    const body = (await c.req.json().catch(() => ({}))) as { bucket?: string; amount?: number; reason?: string }
+    const bucket = body.bucket as 'free' | 'purchased' | 'plan'
+    if (!['free', 'purchased', 'plan'].includes(bucket)) return c.json({ error: 'Bucket tidak dikenal (free / purchased / plan).' }, 400)
+    const amount = Number(body.amount)
+    const reason = String(body.reason ?? 'Penyesuaian manual admin').trim().slice(0, 200) || 'Penyesuaian manual admin'
+    try {
+      const res = adjustCredit(id, bucket, amount, reason)
+      logAdmin(
+        c,
+        'credit.adjust',
+        'user',
+        id,
+        `${target.email}: ${bucket} ${amount > 0 ? '+' : ''}${amount} (${reason}) → saldo ${res.balance.total}`,
+      )
+      return c.json({ ok: true, balance: res.balance, applied: res.applied })
+    } catch (e) {
+      return c.json({ error: (e as Error).message.slice(0, 300) }, 400)
+    }
   })
 
   /* ---------------------------------------------------------------- */
@@ -1736,6 +1915,7 @@ export function registerAdmin(app: Hono<AdminEnv>) {
     pemeliharaan: 'pemeliharaan.html',
     pengumuman: 'pengumuman.html',
     plans: 'plans.html',
+    credits: 'credits.html',
     usage: 'usage.html',
     builds: 'builds.html',
     biaya: 'cost.html',

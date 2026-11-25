@@ -226,6 +226,7 @@
     { title: 'Pengguna', url: '/admin/users', type: 'halaman' },
     { title: 'Proyek', url: '/admin/projects', type: 'halaman' },
     { title: 'Plan', url: '/admin/plans', type: 'halaman' },
+    { title: 'Kelola Credit', url: '/admin/credits', type: 'halaman' },
     { title: 'Penggunaan', url: '/admin/usage', type: 'halaman' },
     { title: 'Biaya LLM', url: '/admin/biaya', type: 'halaman' },
     { title: 'Build', url: '/admin/builds', type: 'halaman' },
@@ -290,6 +291,7 @@
     else if (name === 'moderasi') await loadModeration()
     else if (name === 'domain') await loadDomains()
     else if (name === 'plans') await loadPlans()
+    else if (name === 'credits') await loadCredits()
     else if (name === 'usage') await loadUsage()
     else if (name === 'biaya') await loadCost()
     else if (name === 'builds') await loadBuilds()
@@ -814,6 +816,104 @@
       loadPlans()
     } catch (err) { toast(err.message, 'error') }
   })
+
+  /* ---------- kelola credit (fase 4) ---------- */
+  let creditUserId = null
+  async function loadCreditSettings() {
+    const s = await api('/api/admin/credits/settings')
+    $('#credit-set-grant').value = s.settings.freeGrant
+    $('#credit-set-days').value = s.settings.freeDays
+    $('#credit-set-cap').value = s.settings.freeDailyCap
+    $('#credit-set-min').value = s.settings.minBalance
+  }
+  async function searchCreditUsers() {
+    const q = $('#credit-search').value.trim()
+    const data = await api(`/api/admin/credits/users?q=${encodeURIComponent(q)}`)
+    $('#credit-users-body').innerHTML = data.users.length
+      ? data.users.map((u) => `<tr>
+          <td>${esc(u.name || u.email)}<br><small class="text-muted">${esc(u.email)}</small></td>
+          <td>${esc(u.plan_name)}</td>
+          <td>${fmtNum(u.free_balance)}</td>
+          <td>${fmtNum(u.purchased_balance)}</td>
+          <td>${fmtNum(u.plan_credits)}</td>
+          <td><strong>${fmtNum(u.total)}</strong></td>
+          <td class="text-end"><button class="btn btn-sm btn-outline-primary" data-credit-user="${esc(u.id)}">Lihat</button></td>
+        </tr>`).join('')
+      : '<tr><td colspan="7" class="text-muted">Tidak ada pengguna yang cocok.</td></tr>'
+    $$('#credit-users-body [data-credit-user]').forEach((btn) => btn.addEventListener('click', () => loadCreditDetail(btn.dataset.creditUser)))
+  }
+  async function loadCreditDetail(userId) {
+    creditUserId = userId
+    const d = await api(`/api/admin/credits/users/${encodeURIComponent(userId)}`)
+    $('#credit-detail').hidden = false
+    $('#credit-detail-title').textContent = `${d.user.name || d.user.email} (${d.user.email})`
+    $('#credit-detail-plan').textContent = `${d.plan.planName} · ${fmtNum(d.plan.monthlyCredits)} credit/bln`
+    const b = d.balance
+    $('#credit-bal-free').textContent = fmtNum(b.free)
+    $('#credit-bal-purchased').textContent = fmtNum(b.purchased)
+    $('#credit-bal-plan').textContent = fmtNum(b.plan)
+    $('#credit-bal-total').textContent = fmtNum(b.total)
+    $('#credit-exp-free').textContent = b.freeExpiresAt ? `berlaku s.d. ${fmtDateShort(b.freeExpiresAt)}` : 'tanpa kedaluwarsa'
+    $('#credit-exp-purchased').textContent = b.purchasedExpiresAt ? `berlaku s.d. ${fmtDateShort(b.purchasedExpiresAt)}` : 'tanpa kedaluwarsa'
+    $('#credit-exp-plan').textContent = b.planExpiresAt ? `jatah s.d. ${fmtDateShort(b.planExpiresAt)}` : 'tanpa jatah'
+    $('#credit-reset').textContent = d.raw && d.raw.plan_credits_reset_at ? `reset jatah: ${fmtDateShort(d.raw.plan_credits_reset_at)}` : '–'
+    $('#credit-usage-body').innerHTML = d.usage.length
+      ? d.usage.map((u) => `<tr><td>${fmtDate(u.created_at)}</td><td>${esc(u.model)}</td><td class="text-end">${fmtNum(u.credit)}</td><td class="text-end">${u.shortfall_credit ? fmtNum(u.shortfall_credit) : '–'}</td></tr>`).join('')
+      : '<tr><td colspan="4" class="text-muted">Belum ada pemakaian.</td></tr>'
+    $('#credit-orders-body').innerHTML = d.orders.length
+      ? d.orders.map((o) => `<tr><td class="font-monospace">${esc(o.order_id)}</td><td class="text-end">${fmtRp(o.amount_idr)}</td><td class="text-end">${fmtNum(o.credits)}</td><td>${esc(o.status)}</td></tr>`).join('')
+      : '<tr><td colspan="4" class="text-muted">Belum ada top-up.</td></tr>'
+    $('#credit-tx-body').innerHTML = d.transactions.length
+      ? d.transactions.map((t) => `<tr><td>${fmtDate(t.created_at)}</td><td>${esc(t.kind)}</td><td>${esc(t.bucket || '–')}</td><td class="text-end">${t.amount > 0 ? '+' : ''}${fmtNum(t.amount)}</td><td class="text-end">${fmtNum(t.balance_after)}</td><td>${esc(t.reason || '')}</td></tr>`).join('')
+      : '<tr><td colspan="6" class="text-muted">Belum ada transaksi.</td></tr>'
+    document.getElementById('credit-detail').scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+  async function loadCredits() {
+    await loadCreditSettings()
+    const searchBtn = $('#credit-search-btn')
+    if (searchBtn && !searchBtn.dataset.wired) {
+      searchBtn.dataset.wired = '1'
+      searchBtn.addEventListener('click', async () => {
+        try { await searchCreditUsers() } catch (err) { toast(err.message, 'error') }
+      })
+      $('#credit-search').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); searchBtn.click() }
+      })
+      $('#credit-adjust-form').addEventListener('submit', async (e) => {
+        e.preventDefault()
+        if (!creditUserId) return
+        const amount = Number($('#credit-adjust-amount').value)
+        const reason = $('#credit-adjust-reason').value.trim()
+        if (!amount || !reason) { toast('Isi jumlah dan alasan.', 'error'); return }
+        try {
+          const res = await api(`/api/admin/credits/users/${encodeURIComponent(creditUserId)}/adjust`, {
+            method: 'POST',
+            body: JSON.stringify({ bucket: $('#credit-adjust-bucket').value, amount, reason }),
+          })
+          toast(`Penyesuaian diterapkan. Saldo sekarang ${fmtNum(res.balance.total)} credit.`)
+          $('#credit-adjust-amount').value = ''
+          $('#credit-adjust-reason').value = ''
+          await loadCreditDetail(creditUserId)
+        } catch (err) { toast(err.message, 'error') }
+      })
+      $('#credit-settings-form').addEventListener('submit', async (e) => {
+        e.preventDefault()
+        try {
+          await api('/api/admin/credits/settings', {
+            method: 'PUT',
+            body: JSON.stringify({
+              freeGrant: Number($('#credit-set-grant').value),
+              freeDays: Number($('#credit-set-days').value),
+              freeDailyCap: Number($('#credit-set-cap').value),
+              minBalance: Number($('#credit-set-min').value),
+            }),
+          })
+          toast('Pengaturan credit disimpan.')
+          await loadCreditSettings()
+        } catch (err) { toast(err.message, 'error') }
+      })
+    }
+  }
 
   /* ---------- pengaturan AI ---------- */
   function srcBadge(src) {

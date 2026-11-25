@@ -87,6 +87,15 @@ CREATE TABLE IF NOT EXISTS token_usage (
 CREATE INDEX IF NOT EXISTS idx_token_usage_user ON token_usage(user_id, created_at);
 `)
 
+/* Jatah credit bulanan plan (fase 4, hybrid): Gratis 100/bln, Pro 2000/bln.
+   0 = plan tanpa jatah credit. Kolom ditambah di tempat supaya DB yang
+   sudah ada tetap jalan tanpa alat migrasi. */
+try {
+  db.exec(`ALTER TABLE plans ADD COLUMN monthly_credits INTEGER NOT NULL DEFAULT 0`)
+} catch {
+  /* sudah ada */
+}
+
 /* ---- Credit (fase 1): saldo dua bucket + riwayat pemakaian per panggilan ----
    1 credit = $0,001 biaya LLM. Saldo boleh pecahan (REAL). Bucket free
    (gratis, ada expiry + cap harian) dipotong dulu, lalu purchased, lalu

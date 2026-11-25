@@ -16,6 +16,7 @@ const pages = [
   { id: 'pemeliharaan', title: 'Pemeliharaan', file: 'pemeliharaan.html' },
   { id: 'pengumuman', title: 'Pengumuman', file: 'pengumuman.html' },
   { id: 'plans', title: 'Plan', file: 'plans.html' },
+  { id: 'credits', title: 'Kelola Credit', file: 'credits.html' },
   { id: 'usage', title: 'Penggunaan', file: 'usage.html' },
   { id: 'builds', title: 'Build', file: 'builds.html' },
   { id: 'biaya', title: 'Biaya LLM', file: 'cost.html' },

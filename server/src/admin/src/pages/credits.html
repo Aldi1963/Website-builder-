@@ -1,0 +1,82 @@
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3 mb-4">
+  <div><h1 class="h3 mb-0">Kelola Credit</h1><p class="text-muted mb-0">Saldo pengguna, penyesuaian manual, dan pengaturan angka credit. Jatah plan (Gratis 100/bln, Pro 2.000/bln) diperbarui tiap awal bulan — sisa bulan lalu hangus, tidak menumpuk.</p></div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header"><h2 class="h5 card-title mb-0">Cari Pengguna</h2></div>
+  <div class="card-body">
+    <div class="input-group">
+      <input type="search" class="form-control" id="credit-search" placeholder="Cari email atau nama…" data-search-input>
+      <button type="button" class="btn btn-primary" id="credit-search-btn"><i class="bi bi-search"></i> Cari</button>
+    </div>
+    <div class="table-responsive mt-3"><table class="table table-hover mb-0">
+      <thead class="table-light"><tr><th>Pengguna</th><th>Plan</th><th>Gratis</th><th>Dibeli</th><th>Plan</th><th>Total</th><th></th></tr></thead>
+      <tbody id="credit-users-body"><tr><td colspan="7" class="text-muted">Ketik email/nama lalu tekan Cari.</td></tr></tbody>
+    </table></div>
+  </div>
+</div>
+
+<div id="credit-detail" hidden>
+  <div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center"><h2 class="h5 card-title mb-0" id="credit-detail-title">Detail Pengguna</h2><span class="badge bg-info" id="credit-detail-plan">–</span></div>
+    <div class="card-body">
+      <div class="row g-3 mb-3">
+        <div class="col-sm-6 col-xl-3"><div class="card stats-card"><div class="card-body"><p class="h6 mb-0 text-muted">Gratis</p><div class="h3 mb-0" id="credit-bal-free">–</div><small class="text-muted" id="credit-exp-free">–</small></div></div></div>
+        <div class="col-sm-6 col-xl-3"><div class="card stats-card"><div class="card-body"><p class="h6 mb-0 text-muted">Dibeli</p><div class="h3 mb-0" id="credit-bal-purchased">–</div><small class="text-muted" id="credit-exp-purchased">–</small></div></div></div>
+        <div class="col-sm-6 col-xl-3"><div class="card stats-card"><div class="card-body"><p class="h6 mb-0 text-muted">Jatah Plan</p><div class="h3 mb-0" id="credit-bal-plan">–</div><small class="text-muted" id="credit-exp-plan">–</small></div></div></div>
+        <div class="col-sm-6 col-xl-3"><div class="card stats-card"><div class="card-body"><p class="h6 mb-0 text-muted">Total</p><div class="h3 mb-0" id="credit-bal-total">–</div><small class="text-muted" id="credit-reset">–</small></div></div></div>
+      </div>
+      <form id="credit-adjust-form" class="row g-2 align-items-end">
+        <div class="col-md-3"><label class="form-label" for="credit-adjust-bucket">Bucket</label>
+          <select class="form-select" id="credit-adjust-bucket"><option value="free">Gratis</option><option value="purchased">Dibeli</option><option value="plan">Jatah Plan</option></select></div>
+        <div class="col-md-3"><label class="form-label" for="credit-adjust-amount">Jumlah (+ tambah / − kurangi)</label>
+          <input type="number" step="any" class="form-control" id="credit-adjust-amount" placeholder="cth. 50 atau -20" required></div>
+        <div class="col-md-4"><label class="form-label" for="credit-adjust-reason">Alasan</label>
+          <input type="text" class="form-control" id="credit-adjust-reason" placeholder="cth. Kompensasi gangguan" maxlength="200" required></div>
+        <div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Terapkan</button></div>
+      </form>
+      <p class="text-muted small mt-2 mb-0">Penyesuaian tercatat di riwayat transaksi (kind <code>adjust</code>) dan log audit. Saldo tidak bisa negatif — pengurangan melebihi sisa bucket ditolak.</p>
+    </div>
+  </div>
+  <div class="row g-4 mb-4">
+    <div class="col-lg-6">
+      <div class="card"><div class="card-header"><h2 class="h5 card-title mb-0">Riwayat Pemakaian (50 terakhir)</h2></div>
+      <div class="card-body"><div class="table-responsive"><table class="table table-hover mb-0">
+        <thead class="table-light"><tr><th>Waktu</th><th>Model</th><th class="text-end">Credit</th><th class="text-end">Kurang</th></tr></thead>
+        <tbody id="credit-usage-body"></tbody>
+      </table></div></div></div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card"><div class="card-header"><h2 class="h5 card-title mb-0">Riwayat Top-up</h2></div>
+      <div class="card-body"><div class="table-responsive"><table class="table table-hover mb-0">
+        <thead class="table-light"><tr><th>Order</th><th class="text-end">Rp</th><th class="text-end">Credit</th><th>Status</th></tr></thead>
+        <tbody id="credit-orders-body"></tbody>
+      </table></div></div></div>
+    </div>
+  </div>
+  <div class="card mb-4">
+    <div class="card-header"><h2 class="h5 card-title mb-0">Riwayat Transaksi (100 terakhir)</h2></div>
+    <div class="card-body"><div class="table-responsive"><table class="table table-hover mb-0">
+      <thead class="table-light"><tr><th>Waktu</th><th>Jenis</th><th>Bucket</th><th class="text-end">Jumlah</th><th class="text-end">Saldo Sesudah</th><th>Keterangan</th></tr></thead>
+      <tbody id="credit-tx-body"></tbody>
+    </table></div></div>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header"><h2 class="h5 card-title mb-0">Pengaturan Angka Credit</h2></div>
+  <div class="card-body">
+    <p class="text-muted small">Berlaku untuk pendaftaran dan gate berikutnya — tanpa ubah kode dan tanpa restart.</p>
+    <form id="credit-settings-form" class="row g-3">
+      <div class="col-md-3"><label class="form-label" for="credit-set-grant">Credit gratis pengguna baru</label>
+        <input type="number" min="0" class="form-control" id="credit-set-grant"></div>
+      <div class="col-md-3"><label class="form-label" for="credit-set-days">Masa berlaku gratis (hari)</label>
+        <input type="number" min="1" class="form-control" id="credit-set-days"></div>
+      <div class="col-md-3"><label class="form-label" for="credit-set-cap">Cap harian bucket gratis</label>
+        <input type="number" min="0" class="form-control" id="credit-set-cap"></div>
+      <div class="col-md-3"><label class="form-label" for="credit-set-min">Saldo minimal gate AI</label>
+        <input type="number" min="0" class="form-control" id="credit-set-min"></div>
+      <div class="col-12"><button type="submit" class="btn btn-primary">Simpan Pengaturan</button></div>
+    </form>
+  </div>
+</div>

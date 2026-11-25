@@ -1,7 +1,7 @@
 import { BASE_SYSTEM } from './prompts.ts'
 import { db } from './db.ts'
 import { userById } from './auth.ts'
-import { deduct, getBalance, MIN_BALANCE_TO_CALL, type UsageInput } from './credits.ts'
+import { deduct, getBalance, minBalanceToCall, type UsageInput } from './credits.ts'
 
 export type ChatMessage =
   | { role: 'system' | 'user' | 'assistant'; content: string; tool_calls?: ToolCall[] }
@@ -127,7 +127,7 @@ function parseSse(raw: string, noteUsage: (u: unknown) => void = trackUsage): { 
    (= total final dari upstream), dan deduct() dipanggil tepat sekali. */
 export function creditHabisError(balance: number): Error {
   const err = new Error(
-    `Credit habis — saldo ${balance.toFixed(1)} credit, minimal ${MIN_BALANCE_TO_CALL} credit untuk memakai AI. Top up credit untuk melanjutkan.`,
+    `Credit habis — saldo ${balance.toFixed(1)} credit, minimal ${minBalanceToCall()} credit untuk memakai AI. Top up credit untuk melanjutkan.`,
   )
   ;(err as Error & { code: string }).code = 'CREDIT_HABIS'
   return err
@@ -146,7 +146,7 @@ export async function complete(
   /* Gate: cek saldo dulu — JANGAN lakukan panggilan LLM bila saldo kurang. */
   if (opts.userId) {
     const bal = getBalance(opts.userId)
-    if (bal.total < MIN_BALANCE_TO_CALL) throw creditHabisError(bal.total)
+    if (bal.total < minBalanceToCall()) throw creditHabisError(bal.total)
   }
 
   /* Usage final (terakhir yang diterima) — dipotong tepat sekali. */
