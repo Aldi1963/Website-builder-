@@ -138,6 +138,28 @@ export function SettingsSheet({
 
         {section === 'menu' && (
           <div className="flex flex-col">
+            <div className="border-b border-edge py-2">
+              <p className="px-3 text-[11px] font-medium text-accent">SCREENSHOT</p>
+              <button
+                onClick={async () => {
+                  setMsg('')
+                  try {
+                    const r = await api.screenshot(projectId)
+                    setMsg(`Screenshot tersimpan: ${r.screenshot.name} (${Math.round(r.screenshot.bytes / 1024)} KB)`)
+                  } catch (e) {
+                    setMsg((e as Error).message)
+                  }
+                }}
+                className="mt-1 flex min-h-[44px] w-full items-center justify-between px-3 text-left transition-colors hover:bg-ink"
+              >
+                <span>
+                  <span className="block text-[12.5px] text-body">Ambil screenshot preview</span>
+                  <span className="block text-[11px] text-quiet">Simpan tampilan terbaru proyek</span>
+                </span>
+                <Icon name="camera" size={14} className="text-quiet" />
+              </button>
+              {msg && <p className="mx-3 mt-2 border-l-2 border-edge pl-2 text-[12px] text-body">{msg}</p>}
+            </div>
             <MenuRow label="Model" sub={`${current.name} — ${current.note}`} onClick={() => setSection('model')} />
             <MenuRow label="Kelola website" sub="Domain, secrets, ringkasan proyek" onClick={() => setSection('settings')} />
             <ToggleRow
@@ -597,6 +619,9 @@ function Welcome({ onPick }: { onPick: (s: string) => void }) {
 
 function Bubble({ role, content }: { role: string; content: string }) {
   const { copied, copy } = useCopy()
+  const [zoomed, setZoomed] = useState(false)
+  const match = role === 'assistant' ? content.match(/!\[([^\]]*)\]\((\/api\/projects\/[^)\s]+)\)/) : null
+  const text = match ? content.replace(match[0], '').trim() : content
 
   if (role === 'user') {
     return (
@@ -624,7 +649,20 @@ function Bubble({ role, content }: { role: string; content: string }) {
         <span className="flex h-5 w-5 items-center justify-center rounded bg-accent font-mono text-[10px] font-bold text-white" aria-hidden="true">V</span>
         <span className="text-[11px] font-medium text-body">VibeBuilder</span>
       </div>
-      <div className="mt-1.5 whitespace-pre-wrap text-[13.5px] leading-relaxed text-body">{content}</div>
+      <div className="mt-1.5 whitespace-pre-wrap text-[13.5px] leading-relaxed text-body">{text}</div>
+      {match && (
+        <button type="button" onClick={() => setZoomed(true)} className="mt-2 block max-w-full overflow-hidden rounded-lg border border-edge bg-ink" aria-label="Lihat screenshot">
+          <img src={match[2]} alt={match[1] || 'Screenshot preview'} className="block max-h-64 w-full object-cover" loading="lazy" />
+        </button>
+      )}
+      {zoomed && match && (
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setZoomed(false)}>
+          <div className="max-h-full max-w-full" onClick={(e) => e.stopPropagation()}>
+            <img src={match[2]} alt={match[1] || 'Screenshot preview'} className="max-h-[80vh] max-w-full rounded-lg border border-edge" />
+            <button type="button" onClick={() => setZoomed(false)} className="mt-2 text-[12px] text-white/80 hover:text-white">Tutup</button>
+          </div>
+        </div>
+      )}
       <button
         onClick={() => copy(content)}
         className="mt-1 flex h-6 items-center gap-1 text-[11px] text-quiet opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"

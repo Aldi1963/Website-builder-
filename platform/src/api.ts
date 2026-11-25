@@ -27,6 +27,7 @@ export type AgentEvent =
   | { type: 'build'; ok: boolean; log: string }
   | { type: 'install'; ok: boolean; log: string }
   | { type: 'assistant'; text: string }
+  | { type: 'screenshot'; url: string; name: string }
   | { type: 'error'; text: string }
 
 export type User = { id: string; email: string; name: string; created_at: number }
@@ -114,6 +115,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ prompt }),
     }),
+  screenshot: (id: string) =>
+    req<{ ok: boolean; screenshot: { name: string; url: string; created_at: number; bytes: number } }>(`/api/projects/${id}/screenshots`, { method: 'POST' }),
+  screenshots: (id: string) =>
+    req<{ screenshots: { name: string; url: string; created_at: number; bytes: number }[] }>(`/api/projects/${id}/screenshots`),
   settings: (id: string) => req<ProjectSettings>(`/api/projects/${id}/settings`),
   setDomain: (id: string, domain: string) =>
     req<{ ok: boolean; customDomain: string }>(`/api/projects/${id}/domain`, {
@@ -145,6 +150,7 @@ export type ChatHandlers = {
   onInstall?: (ok: boolean, log: string) => void
   onAssistantDelta?: (text: string) => void
   onAssistant?: (text: string) => void
+  onScreenshot?: (url: string, name: string) => void
   onError?: (text: string) => void
   onDone?: () => void
 }
@@ -217,6 +223,7 @@ export async function chatStream(
       else if (event === 'install') h.onInstall?.(payload.ok, payload.log)
       else if (event === 'assistant_delta') h.onAssistantDelta?.(payload.text)
       else if (event === 'assistant') h.onAssistant?.(payload.text)
+      else if (event === 'screenshot') h.onScreenshot?.(payload.url, payload.name)
       else if (event === 'error') h.onError?.(payload.text)
       else if (event === 'done') h.onDone?.()
     }

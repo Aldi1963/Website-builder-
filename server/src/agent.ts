@@ -11,6 +11,7 @@ import {
 } from './workspace.ts'
 import { putFile, removeFile, listFiles, addMessage, listMessages } from './db.ts'
 import { snapshotVersion, restoreVersion, listVersions } from './versions.ts'
+import { captureScreenshot } from './screenshots.ts'
 
 const TOOLS = [
   {
@@ -91,6 +92,7 @@ export type AgentEvent =
   | { type: 'install'; ok: boolean; log: string }
   | { type: 'assistant_delta'; text: string }
   | { type: 'assistant'; text: string }
+  | { type: 'screenshot'; url: string; name: string }
   | { type: 'error'; text: string }
 
 const MAX_STEPS = Number(process.env.VB_MAX_STEPS ?? 30)
@@ -117,6 +119,22 @@ export async function runAgent(
   ]
 
   let lastBuildFailed = false
+  let screenshotSent = false
+
+  /* Setelah perubahan UI selesai, ambil screenshot preview dan simpan sebagai
+     pesan assistant. Kegagalan screenshot dilaporkan, bukan didiamkan. */
+  const sendScreenshot = async () => {
+    if (screenshotSent || !didWrite || lastBuildFailed) return
+    screenshotSent = true
+    try {
+      await emit({ type: 'status', text: 'Mengambil screenshot preview…' })
+      const shot = await captureScreenshot(projectId)
+      addMessage(projectId, 'assistant', `![Screenshot preview](${shot.url})`)
+      await emit({ type: 'screenshot', url: shot.url, name: shot.name })
+    } catch (err) {
+      await emit({ type: 'error', text: `Screenshot preview gagal: ${(err as Error).message}` })
+    }
+  }
 
   // Klasifikasi cepat: edit kecil vs pekerjaan penuh. Edit kecil = jalur ringkas tanpa plan/audit.
   let quickEdit = false
@@ -186,6 +204,7 @@ export async function runAgent(
       }
       try {
         await summarize()
+        await sendScreenshot()
         return
       } catch (err) {
         dbg(`final summary first attempt failed project=${projectId}: ${(err as Error).message}`)
@@ -193,6 +212,7 @@ export async function runAgent(
         await new Promise((r) => setTimeout(r, 1200))
         try {
           await summarize()
+          await sendScreenshot()
           return
         } catch (err2) {
           dbg(`final summary retry failed project=${projectId}: ${(err2 as Error).message}`)
@@ -223,6 +243,7 @@ export async function runAgent(
       const clean = msg.content.trim()
       addMessage(projectId, 'assistant', clean)
       await emit({ type: 'assistant', text: clean })
+      await sendScreenshot()
       return
     }
 

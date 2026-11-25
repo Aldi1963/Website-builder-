@@ -43,6 +43,7 @@ import {
   readProjectFile,
   writeProjectFile,
 } from './workspace.ts'
+import { captureScreenshot, listScreenshots, readScreenshot } from './screenshots.ts'
 import {
   SESSION_COOKIE,
   sessionCookie,
@@ -537,6 +538,7 @@ app.post('/api/projects/:id/chat', async (c) => {
       else if (e.type === 'audit') await send('audit', e)
       else if (e.type === 'assistant_delta') await send('assistant_delta', e)
       else if (e.type === 'assistant') await send('assistant', e)
+      else if (e.type === 'screenshot') await send('screenshot', e)
       else await send('error', e)
     }
 
@@ -622,6 +624,36 @@ app.post('/api/projects/:id/messages', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { role?: string; content?: string }
   const m = addMessage(r.project.id, body.role ?? 'assistant', body.content ?? '')
   return c.json({ message: m })
+})
+
+/* ---------- screenshot preview ---------- */
+
+app.get('/api/projects/:id/screenshots', (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  return c.json({ screenshots: listScreenshots(r.project.id) })
+})
+
+/* Response gambar, bukan JSON, dengan content-type dan panjang eksplisit. */
+app.get('/api/projects/:id/screenshots/:name', (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  const data = readScreenshot(r.project.id, c.req.param('name'))
+  if (!data) return c.json({ error: 'screenshot tidak ditemukan' }, 404)
+  return new Response(new Uint8Array(data), {
+    headers: { 'content-type': 'image/png', 'content-length': String(data.length), 'cache-control': 'private, max-age=31536000' },
+  })
+})
+
+app.post('/api/projects/:id/screenshots', async (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  try {
+    const screenshot = await captureScreenshot(r.project.id)
+    return c.json({ ok: true, screenshot })
+  } catch (err) {
+    return c.json({ ok: false, error: `Screenshot gagal: ${(err as Error).message}` }, 503)
+  }
 })
 
 /* ---------- static UI ---------- */

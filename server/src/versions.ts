@@ -6,6 +6,21 @@ import { PROJECTS_DIR } from './paths.ts'
 import { listFiles, getFile } from './db.ts'
 import { writeProjectFile } from './workspace.ts'
 
+const EXCLUDED_DIRS = new Set(['.screenshots'])
+
+function walkProject(dir: string, prefix = ''): { path: string; content: string }[] {
+  const out: { path: string; content: string }[] = []
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name === 'node_modules' || entry.name === '.versions' || EXCLUDED_DIRS.has(entry.name)) continue
+    const rel = prefix ? `${prefix}/${entry.name}` : entry.name
+    if (entry.isDirectory()) out.push(...walkProject(join(dir, entry.name), rel))
+    else {
+      try { out.push({ path: rel, content: readFileSync(join(dir, entry.name), 'utf8') }) } catch { /* skip unreadable */ }
+    }
+  }
+  return out
+}
+
 export type VersionSnapshot = {
   id: number
   label: string
@@ -23,7 +38,8 @@ export function snapshotVersion(projectId: string, label: string): number {
   mkdirSync(dir, { recursive: true })
   const existing = readdirSync(dir).filter((f) => f.startsWith('v') && f.endsWith('.json'))
   const id = existing.length + 1
-  const files = listFiles(projectId).map((f) => ({ path: f.path, content: getFile(projectId, f.path) ?? '' }))
+  const projectRoot = join(PROJECTS_DIR, projectId)
+  const files = walkProject(projectRoot)
   const snap: VersionSnapshot = { id, label: label.slice(0, 120), created_at: Date.now(), files, prompt: label }
   writeFileSync(join(dir, `v${id}.json`), JSON.stringify(snap), 'utf8')
   return id

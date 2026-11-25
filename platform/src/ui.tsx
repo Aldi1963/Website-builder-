@@ -79,6 +79,7 @@ const PATHS: Record<string, string> = {
   logout: 'M15 4h4v16h-4M11 16l-4-4 4-4M7 12h9',
   bolt: 'M13 2 4 14h6l-1 8 9-12h-6l1-8',
   back: 'M20 12H7M13 5l-7 7 7 7',
+  camera: 'M4 8h4l2-2h4l2 2h4v11H4zM12 18a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z',
 }
 
 export function Icon({

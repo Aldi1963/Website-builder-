@@ -573,6 +573,9 @@ function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle:
         setStreamText('')
         setMessages((m) => [...m, { role: 'assistant', content: t }])
       },
+      onScreenshot: () => {
+        void load()
+      },
       onError: (t) => {
         setStreamText('')
         setMessages((m) => [...m, { role: 'error', content: t }])
