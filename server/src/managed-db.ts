@@ -154,17 +154,164 @@ function withDb(url: string, database: string): string {
   return u.toString()
 }
 
-/** Jalankan statement DDL/SQL tunggal dari tool agent, dengan batas aman. */
-export async function execProjectSql(projectId: string, sql: string): Promise<{ ok: boolean; result?: unknown; error?: string }> {
-  if (!isManagedDbEnabled()) return { ok: false, error: 'Database terkelola belum aktif.' }
-  const trimmed = sql.trim().replace(/;+\s*$/, '')
-  // Larang perintah administratif berbahaya dari kode proyek.
-  if (/;\s*(drop\s+database|create\s+database|alter\s+database|drop\s+role|create\s+role)/i.test(trimmed + ';')) {
-    return { ok: false, error: 'Operasi administratif database tidak diizinkan dari kode proyek.' }
+/**
+ * Allowlist SQL untuk tool agent. Dua lapis: (1) hanya satu pernyataan per panggilan,
+ * (2) awalan pernyataan harus termasuk daftar operasi yang diizinkan untuk tool itu.
+ * Komentar dibuang lebih dulu supaya perintah terlarang tidak bisa disembunyikan
+ * di dalam komentar gaya baris maupun blok.
+ */
+export type SqlKind = 'schema' | 'query'
+
+const SCHEMA_STATEMENTS: Array<{ re: RegExp; label: string }> = [
+  { re: /^create\s+(?:temporary\s+|temp\s+|unlogged\s+)?table\b/i, label: 'CREATE TABLE' },
+  { re: /^create\s+(?:unique\s+)?index\b/i, label: 'CREATE INDEX' },
+  { re: /^alter\s+table\b/i, label: 'ALTER TABLE' },
+  { re: /^comment\s+on\b/i, label: 'COMMENT ON' },
+]
+
+const QUERY_STATEMENTS: Array<{ re: RegExp; label: string }> = [
+  { re: /^select\b/i, label: 'SELECT' },
+  { re: /^with\b/i, label: 'WITH' },
+  { re: /^insert\s+into\b/i, label: 'INSERT' },
+  { re: /^update\b/i, label: 'UPDATE' },
+  { re: /^delete\s+from\b/i, label: 'DELETE' },
+]
+
+const FORBIDDEN_SQL: Array<{ re: RegExp; label: string }> = [
+  { re: /\bcreate\s+(?:or\s+replace\s+)?(?:database|role|user|group|tablespace|extension|foreign\s+data\s+wrapper|server|publication|subscription)\b/i, label: 'CREATE DATABASE/ROLE/EXTENSION' },
+  { re: /\balter\s+(?:database|role|user|group|system|tablespace)\b/i, label: 'ALTER administratif' },
+  { re: /\bdrop\s+(?:database|role|user|group|schema|tablespace|extension)\b/i, label: 'DROP administratif' },
+  { re: /^(?:grant|revoke)\b/i, label: 'GRANT/REVOKE' },
+  { re: /^set\s+(?:role|session\s+authorization|local\s+role)\b|^reset\s+(?:role|all|session\s+authorization)\b/i, label: 'SET ROLE' },
+  { re: /^copy\b[\s\S]*\bprogram\b/i, label: 'COPY PROGRAM' },
+  { re: /\b(?:pg_read_file|pg_read_binary_file|pg_ls_dir|pg_stat_file|pg_terminate_backend|pg_cancel_backend|lo_import|lo_export|dblink|pg_execute_server_program)\s*\(/i, label: 'fungsi server terlarang' },
+  { re: /^do\s+\$|^(?:listen|unlisten|notify)\b/i, label: 'DO/LISTEN/NOTIFY' },
+  { re: /^(?:truncate|vacuum|reindex|cluster|analyze|refresh\s+materialized\s+view)\b/i, label: 'operasi pemeliharaan' },
+]
+
+type SqlToken = { type: 'code' | 'literal' | 'semicolon'; text: string }
+
+/** Tokenisasi ringan: pisahkan kode, literal (string/identifier/dollar-quote), dan pemisah pernyataan. */
+function tokenizeSql(sql: string): SqlToken[] {
+  const tokens: SqlToken[] = []
+  let code = ''
+  let i = 0
+  const n = sql.length
+  const flushCode = () => {
+    if (code) tokens.push({ type: 'code', text: code })
+    code = ''
   }
+  while (i < n) {
+    const ch = sql[i]
+    const next = sql[i + 1]
+    if (ch === '-' && next === '-') {
+      while (i < n && sql[i] !== '\n') i++
+      code += ' '
+      continue
+    }
+    if (ch === '/' && next === '*') {
+      i += 2
+      while (i < n && !(sql[i] === '*' && sql[i + 1] === '/')) i++
+      i += 2
+      code += ' '
+      continue
+    }
+    if (ch === "'" || ch === '"') {
+      flushCode()
+      const quote = ch
+      let raw = quote
+      i++
+      while (i < n) {
+        raw += sql[i]
+        if (sql[i] === quote) {
+          if (sql[i + 1] === quote) {
+            raw += sql[i + 1]
+            i += 2
+            continue
+          }
+          i++
+          break
+        }
+        i++
+      }
+      tokens.push({ type: 'literal', text: raw })
+      continue
+    }
+    if (ch === '$') {
+      const tag = /^\$[A-Za-z_0-9]*\$/.exec(sql.slice(i))?.[0]
+      if (tag) {
+        flushCode()
+        const end = sql.indexOf(tag, i + tag.length)
+        const stop = end === -1 ? n : end + tag.length
+        tokens.push({ type: 'literal', text: sql.slice(i, stop) })
+        i = stop
+        continue
+      }
+    }
+    if (ch === ';') {
+      flushCode()
+      tokens.push({ type: 'semicolon', text: ';' })
+      i++
+      continue
+    }
+    code += ch
+    i++
+  }
+  flushCode()
+  return tokens
+}
+
+/** Buang komentar SQL dan pecah menjadi pernyataan top-level (hormati string/identifier/dollar-quote). */
+export function splitSqlStatements(sql: string): string[] {
+  const out: string[] = []
+  let buf = ''
+  for (const tok of tokenizeSql(sql ?? '')) {
+    if (tok.type === 'semicolon') {
+      if (buf.trim()) out.push(buf.trim())
+      buf = ''
+      continue
+    }
+    buf += tok.text
+  }
+  if (buf.trim()) out.push(buf.trim())
+  return out
+}
+
+/** Kode SQL dengan isi literal dikosongkan, agar kata terlarang di dalam string tidak memicu false positive. */
+function maskedSql(statement: string): string {
+  return tokenizeSql(statement)
+    .map((tok) => (tok.type === 'literal' ? "''" : tok.text))
+    .join('')
+}
+
+/** Validasi SQL dari tool agent; mengembalikan {ok:true, sql} atau {ok:false, error}. */
+export function validateProjectSql(kind: SqlKind, sql: string): { ok: true; sql: string } | { ok: false; error: string } {
+  const statements = splitSqlStatements(sql ?? '')
+  if (statements.length === 0) return { ok: false, error: 'SQL kosong.' }
+  if (statements.length > 1) {
+    return { ok: false, error: `Hanya boleh satu pernyataan per panggilan (terdeteksi ${statements.length}).` }
+  }
+  const stmt = statements[0]
+  const masked = maskedSql(stmt)
+  for (const rule of FORBIDDEN_SQL) {
+    if (rule.re.test(masked)) return { ok: false, error: `Operasi ${rule.label} tidak diizinkan dari tool agent.` }
+  }
+  const allowed = kind === 'schema' ? SCHEMA_STATEMENTS : QUERY_STATEMENTS
+  if (!allowed.some((rule) => rule.re.test(stmt))) {
+    const ops = allowed.map((r) => r.label).join(' / ')
+    return { ok: false, error: `Pernyataan tidak diizinkan untuk ${kind === 'schema' ? 'db_schema' : 'db_query'}. Gunakan: ${ops}.` }
+  }
+  return { ok: true, sql: stmt }
+}
+
+/** Jalankan statement DDL/SQL tunggal dari tool agent, dengan validasi allowlist. */
+export async function execProjectSql(projectId: string, sql: string, kind: SqlKind = 'query'): Promise<{ ok: boolean; result?: unknown; error?: string }> {
+  const checked = validateProjectSql(kind, sql)
+  if (!checked.ok) return { ok: false, error: checked.error }
+  if (!isManagedDbEnabled()) return { ok: false, error: 'Database terkelola belum aktif.' }
   try {
     const { pool } = await projectDbPool(projectId)
-    const res = await pool.query(trimmed)
+    const res = await pool.query(checked.sql)
     return { ok: true, result: { rowCount: res.rowCount ?? 0, command: res.command } }
   } catch (err) {
     return { ok: false, error: (err as Error).message }

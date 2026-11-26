@@ -66,7 +66,7 @@ const RULES = `Aturan teknis:
 8. Setiap file yang ditulis harus lengkap. Kalau mengubah file, baca dulu isinya.
 9. Setelah selesai menulis, jalankan build. Kalau gagal, perbaiki dan build ulang.
 10. Ringkas hasil dalam 1-3 kalimat: apa yang dibangun dan apa yang bisa dicoba. Tanpa basa-basi.
-11. Database aplikasi = Postgres terkelola (permanen). Alur wajib saat butuh data: (a) panggil TOOL db_schema dengan pernyataan CREATE TABLE IF NOT EXISTS untuk tiap tabel (idempotent), (b) tulis src/lib/db.ts yang sudah disediakan template (jangan diubah, isinya helper query Postgres), (c) tulis createServerFn di src/server/ yang memakai query(...) untuk baca/tulis. DILARANG memakai node:sqlite, localStorage, atau ':memory:' untuk data aplikasi. Setiap tabel punya kolom id (serial primary key).`
+11. Database aplikasi = Postgres terkelola (permanen). Alur wajib saat butuh data: (a) panggil TOOL db_schema dengan pernyataan CREATE TABLE IF NOT EXISTS untuk tiap tabel (idempotent, satu pernyataan per panggilan), (b) tulis src/lib/db.ts yang sudah disediakan template (jangan diubah, isinya helper query Postgres), (c) tulis createServerFn di src/server/ yang memakai query(...) untuk baca/tulis. DILARANG memakai node:sqlite, localStorage, atau ':memory:' untuk data aplikasi. Setiap tabel punya kolom id (serial primary key).`
 
 /* Fitur AI di aplikasi hasil generate (web LLM): aplikasi yang kamu bangun
    bisa punya fitur AI (mis. halaman chatbot) lewat proxy LLM yang sudah

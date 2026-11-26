@@ -88,7 +88,7 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'db_schema',
-      description: 'Buat atau ubah tabel di database proyek (Postgres terkelola, permanen). Gunakan untuk CREATE TABLE / ALTER TABLE / CREATE INDEX yang idempotent (CREATE TABLE IF NOT EXISTS). Data tersimpan permanen, tidak hilang saat restart. Dilarang operasi administratif (DROP DATABASE, CREATE ROLE, dsb).',
+      description: 'Buat atau ubah tabel di database proyek (Postgres terkelola, permanen). Satu pernyataan per panggilan; hanya CREATE TABLE (pakai IF NOT EXISTS), CREATE [UNIQUE] INDEX, ALTER TABLE, COMMENT ON. DROP/TRUNCATE/GRANT/ekstensi/administratif ditolak.',
       parameters: {
         type: 'object',
         additionalProperties: false,
@@ -101,7 +101,7 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'db_query',
-      description: 'Jalankan pernyataan SQL (SELECT/INSERT/UPDATE/DELETE) di database proyek untuk memverifikasi skema atau seed data. JANGAN pakai untuk operasi administratif.',
+      description: 'Jalankan satu pernyataan SELECT/INSERT/UPDATE/DELETE/WITH di database proyek untuk memverifikasi skema atau seed data. DDL dan operasi administratif ditolak.',
       parameters: {
         type: 'object',
         additionalProperties: false,
@@ -563,7 +563,7 @@ export async function runAgent(
         if (!isManagedDbEnabled()) {
           result = 'ERROR: Database terkelola belum aktif di server.'
         } else {
-          const r = await execProjectSql(projectId, String(args.sql ?? ''))
+          const r = await execProjectSql(projectId, String(args.sql ?? ''), name === 'db_schema' ? 'schema' : 'query')
           stepDidWrite = true
           didWrite = true
           result = r.ok ? `OK: ${JSON.stringify(r.result)}` : `ERROR: ${r.error}`
