@@ -4,8 +4,16 @@ import { userById } from './auth.ts'
 import { checkCallRate, checkDailyCap, deduct, getBalance, minBalanceToCall, type UsageInput } from './credits.ts'
 import { resolveProviderModel, withGaterLimits, type ResolvedModel } from './providers.ts'
 
+/* Content bisa berupa string biasa ATAU array part multimodal (text + image_url)
+   untuk model vision. Loop self-healing mengirim screenshot preview lewat bentuk
+   array ini; upstream OpenAI-compatible menerima {type:'image_url', image_url:{url}}
+   di mana url bisa data-URL base64. Message tool tetap string (tak mendukung gambar). */
+export type ContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } }
+
 export type ChatMessage =
-  | { role: 'system' | 'user' | 'assistant'; content: string; tool_calls?: ToolCall[] }
+  | { role: 'system' | 'user' | 'assistant'; content: string | ContentPart[]; tool_calls?: ToolCall[] }
   | { role: 'tool'; content: string; tool_call_id: string; name?: string }
 
 export type ToolCall = {

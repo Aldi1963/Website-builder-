@@ -13,7 +13,7 @@ import {
 import { putFile, removeFile, listFiles, addMessage, listMessages } from './db.ts'
 import { savePendingPlan, clearPendingPlan } from './pending-plan.ts'
 import { snapshotVersion, restoreVersion, listVersions } from './versions.ts'
-import { captureScreenshot } from './screenshots.ts'
+import { captureScreenshot, captureForReview } from './screenshots.ts'
 import { isManagedDbEnabled, execProjectSql } from './managed-db.ts'
 
 const TOOLS = [
@@ -73,6 +73,14 @@ const TOOLS = [
     function: {
       name: 'audit',
       description: 'Tinjau keamanan, data, UI, dan aksesibilitas seluruh kode proyek setelah implementasi. Hasil dikirim sebagai temuan terstruktur.',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'check_preview',
+      description: 'Ambil screenshot preview aplikasi + error runtime (console/pageerror) agar kamu bisa MELIHAT hasil render nyata dan memperbaiki masalah visual/fungsional. Panggil setelah build sukses bila ada perubahan UI. Kamu akan menerima gambar sebagai pesan berikutnya.',
       parameters: { type: 'object', properties: {}, required: [] },
     },
   },
@@ -184,6 +192,12 @@ export async function runAgent(
   let buildSucceeded = false
   let touchedUi = false
   let screenshotSent = false
+  /* Self-healing visual: batasi berapa kali agent mengulang siklus
+     "lihat preview → perbaiki → build" agar tidak meledak biaya/waktu. */
+  const MAX_PREVIEW_ROUNDS = Number(process.env.VB_MAX_PREVIEW_ROUNDS ?? 2)
+  let previewRounds = 0
+  let pendingPreviewImage: string | null = null
+  let pendingPreviewErrors: string[] = []
 
   /* Setelah perubahan UI selesai dan build lolos, ambil screenshot preview dan
      simpan sebagai pesan assistant. Kegagalan screenshot dilaporkan apa adanya. */
@@ -306,7 +320,7 @@ export async function runAgent(
   for (let step = 0; step < MAX_STEPS; step++) {
     await emit({ type: 'status', text: step === 0 ? 'Memeriksa proyek…' : 'Menerapkan rencana…' })
 
-    if (!quickEdit && auditCompleted && didWrite) {
+    if (!quickEdit && auditCompleted && didWrite && (!touchedUi || previewRounds >= 1)) {
       await emit({ type: 'status', text: 'Menyusun ringkasan akhir…' })
       await new Promise((r) => setImmediate(r))
       const dbg = (m: string) => { try { appendFileSync('/home/hatch/workspace/logs/vb-sse-debug.log', `${new Date().toISOString()} [agent] ${m}\n`) } catch {} }
@@ -349,12 +363,45 @@ export async function runAgent(
       }
     }
 
+    /* Self-healing: bila putaran sebelumnya memanggil check_preview, suntikkan
+       gambar hasil render + error runtime sebagai pesan user multimodal supaya
+       model bisa MELIHAT aplikasinya sendiri lalu memutuskan memperbaiki atau tidak. */
+    if (pendingPreviewImage) {
+      const errList = pendingPreviewErrors.length ? pendingPreviewErrors.join('\n') : '(tidak ada)'
+      messages.push({
+        role: 'user',
+        content: [
+          { type: 'text', text: `Ini screenshot preview aplikasimu saat ini. Error runtime:\n${errList}\n\nBila ada masalah visual nyata (layout rusak, konten kosong/placeholder, elemen tumpang tindih, error tercantum), perbaiki lewat write_file lalu panggil build, lalu check_preview lagi. Bila tampilan sudah baik, JANGAN menulis file apa pun dan langsung beri ringkasan akhir.` },
+          { type: 'image_url', image_url: { url: pendingPreviewImage } },
+        ],
+      })
+      pendingPreviewImage = null
+      pendingPreviewErrors = []
+    }
+
     let resp
     try {
       resp = await complete(messages, { model, tools: TOOLS, temperature: 0.25, maxTokens: 8192, userId: opts?.userId })
     } catch (err) {
-      await emit({ type: 'error', text: `LLM gagal: ${(err as Error).message}` })
-      return
+      /* Bila panggilan dengan gambar ditolak upstream (model tanpa vision /
+         payload terlalu besar), ulangi SEKALI tanpa gambar supaya run yang
+         sudah dibayar user tidak ikut gagal. Review visual hanya bonus. */
+      const hadImage = messages.length > 0 && Array.isArray(messages[messages.length - 1]?.content)
+      if (hadImage) {
+        messages.pop()
+        pendingPreviewImage = null
+        pendingPreviewErrors = []
+        await emit({ type: 'status', text: 'Model tidak mendukung gambar, lanjut tanpa review visual…' })
+        try {
+          resp = await complete(messages, { model, tools: TOOLS, temperature: 0.25, maxTokens: 8192, userId: opts?.userId })
+        } catch (err2) {
+          await emit({ type: 'error', text: `LLM gagal: ${(err2 as Error).message}` })
+          return
+        }
+      } else {
+        await emit({ type: 'error', text: `LLM gagal: ${(err as Error).message}` })
+        return
+      }
     }
 
     const msg = resp.message
@@ -475,6 +522,30 @@ export async function runAgent(
           result = note
         }
         }
+      } else if (name === 'check_preview') {
+        /* Self-healing visual: render preview nyata, kirim gambar + error runtime
+           ke agent supaya bisa MELIHAT dan memperbaiki. Berbatas ronde agar hemat. */
+        if (previewRounds >= MAX_PREVIEW_ROUNDS) {
+          result = `Batas ${MAX_PREVIEW_ROUNDS} putaran check_preview tercapai. Lanjutkan ke ringkasan akhir.`
+        } else {
+          previewRounds++
+          await emit({ type: 'status', text: 'Melihat preview aplikasi…' })
+          try {
+            const cap = await captureForReview(projectId)
+            pendingPreviewImage = cap.image
+            pendingPreviewErrors = cap.runtimeErrors
+            // Gambar dilewatkan lewat message user multimodal di giliran berikut,
+            // bukan lewat content tool (tool tak mendukung gambar).
+            const errNote = cap.runtimeErrors.length
+              ? `\n\nError runtime terdeteksi (${cap.runtimeErrors.length}):\n${cap.runtimeErrors.join('\n')}`
+              : '\n\nTidak ada error console/pageerror.'
+            result = `Screenshot preview diambil. Gambar dikirim pada pesan berikutnya.${errNote}\n\nPeriksa gambar: bila ada kerusakan visual, layout rusak, konten kosong, atau error di atas, perbaiki lewat write_file lalu build lagi. Bila tampilan sudah baik, langsung beri ringkasan akhir.`
+            stepDidWrite = false // melihat preview bukan menulis; jangan picu auto-fix build
+          } catch (err) {
+            result = `Preview gagal diambil: ${(err as Error).message}. Lewati review visual.`
+            pendingPreviewImage = null
+          }
+        }
       } else if (name === 'db_schema' || name === 'db_query') {
         await emit({ type: 'status', text: name === 'db_schema' ? 'Menyiapkan tabel database…' : 'Menjalankan query database…' })
         if (!isManagedDbEnabled()) {
@@ -508,6 +579,13 @@ export async function runAgent(
     if (stepDidWrite && lastBuildFailed && autoFixRounds < 4) {
       autoFixRounds++
       messages.push({ role: 'user', content: 'Build terakhir GAGAL. Perbaiki error build sekarang: baca file terkait bila perlu, tulis perbaikan lewat write_file, lalu panggil build lagi. Jangan menambah fitur baru.' })
+    }
+
+    // Self-healing visual: setelah build SUKSES pada perubahan UI dan audit selesai,
+    // minta agent melihat preview sekali sebelum ringkasan akhir (nudge tunggal per
+    // build sukses — tidak berulang, agar tidak boros biaya/waktu).
+    if (!quickEdit && stepDidWrite && buildSucceeded && touchedUi && auditCompleted && previewRounds < 1 && !pendingPreviewImage && !lastBuildFailed) {
+      messages.push({ role: 'user', content: 'Build sudah sukses dan ada perubahan tampilan. Panggil tool check_preview SEKALI sekarang untuk melihat hasil render nyata dan error runtime, lalu perbaiki bila ada kerusakan visual atau langsung beri ringkasan akhir bila sudah baik.' })
     }
 
     if (!quickEdit && didWrite && !auditCompleted && step === 0) {

@@ -73,6 +73,77 @@ export async function captureScreenshot(projectId: string): Promise<ScreenshotMe
   return captureFromUrl(projectId, `http://127.0.0.1:${port}/`)
 }
 
+/* ---- Self-healing: capture yang MENGEMBALIKAN gambar + error runtime ----
+   Berbeda dari captureScreenshot (yang hanya menyimpan file untuk UI chat),
+   captureForReview mengembalikan PNG sebagai base64 data-URL + daftar error
+   console/pageerror, sehingga AGENT bisa MELIHAT hasil render dan membaca
+   error runtime — bukan hanya teks build. Inilah yang membuat loop
+   self-healing visual (baca tampilan → deteksi masalah → perbaiki) mungkin. */
+export type ReviewCapture = {
+  /** PNG sebagai data-URL (data:image/png;base64,...) siap dikirim ke LLM vision. */
+  image: string
+  /** Pesan console berjenis error/warning + pageerror yang tertangkap saat render. */
+  runtimeErrors: string[]
+  url: string
+}
+
+async function captureNowWithErrors(projectId: string, target: string): Promise<ReviewCapture> {
+  const pw = await loadPlaywright()
+  const executablePath = process.env.VB_CHROME_PATH ?? (existsSync(LOCAL_CHROME) ? LOCAL_CHROME : undefined)
+  const browser = await pw.chromium.launch({
+    headless: true,
+    ...(executablePath ? { executablePath } : {}),
+    args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
+  })
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 800 } })
+    const runtimeErrors: string[] = []
+    // Kumpulkan error console (error/fatal) dan unhandled pageerror — sinyal
+    // bahwa aplikasi dirender TAPI rusak saat runtime (bukan gagal build).
+    page.on('console', (msg: any) => {
+      try {
+        if (msg.type() === 'error') {
+          const t = String(msg.text() ?? '').slice(0, 300)
+          if (t) runtimeErrors.push(`console.error: ${t}`)
+        }
+      } catch { /* abaikan pesan console tak terbaca */ }
+    })
+    page.on('pageerror', (err: any) => {
+      const t = String(err?.message ?? err ?? '').slice(0, 300)
+      if (t) runtimeErrors.push(`pageerror: ${t}`)
+    })
+    await page.goto(target, { waitUntil: 'load', timeout: 15_000 })
+    await page.waitForTimeout(1200)
+    const buf: Buffer = await page.screenshot({ type: 'png' })
+    if (!buf?.length) throw new Error('hasil screenshot kosong')
+    // Simpan juga sebagai file supaya muncul di galeri screenshot UI.
+    const name = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}.png`
+    try {
+      mkdirSync(screenshotsDir(projectId), { recursive: true })
+      writeFileSync(join(screenshotsDir(projectId), name), buf)
+    } catch { /* penyimpanan gagal tidak membatalkan review */ }
+    return {
+      image: `data:image/png;base64,${buf.toString('base64')}`,
+      runtimeErrors: runtimeErrors.slice(0, 10),
+      url: screenshotUrl(projectId, name),
+    }
+  } finally {
+    await browser.close().catch(() => {})
+  }
+}
+
+/** Capture untuk self-healing: kembalikan gambar base64 + error runtime.
+    Dipakai agent, bukan UI chat. Antri seperti capture lain (RAM aman). */
+export function captureForReview(projectId: string): Promise<ReviewCapture> {
+  const run = async (): Promise<ReviewCapture> => {
+    const port = await startPreview(projectId)
+    return captureNowWithErrors(projectId, `http://127.0.0.1:${port}/`)
+  }
+  const next = captureQueue.then(run, run)
+  captureQueue = next.catch(() => {})
+  return next
+}
+
 /** Capture dari URL eksplisit; dipisah agar bisa diuji tanpa preview proyek. */
 export function captureFromUrl(projectId: string, target: string): Promise<ScreenshotMeta> {
   const next = captureQueue.then(
