@@ -153,6 +153,33 @@ export async function runAgent(
     ...history.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
   ]
 
+  /* Deteksi sapaan/pertanyaan ringan TANPA LLM (instan & hemat token): pesan
+     pendek yang cuma menyapa / basa-basi dijawab sebagai chat biasa — tidak
+     membangun apa pun. Penting untuk proyek baru yang masih kosong, karena
+     klasifikasi kecil/konsultasi/penuh di bawah hanya aktif saat proyek sudah
+     punya file. */
+  const trimmedPrompt = userPrompt.trim()
+  const buildVerb = /\b(buat|buatkan|bikin|bikinkan|bangun|buatlah|tambah|tambahkan|ubah|ganti|perbaiki|hapus|implementasi|integrasi|desain|kembangkan|tulis|coding|program)\b/i
+  const greetWord = /^(halo+|hai+|hei+|hello+|hi+|hey+|pagi|siang|sore|malam|assalam|permisi|tes+|test+)\b/i
+  const isGreeting =
+    trimmedPrompt.length <= 40 &&
+    greetWord.test(trimmedPrompt) &&
+    !buildVerb.test(trimmedPrompt)
+  if (isGreeting) {
+    await emit({ type: 'status', text: 'Menyusun jawaban…' })
+    let streamed = ''
+    await complete(
+      [...messages, { role: 'user', content: `${userPrompt}\n\nIni hanya sapaan/pertanyaan ringan. Balas singkat dan ramah (1-3 kalimat) dalam bahasa user, TANPA menulis/mengubah file, TANPA tool, TANPA rencana. Tawarkan bantuan dan tanyakan aplikasi apa yang ingin dibangun. Jangan pakai jargon teknis internal.` }],
+      {
+        model, temperature: 0.5, maxTokens: 300, userId: opts?.userId,
+        onDelta: async (d) => { streamed += d; await emit({ type: 'assistant_delta', text: d }) },
+      },
+    )
+    const answer = streamed.trim()
+    if (answer) addMessage(projectId, 'assistant', answer)
+    return
+  }
+
   let lastBuildFailed = false
   let buildSucceeded = false
   let touchedUi = false
