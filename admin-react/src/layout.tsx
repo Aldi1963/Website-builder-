@@ -4,6 +4,7 @@ import {
   ArrowsOut,
   Bell,
   CaretDown,
+  CaretRight,
   Gear,
   List,
   MagnifyingGlass,
@@ -90,7 +91,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
   const searchInputRef = useRef<HTMLInputElement>(null)
   const searchResults =
     searchQuery.length >= 2
-      ? ROUTES.filter((r) => !r.hidden && r.title.toLowerCase().includes(searchQuery.toLowerCase())).slice(0, 6)
+      ? ROUTES.filter((r) => r.title.toLowerCase().includes(searchQuery.toLowerCase())).slice(0, 6)
       : []
 
   /* Badge nav + notifikasi: sumber data SAMA seperti admin.js lama.
@@ -274,25 +275,30 @@ export function AdminLayout({ children }: { children: ReactNode }) {
               )}
               {section.slugs.map((slug) => {
                 const route = ROUTES.find((r) => r.slug === slug)
-                if (!route || route.hidden) return null
+                if (!route) return null
                 const Icon = route.icon
+                const isSub = Boolean(route.parent)
                 return (
-                  <li key={route.slug}>
+                  <li key={route.slug} className={isSub && !compact ? 'ml-3 border-l border-border pl-2' : ''}>
                     <NavLink
                       to={route.path}
                       onClick={closeSidebar}
                       title={compact ? route.title : undefined}
                       className={(active) =>
-                        `flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm ${
-                          compact ? 'justify-center' : ''
-                        } ${
+                        `flex items-center gap-2 rounded-lg py-1.5 ${
+                          isSub && !compact ? 'pl-4 text-xs' : 'px-3 text-sm'
+                        } ${compact ? 'justify-center px-3' : ''} ${
                           active
                             ? 'bg-accent-soft font-semibold text-accent'
                             : 'text-ink hover:bg-surface-muted'
                         }`
                       }
                     >
-                      <Icon size={18} className="shrink-0" />
+                      {isSub && !compact ? (
+                        <CaretRight size={12} className="shrink-0 text-muted" />
+                      ) : (
+                        <Icon size={isSub ? 15 : 18} className="shrink-0" />
+                      )}
                       {compact ? null : (
                         <>
                           <span className="flex-1 truncate">{route.title}</span>

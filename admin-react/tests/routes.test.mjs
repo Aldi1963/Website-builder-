@@ -1,5 +1,5 @@
-/* TDD: kontrak routes setelah penggabungan halaman menjadi satu halaman
-   bertumpuk (tanpa tab / tanpa query ?tab=).
+/* TDD: kontrak navigasi admin setelah sub-halaman dikembalikan ke sidebar
+   sebagai sub-menu, dan halaman induk memakai peta bagian (SectionNav).
    Jalankan: cd admin-react && node --test tests/routes.test.mjs */
 import test from 'node:test'
 import assert from 'node:assert/strict'
@@ -14,6 +14,9 @@ globalThis.React ??= await import('react')
 
 const { ROUTES, ADMIN_SECTIONS, matchRoute } = await jiti.import(src('src/routes.ts'))
 const routesText = readFileSync(src('src/routes.ts'), 'utf8')
+const layoutText = readFileSync(src('src/layout.tsx'), 'utf8')
+const cssText = readFileSync(src('src/index.css'), 'utf8')
+const sectionNavText = readFileSync(src('src/components/SectionNav.tsx'), 'utf8')
 
 const MERGES = [
   {
@@ -39,9 +42,15 @@ const MERGES = [
       pemeliharaan: 'Pemeliharaan', settings: 'Pengaturan', sessions: 'Sesi', builds: 'Build',
     },
   },
-  { slug: 'ai', path: '/admin/ai', children: { providers: 'Provider', 'ai-settings': 'Pengaturan AI', biaya: 'Biaya', usage: 'Usage' } },
+  {
+    slug: 'ai',
+    path: '/admin/ai',
+    children: { providers: 'Provider', 'ai-settings': 'Pengaturan AI', biaya: 'Biaya', usage: 'Usage' },
+  },
 ]
-const oldSlugs = MERGES.flatMap((m) => Object.keys(m.children))
+const parents = ['dashboard', 'users', ...MERGES.map((m) => m.slug)]
+const parentOf = new Map(MERGES.flatMap((m) => Object.keys(m.children).map((old) => [old, m.slug])))
+const oldSlugs = [...parentOf.keys()]
 
 function redirectName(slug) {
   return `${slug.split('-').map((s) => s.charAt(0).toUpperCase() + s.slice(1)).join('')}Redirect`
@@ -50,32 +59,38 @@ function componentName(slug) {
   return redirectName(slug).replace(/Redirect$/, 'Page')
 }
 
-test('lima halaman induk tersedia dan dapat dicocokkan matchRoute', () => {
-  for (const m of MERGES) {
-    const route = ROUTES.find((r) => r.slug === m.slug)
-    assert.ok(route, `route ${m.slug} harus ada`)
-    assert.equal(route.path, m.path)
-    assert.notEqual(route.hidden, true, `${m.slug} tidak boleh hidden`)
-    assert.equal(matchRoute(m.path)?.route?.slug, m.slug)
+test('tujuh halaman induk tetap ada, tidak punya parent, dan matchRoute ok', () => {
+  assert.equal(parents.length, 7)
+  for (const slug of parents) {
+    const route = ROUTES.find((r) => r.slug === slug)
+    assert.ok(route, `route ${slug} harus ada`)
+    assert.notEqual(route.hidden, true, `${slug} tidak boleh hidden`)
+    assert.equal(route.parent, undefined, `${slug} bukan sub-menu`)
+    if (slug === 'dashboard') assert.equal(route.path, '/admin')
+    else assert.equal(route.path, `/admin/${slug}`)
+    assert.equal(matchRoute(route.path)?.route?.slug, slug)
   }
 })
 
-test('semua route lama yang tergabung hidden dan redirect tanpa ?tab=', () => {
-  for (const m of MERGES) {
-    for (const old of Object.keys(m.children)) {
-      const route = ROUTES.find((r) => r.slug === old)
-      assert.ok(route, `route lama ${old} harus tetap ada`)
-      assert.equal(route.hidden, true, `${old} harus hidden`)
-      const exportName = redirectName(old)
-      assert.match(
-        routesText,
-        new RegExp(
-          `case '${old}':[\\s\\S]{0,200}import\\('./pages/${m.slug}'\\)\\.then\\(\\(m\\) => \\(\\{ default: m\\.${exportName} \\}\\)\\)`,
-        ),
-        `${old} harus di-redirect ke ${m.slug}.${exportName}`,
-      )
-    }
+test('sub-halaman lama tidak hidden, punya parent benar, dan membuka halaman asli (bukan redirect)', () => {
+  assert.equal(oldSlugs.length, 20)
+  for (const [old, parent] of parentOf) {
+    const route = ROUTES.find((r) => r.slug === old)
+    assert.ok(route, `route lama ${old} harus tetap ada`)
+    assert.notEqual(route.hidden, true, `${old} tidak boleh hidden lagi`)
+    assert.equal(route.parent, parent, `${old} harus jadi sub-menu ${parent}`)
+    assert.equal(matchRoute(`/admin/${old}`)?.route?.slug, old)
+    assert.match(
+      routesText,
+      new RegExp(`case '${old}':[\\s\\S]{0,120}import\\('\\./pages/${old}'\\)`),
+      `${old} harus lazy-import halaman asli ./pages/${old}`,
+    )
   }
+  assert.doesNotMatch(
+    routesText,
+    /\.then\(\(m\) => \(\{ default: m\.\w+Redirect \}\)\)/,
+    'routes.ts tidak boleh lagi memakai komponen redirect',
+  )
 })
 
 test('halaman induk benar-benar menyatu: tanpa tab bar, tanpa ?tab=, merender >=2 komponen asli', async () => {
@@ -92,7 +107,6 @@ test('halaman induk benar-benar menyatu: tanpa tab bar, tanpa ?tab=, merender >=
       rendered.push(old)
     }
     assert.ok(rendered.length >= 2 && new Set(rendered).size === rendered.length, `${m.slug} harus merender >=2 komponen asli`)
-    // Section berurutan: tiap komponen diberi judul section.
     for (const [old, label] of Object.entries(m.children)) {
       assert.ok(text.includes(`'${label}'`), `${m.slug} butuh judul section '${label}'`)
     }
@@ -108,7 +122,7 @@ test('halaman asli mendukung prop embedded untuk menyembunyikan PageHeader ganda
   for (const old of oldSlugs) {
     const text = readFileSync(src(`src/pages/${old}.tsx`), 'utf8')
     assert.match(text, /embedded\?: boolean/, `${old} butuh prop embedded`)
-    assert.match(text, /!embedded\s*\?[\s\S]{0,400}<PageHeader/, `${old} harus menyembunyikan PageHeader saat embedded`)
+    assert.match(text, /!embedded\s*[\s\S]{0,400}<PageHeader/, `${old} harus menyembunyikan PageHeader saat embedded`)
   }
 })
 
@@ -127,24 +141,61 @@ test('tidak ada duplikat path', () => {
   }
 })
 
-test('setiap slug di ADMIN_SECTIONS punya route yang tidak hidden', () => {
-  const all = new Set(ADMIN_SECTIONS.flatMap((s) => s.slugs))
+test('ADMIN_SECTIONS: 27 entri terlihat, induk langsung diikuti anaknya', () => {
   assert.deepEqual(
-    [...ADMIN_SECTIONS.map((s) => s.label)],
+    ADMIN_SECTIONS.map((s) => s.label),
     ['Utama', 'Konten', 'Layanan', 'Sistem'],
-    ' Empat grup sesuai permintaan',
   )
   assert.deepEqual(ADMIN_SECTIONS.map((s) => s.slugs), [
     ['dashboard', 'users'],
-    ['konten'],
-    ['monetisasi', 'ai'],
-    ['komunikasi', 'sistem'],
+    ['konten', 'projects', 'moderasi', 'domain'],
+    ['monetisasi', 'plans', 'credits', 'billing', 'ai', 'providers', 'ai-settings', 'biaya', 'usage'],
+    ['komunikasi', 'messages', 'pengumuman', 'audit', 'sistem', 'health', 'cadangan', 'pembersihan', 'pemeliharaan', 'settings', 'sessions', 'builds'],
   ])
-  assert.ok(oldSlugs.every((s) => !all.has(s)), 'slug lama tidak boleh muncul di sidebar')
-  assert.ok(MERGES.every((m) => all.has(m.slug)), 'slug baru harus muncul di sidebar')
+  const all = ADMIN_SECTIONS.flatMap((s) => s.slugs)
+  assert.equal(all.length, 27)
+  assert.equal(new Set(all).size, all.length)
+  assert.deepEqual([...all].sort(), [...ROUTES.filter((r) => !r.hidden).map((r) => r.slug)].sort())
   for (const slug of all) {
     const route = ROUTES.find((r) => r.slug === slug)
     assert.ok(route, `slug ${slug} di ADMIN_SECTIONS tidak punya route`)
     assert.notEqual(route.hidden, true, `slug ${slug} tidak boleh hidden`)
+  }
+  for (const [old, parent] of parentOf) {
+    const i = all.indexOf(old)
+    assert.ok(i > 1, `${old} harus punya induk sebelum dirinya`)
+    assert.ok(
+      all.slice(0, i).includes(parent),
+      `${old} harus berada di bawah ${parent} di ADMIN_SECTIONS`,
+    )
+  }
+})
+
+test('sidebar meny render sub-menu ber-indent + badge (projects, health) tetap jalan', () => {
+  assert.match(layoutText, /route\.parent/, 'layout harus menandai entri sub-menu lewat route.parent')
+  assert.match(layoutText, /pl-4|ml-3/, 'sub-menu harus ber-indent')
+  assert.match(layoutText, /text-xs/, 'sub-menu pakai teks lebih kecil')
+  assert.match(layoutText, /badgeFor\(route\.slug\)/, 'badge dipakai di semua entri')
+  assert.match(layoutText, /slug === 'projects'/, 'badge projects tetap ada')
+  assert.match(layoutText, /slug === 'health'/, 'badge health tetap ada')
+  assert.equal(ROUTES.find((r) => r.slug === 'projects').hidden, undefined)
+  assert.equal(ROUTES.find((r) => r.slug === 'health').hidden, undefined)
+})
+
+test('SectionNav + SectionBlock dipakai semua halaman induk, anchor.id dan scroll halus tersedia', () => {
+  assert.match(sectionNavText, /href=\{`#\$\{item\.id\}`\}/, 'SectionNav butuh anchor ke #id')
+  assert.match(sectionNavText, /grid-cols-2/, 'SectionNav butuh grid kartu')
+  assert.match(sectionNavText, /scroll-mt-24/, 'SectionBlock tidak boleh tertutup header sticky')
+  assert.match(sectionNavText, /padStart\(2, '0'\)/, 'SectionBlock butuh nomor urut 01/02/...')
+  assert.match(cssText, /scroll-behavior:\s*smooth/, 'index.css butuh scroll halus')
+  assert.match(cssText, /@media\s*\(prefers-reduced-motion:\s*reduce\)/, 'scroll halus harus bisa dimatikan')
+  for (const m of MERGES) {
+    const text = readFileSync(src(`src/pages/${m.slug}.tsx`), 'utf8')
+    assert.match(text, /<SectionNav\b/, `${m.slug} butuh peta halaman`)
+    assert.match(text, /<PageSection\b/, `${m.slug} butuh section dengan kepala rapi`)
+    assert.doesNotMatch(text, /gradient|backdrop-blur|role="tablist"/, `${m.slug} bebas slop UI`)
+    for (const old of Object.keys(m.children)) {
+      assert.match(text, new RegExp(`id: '${old}'`), `${m.slug} butuh anchor #${old}`)
+    }
   }
 })

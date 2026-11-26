@@ -1,38 +1,41 @@
 import { useEffect } from 'react'
+import { Cube, Flag, Link as LinkIcon } from '@phosphor-icons/react'
 import { NAVIGATE_EVENT } from '../lib/router'
 import { PageHeader } from '../components/PageHeader'
 import { Spinner } from '../components/Spinner'
+import { SectionNav, PageSection, type SectionNavItem } from '../components/SectionNav'
 import ProjectsPage from './projects'
 import ModerasiPage from './moderasi'
 import DomainPage from './domain'
 
 /* Halaman "Konten": tiga fitur asli disusun bertumpuk dalam SATU halaman.
-   Tanpa tab / query parameter tab. Tiap fitur memakai komponen halaman aslinya
-   dengan prop embedded agar PageHeader-nya tidak bertumpuk. URL lama
-   tetap jalan lewat komponen redirect di bawah (replaceState ke URL bersih). */
+   Tanpa tab / query parameter tab. Peta halaman + section ber-anchor. */
+
+const sections: SectionNavItem[] = [
+  { id: 'projects', label: 'Daftar Proyek', description: 'Proyek builder & statusnya', icon: Cube },
+  { id: 'moderasi', label: 'Moderasi', description: 'Laporan & tindakan moderasi', icon: Flag },
+  { id: 'domain', label: 'Domain', description: 'Domain kustom & verifikasi', icon: LinkIcon },
+]
 
 export default function KontenPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Konten" description="Proyek, moderasi, dan domain dalam satu halaman." />
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold">{'Daftar Proyek'}</h2>
+      <SectionNav items={sections} />
+      <PageSection id="projects" index={1} title="Daftar Proyek" description="Proyek builder & statusnya." icon={Cube}>
         <ProjectsPage embedded />
-      </section>
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold">{'Moderasi'}</h2>
+      </PageSection>
+      <PageSection id="moderasi" index={2} title="Moderasi" description="Laporan & tindakan moderasi." icon={Flag}>
         <ModerasiPage embedded />
-      </section>
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold">{'Domain'}</h2>
+      </PageSection>
+      <PageSection id="domain" index={3} title="Domain" description="Domain kustom & verifikasi." icon={LinkIcon}>
         <DomainPage embedded />
-      </section>
+      </PageSection>
     </div>
   )
 }
 
-/* Redirect URL lama ke halaman induk. replaceState mencegah tombol
-   kembali berputar di URL lama. */
+/* Redirect URL lama ke halaman induk (kompatibilitas). */
 function PageRedirect() {
   useEffect(() => {
     window.history.replaceState(null, '', '/admin/konten')

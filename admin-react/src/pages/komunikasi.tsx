@@ -1,31 +1,36 @@
 import { useEffect } from 'react'
+import { ChatText, ClockCounterClockwise, Megaphone } from '@phosphor-icons/react'
 import { NAVIGATE_EVENT } from '../lib/router'
 import { PageHeader } from '../components/PageHeader'
 import { Spinner } from '../components/Spinner'
+import { SectionNav, PageSection, type SectionNavItem } from '../components/SectionNav'
 import MessagesPage from './messages'
 import PengumumanPage from './pengumuman'
 import AuditPage from './audit'
 
-/* Halaman "Komunikasi": tiga fitur asli disusun bertumpuk dalam SATU
-   halaman, tanpa tab / query parameter tab. URL lama tetap jalan lewat komponen
-   redirect di bawah (replaceState ke URL bersih). */
+/* Halaman "Komunikasi": tiga fitur asli disusun bertumpuk dalam SATU halaman,
+   tanpa tab / query parameter tab. */
+
+const sections: SectionNavItem[] = [
+  { id: 'messages', label: 'Pesan', description: 'Pesan masuk & balasan pengguna', icon: ChatText },
+  { id: 'pengumuman', label: 'Pengumuman', description: 'Broadcast & pengumuman panel', icon: Megaphone },
+  { id: 'audit', label: 'Log Audit', description: 'Jejak aktivitas admin', icon: ClockCounterClockwise },
+]
 
 export default function KomunikasiPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Komunikasi" description="Pesan, pengumuman, dan log audit dalam satu halaman." />
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold">{'Pesan'}</h2>
+      <SectionNav items={sections} />
+      <PageSection id="messages" index={1} title="Pesan" description="Pesan masuk & balasan pengguna." icon={ChatText}>
         <MessagesPage embedded />
-      </section>
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold">{'Pengumuman'}</h2>
+      </PageSection>
+      <PageSection id="pengumuman" index={2} title="Pengumuman" description="Broadcast & pengumuman panel." icon={Megaphone}>
         <PengumumanPage embedded />
-      </section>
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold">{'Log Audit'}</h2>
+      </PageSection>
+      <PageSection id="audit" index={3} title="Log Audit" description="Jejak aktivitas admin." icon={ClockCounterClockwise}>
         <AuditPage embedded />
-      </section>
+      </PageSection>
     </div>
   )
 }
