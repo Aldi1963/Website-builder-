@@ -3,9 +3,15 @@ import type { ReactNode } from 'react'
 /* Tabel ASLI — pembungkus overflow-x-auto agar bisa di-scroll menyamping
    di HP. JANGAN ubah tabel menjadi kartu di mobile (keputusan user). */
 
-export function Table({ children, className = '' }: { children: ReactNode; className?: string }) {
+export function Table({ children, className = '', bare = false }: { children: ReactNode; className?: string; bare?: boolean }) {
   return (
-    <div className={`overflow-x-auto rounded-xl border border-border bg-surface shadow-sm ${className}`}>
+    <div
+      className={
+        bare
+          ? `overflow-x-auto ${className}`
+          : `overflow-x-auto rounded-xl border border-border bg-surface shadow-sm ${className}`
+      }
+    >
       <table className="w-full min-w-max text-left text-sm">{children}</table>
     </div>
   )
@@ -24,5 +30,18 @@ export function Td({ children, className = '', colSpan }: { children: ReactNode;
     <td colSpan={colSpan} className={`border-b border-border px-4 py-3 align-top last:border-b-0 ${className}`}>
       {children}
     </td>
+  )
+}
+
+/** Baris empty state standar untuk semua tabel: satu <Td> perentang
+    kolom dengan teks muted. Teks per entitas ("Belum ada proyek." dsb.)
+    tetap boleh beda, tapi lewat komponen yang sama. */
+export function EmptyRow({ colSpan, children }: { colSpan: number; children: ReactNode }) {
+  return (
+    <tr>
+      <Td colSpan={colSpan} className="text-muted">
+        {children}
+      </Td>
+    </tr>
   )
 }

@@ -5,7 +5,8 @@ import { PageHeader } from '../components/PageHeader'
 import { Alert } from '../components/Alert'
 import { Spinner } from '../components/Spinner'
 import { CProviderCard, type Provider } from '../components/CProviderCard'
-import { fmtNum } from '../components/CFormat'
+import { fmtNum } from '../components/BFormat'
+import { btnOutlineLg } from '../components/DFormat'
 
 export default function ProvidersPage() {
   const toast = useToast()
@@ -43,7 +44,6 @@ export default function ProvidersPage() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title="Provider LLM"
         description="Provider + model + tarif yang dipakai builder. Hanya model yang aktif, di provider aktif, dan punya tarif yang bisa dipakai — model tanpa tarif tidak bisa dipakai (anti-rugi)."
         actions={
           <>
@@ -51,14 +51,14 @@ export default function ProvidersPage() {
               type="button"
               onClick={() => void syncPrices()}
               disabled={syncingPrices}
-              className="rounded-lg border border-accent/40 bg-surface px-3 py-2 text-sm font-medium whitespace-nowrap text-accent hover:bg-accent-soft disabled:opacity-50"
+              className={`whitespace-nowrap ${btnOutlineLg}`}
             >
               {syncingPrices ? 'Menyinkronkan…' : 'Sinkronkan harga ke Biaya'}
             </button>
             <button
               type="button"
               onClick={() => void load()}
-              className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium whitespace-nowrap hover:bg-surface-muted"
+              className={`whitespace-nowrap ${btnOutlineLg}`}
             >
               Muat ulang
             </button>

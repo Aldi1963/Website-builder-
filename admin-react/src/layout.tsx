@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode, Fragment } from 'react'
 import {
   ArrowsIn,
   ArrowsOut,
@@ -17,8 +17,9 @@ import {
 import { useAuth } from './lib/auth'
 import { NavLink, navigate } from './lib/router'
 import { api } from './lib/api'
-import { ADMIN_SECTION_SLUGS, ROUTES, SITE_LINK } from './routes'
+import { ADMIN_SECTIONS, ROUTES, SITE_LINK } from './routes'
 import { Badge } from './components/Badge'
+import { inputClass } from './components/Field'
 
 /* Bentuk respons (diringkas dari server/src/admin.ts). */
 interface OverviewResponse {
@@ -262,41 +263,48 @@ export function AdminLayout({ children }: { children: ReactNode }) {
       </div>
       <nav className="flex-1 overflow-y-auto px-3 py-3" aria-label="Menu admin">
         <ul className="space-y-0.5">
-          {ROUTES.filter((route) => !route.hidden).map((route) => {
-            const Icon = route.icon
-            const sectionStart = ADMIN_SECTION_SLUGS[0] === route.slug
-            return (
-              <li key={route.slug}>
-                {sectionStart && !compact ? (
+          {ADMIN_SECTIONS.map((section) => (
+            <Fragment key={section.label}>
+              {compact ? null : (
+                <li>
                   <p className="px-3 pt-4 pb-1 text-xs font-bold tracking-wide text-muted uppercase">
-                    Admin
+                    {section.label}
                   </p>
-                ) : null}
-                <NavLink
-                  to={route.path}
-                  onClick={closeSidebar}
-                  title={compact ? route.title : undefined}
-                  className={(active) =>
-                    `flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm ${
-                      compact ? 'justify-center' : ''
-                    } ${
-                      active
-                        ? 'bg-accent-soft font-semibold text-accent'
-                        : 'text-ink hover:bg-surface-muted'
-                    }`
-                  }
-                >
-                  <Icon size={18} className="shrink-0" />
-                  {compact ? null : (
-                    <>
-                      <span className="flex-1 truncate">{route.title}</span>
-                      {badgeFor(route.slug)}
-                    </>
-                  )}
-                </NavLink>
-              </li>
-            )
-          })}
+                </li>
+              )}
+              {section.slugs.map((slug) => {
+                const route = ROUTES.find((r) => r.slug === slug)
+                if (!route || route.hidden) return null
+                const Icon = route.icon
+                return (
+                  <li key={route.slug}>
+                    <NavLink
+                      to={route.path}
+                      onClick={closeSidebar}
+                      title={compact ? route.title : undefined}
+                      className={(active) =>
+                        `flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm ${
+                          compact ? 'justify-center' : ''
+                        } ${
+                          active
+                            ? 'bg-accent-soft font-semibold text-accent'
+                            : 'text-ink hover:bg-surface-muted'
+                        }`
+                      }
+                    >
+                      <Icon size={18} className="shrink-0" />
+                      {compact ? null : (
+                        <>
+                          <span className="flex-1 truncate">{route.title}</span>
+                          {badgeFor(route.slug)}
+                        </>
+                      )}
+                    </NavLink>
+                  </li>
+                )
+              })}
+            </Fragment>
+          ))}
           <li>
             <a
               href={SITE_LINK.href}
@@ -351,7 +359,10 @@ export function AdminLayout({ children }: { children: ReactNode }) {
       </aside>
 
       <div className={collapsed ? 'lg:pl-16' : 'lg:pl-64'}>
-        <header className="sticky top-0 z-20 border-b border-border bg-surface">
+        {/* Header menempel di atas DAN di kiri: `sticky top-0 left-0` +
+            lebar dibatasi 100vw supaya header selalu utuh dan tidak ikut
+            bergeser bila halaman sempat meluber horizontal. */}
+        <header className="sticky top-0 left-0 z-20 max-w-[100vw] border-b border-border bg-surface">
           <div className="flex items-center gap-2 px-3 py-2.5 sm:px-4">
             <button
               type="button"
@@ -408,7 +419,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                 }}
                 placeholder="Cari halaman… (Ctrl+K)"
                 aria-label="Cari halaman admin"
-                className="w-56 rounded-lg border border-border bg-surface px-9 py-2 text-sm outline-none placeholder:text-muted focus:border-accent lg:w-64"
+                className={`${inputClass} w-56 pl-9 lg:w-64`}
               />
               {searchOpen && searchResults.length > 0 ? (
                 <div className="absolute left-0 z-50 mt-2 w-full overflow-hidden rounded-xl border border-border bg-surface shadow-lg">

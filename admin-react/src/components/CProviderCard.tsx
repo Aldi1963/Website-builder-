@@ -6,11 +6,12 @@ import { Badge } from './Badge'
 import { Toggle } from './Toggle'
 import { Alert } from './Alert'
 import { Spinner } from './Spinner'
-import { Table, Th, Td } from './Table'
+import { Table, Th, Td, EmptyRow } from './Table'
+import { btnOutline, btnOutlineSm, btnPrimary } from './DFormat'
 import { SearchInput } from './SearchInput'
 import { ConfirmDialog } from './ConfirmDialog'
 import { Field, inputClass } from './Field'
-import { fmtNum } from './CFormat'
+import { fmtNum } from './BFormat'
 
 export interface ProviderModel {
   id: string
@@ -103,9 +104,6 @@ function modelBadges(m: ProviderModel): ReactNode {
   }
   return badges
 }
-
-const btnOutline =
-  'rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium hover:bg-surface-muted disabled:opacity-50'
 
 export function CProviderCard({ provider: p, onReload }: { provider: Provider; onReload: () => void }) {
   const toast = useToast()
@@ -321,7 +319,7 @@ export function CProviderCard({ provider: p, onReload }: { provider: Provider; o
     <Card
       title={p.name}
       actions={
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           {providerBadges(p)}
           <Toggle
             checked={providerActive}
@@ -378,7 +376,7 @@ export function CProviderCard({ provider: p, onReload }: { provider: Provider; o
               type="button"
               onClick={() => void saveKey()}
               disabled={savingKey}
-              className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+              className={btnPrimary}
             >
               {savingKey ? 'Menyimpan…' : 'Simpan key'}
             </button>
@@ -407,7 +405,7 @@ export function CProviderCard({ provider: p, onReload }: { provider: Provider; o
           </span>
         </div>
 
-        <Table>
+        <Table bare>
           <thead>
             <tr>
               <Th>Model</Th>
@@ -419,11 +417,7 @@ export function CProviderCard({ provider: p, onReload }: { provider: Provider; o
           </thead>
           <tbody>
             {models.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="border-b border-border px-4 py-3 text-muted">
-                  Belum ada model di registry provider ini.
-                </td>
-              </tr>
+              <EmptyRow colSpan={5}>Belum ada model di registry provider ini.</EmptyRow>
             ) : (
               visibleModels.map((m) => (
                 <tr key={m.id}>
@@ -432,14 +426,14 @@ export function CProviderCard({ provider: p, onReload }: { provider: Provider; o
                     {m.name && m.name !== m.id ? (
                       <>
                         <br />
-                        <small className="text-muted">{m.name}</small>
+                        <span className="text-xs text-muted">{m.name}</span>
                       </>
                     ) : null}
                     <div className="mt-1 flex flex-wrap gap-1">{modelBadges(m)}</div>
                     {m.notes ? (
                       <>
                         <br />
-                        <small className="text-muted">{m.notes}</small>
+                        <span className="text-xs text-muted">{m.notes}</span>
                       </>
                     ) : null}
                   </Td>
@@ -483,7 +477,7 @@ export function CProviderCard({ provider: p, onReload }: { provider: Provider; o
                       type="button"
                       onClick={() => void saveRate(m.id)}
                       disabled={savingRate === m.id}
-                      className="rounded-lg border border-accent/40 bg-surface px-3 py-1.5 text-sm font-medium text-accent hover:bg-accent-soft disabled:opacity-50"
+                      className={btnOutlineSm}
                     >
                       {savingRate === m.id ? 'Menyimpan…' : 'Simpan tarif'}
                     </button>
@@ -492,11 +486,7 @@ export function CProviderCard({ provider: p, onReload }: { provider: Provider; o
               ))
             )}
             {q && visibleModels.length === 0 && models.length > 0 ? (
-              <tr>
-                <td colSpan={5} className="border-b border-border px-4 py-3 text-muted">
-                  Tidak ada model yang cocok dengan pencarian.
-                </td>
-              </tr>
+              <EmptyRow colSpan={5}>Tidak ada model yang cocok dengan pencarian.</EmptyRow>
             ) : null}
           </tbody>
         </Table>

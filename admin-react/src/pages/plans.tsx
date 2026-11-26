@@ -3,13 +3,14 @@ import { api } from '../lib/api'
 import { useToast } from '../lib/toast'
 import { PageHeader } from '../components/PageHeader'
 import { Card } from '../components/Card'
-import { Table, Th, Td } from '../components/Table'
+import { Table, Th, Td, EmptyRow } from '../components/Table'
 import { Badge } from '../components/Badge'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { Select } from '../components/Select'
 import { Spinner } from '../components/Spinner'
-import { BFormDialog, type BFormValues } from '../components/BFormDialog'
-import { errMessage, fmtNum } from '../components/BFormat'
+import { CFormDialog, type CFormField, type CFormValues } from '../components/CFormDialog'
+import { btnOutlineDangerSm, btnOutlineSm, btnPrimary } from '../components/DFormat'
+import { errMessage, fmtNum, fmtRp } from '../components/BFormat'
 
 interface Plan {
   id: string
@@ -39,18 +40,13 @@ interface PlanUser {
   isAdmin: boolean
 }
 
-const PLAN_FIELDS = [
+const PLAN_FIELDS: CFormField[] = [
   { name: 'name', label: 'Nama plan', required: true },
   { name: 'tokenLimit', label: 'Kuota token (0 = tanpa batas)', type: 'number', min: 0, help: 'Jumlah token maksimum per pengguna.' },
   { name: 'priceIdr', label: 'Harga (Rp)', type: 'number', min: 0 },
   { name: 'monthlyCredits', label: 'Credit bulanan', type: 'number', min: 0, help: 'Jatah credit yang diberikan tiap bulan ke pengguna plan ini.' },
   { name: 'description', label: 'Keterangan', type: 'textarea' },
 ]
-
-const btnPrimary =
-  'rounded-lg border border-accent/40 bg-surface px-3 py-1.5 text-sm font-medium text-accent hover:bg-accent-soft disabled:opacity-50'
-const btnDanger =
-  'rounded-lg border border-danger/40 bg-surface px-3 py-1.5 text-sm font-medium text-danger hover:bg-danger-soft disabled:opacity-50'
 
 export default function PlansPage() {
   const toast = useToast()
@@ -78,9 +74,9 @@ export default function PlansPage() {
     void load()
   }, [load])
 
-  const submitAdd = async (vals: BFormValues | null) => {
+  const submitAdd = async (vals: CFormValues) => {
     setAddOpen(false)
-    if (!vals || !String(vals.name || '').trim()) return
+    if (!String(vals.name || '').trim()) return
     try {
       await api.post('/api/admin/plans', {
         name: vals.name,
@@ -96,10 +92,10 @@ export default function PlansPage() {
     }
   }
 
-  const submitEdit = async (vals: BFormValues | null) => {
+  const submitEdit = async (vals: CFormValues) => {
     const p = editPlan
     setEditPlan(null)
-    if (!vals || !p) return
+    if (!p) return
     try {
       await api.patch(`/api/admin/plans/${encodeURIComponent(p.id)}`, {
         name: vals.name,
@@ -150,18 +146,17 @@ export default function PlansPage() {
           <button
             type="button"
             onClick={() => setAddOpen(true)}
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover"
+            className={btnPrimary}
           >
             Tambah Plan
           </button>
         }
       />
 
-      <Card>
-        {plans === null ? (
-          <Spinner />
-        ) : (
-          <Table>
+      {plans === null ? (
+        <Spinner />
+      ) : (
+        <Table>
             <thead>
               <tr>
                 <Th>Nama</Th>
@@ -180,7 +175,7 @@ export default function PlansPage() {
                     <Td>
                       <strong>{p.name}</strong>
                       <br />
-                      <small className="font-mono text-muted">{p.id}</small>
+                      <span className="font-mono text-xs text-muted">{p.id}</span>
                     </Td>
                     <Td>
                       {p.token_limit > 0 ? (
@@ -189,16 +184,16 @@ export default function PlansPage() {
                         <Badge tone="success">Tanpa batas</Badge>
                       )}
                     </Td>
-                    <Td>Rp {fmtNum(p.price_idr)}</Td>
+                    <Td>{fmtRp(p.price_idr)}</Td>
                     <Td>{fmtNum(p.monthly_credits)}</Td>
                     <Td>{fmtNum(p.users)}</Td>
                     <Td>{p.description || '–'}</Td>
                     <Td className="text-right whitespace-nowrap">
                       <span className="inline-flex gap-2">
-                        <button type="button" className={btnPrimary} onClick={() => setEditPlan(p)}>
+                        <button type="button" className={btnOutlineSm} onClick={() => setEditPlan(p)}>
                           Ubah
                         </button>
-                        <button type="button" className={btnDanger} onClick={() => setDeletePlan(p)}>
+                        <button type="button" className={btnOutlineDangerSm} onClick={() => setDeletePlan(p)}>
                           Hapus
                         </button>
                       </span>
@@ -206,20 +201,17 @@ export default function PlansPage() {
                   </tr>
                 ))
               ) : (
-                <tr>
-                  <td colSpan={7} className="border-b border-border px-4 py-3 align-top text-muted">Belum ada plan.</td>
-                </tr>
+                <EmptyRow colSpan={7}>Belum ada plan.</EmptyRow>
               )}
             </tbody>
           </Table>
         )}
-      </Card>
 
       <Card title="Plan per Pengguna">
         {users === null ? (
           <Spinner />
         ) : (
-          <Table>
+          <Table bare>
             <thead>
               <tr>
                 <Th>Pengguna</Th>
@@ -230,7 +222,10 @@ export default function PlansPage() {
               </tr>
             </thead>
             <tbody>
-              {users.map((u) => {
+              {users.length === 0 ? (
+                <EmptyRow colSpan={5}>Belum ada pengguna.</EmptyRow>
+              ) : (
+                users.map((u) => {
                 const pct =
                   u.plan_limit > 0 ? Math.min(100, Math.round((u.tokens / u.plan_limit) * 100)) : null
                 return (
@@ -238,7 +233,7 @@ export default function PlansPage() {
                     <Td>
                       {u.name || u.email}
                       <br />
-                      <small className="text-muted">{u.email}</small>
+                      <span className="text-xs text-muted">{u.email}</span>
                     </Td>
                     <Td>
                       {u.plan_name ? <Badge tone="info">{u.plan_name}</Badge> : <span className="text-muted">–</span>}
@@ -255,16 +250,16 @@ export default function PlansPage() {
                               style={{ width: `${pct}%` }}
                             />
                           </div>
-                          <small className="text-muted">
+                          <span className="text-xs text-muted">
                             {fmtNum(u.tokens)} / {fmtNum(u.plan_limit)} ({pct}%)
-                          </small>
+                          </span>
                         </div>
                       ) : (
-                        <small className="text-muted">{fmtNum(u.tokens)} dipakai · tanpa batas</small>
+                        <span className="text-xs text-muted">{fmtNum(u.tokens)} dipakai · tanpa batas</span>
                       )}
                     </Td>
                     <Td>
-                      <div style={{ maxWidth: 200 }}>
+                      <div className="max-w-[200px]">
                         <Select
                           value={u.plan_id ?? ''}
                           onChange={(e) => void assignPlan(u.id, e.target.value || null)}
@@ -278,15 +273,16 @@ export default function PlansPage() {
                         </Select>
                       </div>
                     </Td>
-                  </tr>
-                )
-              })}
+                    </tr>
+                  )
+                })
+              )}
             </tbody>
           </Table>
         )}
       </Card>
 
-      <BFormDialog
+      <CFormDialog
         open={addOpen}
         title="Tambah plan"
         fields={[
@@ -298,8 +294,9 @@ export default function PlansPage() {
         ]}
         values={{}}
         onSubmit={(v) => void submitAdd(v)}
+        onCancel={() => setAddOpen(false)}
       />
-      <BFormDialog
+      <CFormDialog
         open={editPlan !== null}
         title="Ubah plan"
         fields={PLAN_FIELDS}
@@ -310,11 +307,12 @@ export default function PlansPage() {
                 tokenLimit: editPlan.token_limit,
                 priceIdr: editPlan.price_idr,
                 monthlyCredits: editPlan.monthly_credits,
-                description: editPlan.description,
+                description: editPlan.description ?? '',
               }
             : {}
         }
         onSubmit={(v) => void submitEdit(v)}
+        onCancel={() => setEditPlan(null)}
       />
       <ConfirmDialog
         open={deletePlan !== null}

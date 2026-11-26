@@ -9,23 +9,14 @@ import { Field } from '../components/Field'
 import { Textarea } from '../components/Textarea'
 import { Toggle } from '../components/Toggle'
 import { Spinner } from '../components/Spinner'
+import { btnPrimary } from '../components/DFormat'
+import { fmtDate } from '../components/BFormat'
 import { Wrench } from '@phosphor-icons/react'
 
 interface Maintenance {
   enabled: boolean
   message: string
   updated_at: number | null
-}
-
-function fmtDate(ts: number | null | undefined): string {
-  if (!ts) return '–'
-  return new Date(ts).toLocaleString('id-ID', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
 }
 
 export default function PemeliharaanPage() {
@@ -89,7 +80,7 @@ export default function PemeliharaanPage() {
       </Alert>
 
       <div className="grid gap-4 lg:grid-cols-7">
-        <div className="lg:col-span-4">
+        <div className="min-w-0 lg:col-span-4">
           <Card title="Pengaturan Mode Pemeliharaan">
             {data === null ? (
               <Spinner label="Memuat…" />
@@ -117,25 +108,21 @@ export default function PemeliharaanPage() {
                   />
                 </Field>
                 <div className="flex items-center gap-2">
-                  <button
-                    type="submit"
-                    disabled={saving}
-                    className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
-                  >
+                  <button type="submit" disabled={saving} className={btnPrimary}>
                     {saving ? 'Menyimpan…' : 'Simpan'}
                   </button>
-                  <small className="text-sm text-muted">
+                  <span className="text-sm text-muted">
                     {data.updated_at
                       ? `Terakhir disimpan ${fmtDate(data.updated_at)}`
                       : ''}
-                  </small>
+                  </span>
                 </div>
               </form>
             )}
           </Card>
         </div>
 
-        <div className="space-y-4 lg:col-span-3">
+        <div className="min-w-0 space-y-4 lg:col-span-3">
           <Card title="Pratinjau Pesan">
             <div className="rounded-lg border border-border p-3 text-center">
               <Wrench size={32} className="mx-auto text-muted" weight="regular" />
@@ -150,11 +137,11 @@ export default function PemeliharaanPage() {
 
           <Card title="Status Saat Ini">
             {data === null ? (
-              <p className="mb-0 text-sm text-muted">Memuat…</p>
+              <Spinner label="Memuat…" />
             ) : data.enabled ? (
               <>
                 <p className="mb-1">
-                  <Badge tone="warning">Mode pemeliharaan AKTIF</Badge>
+                  <Badge tone="success">Mode pemeliharaan AKTIF</Badge>
                 </p>
                 <p className="mb-0 text-sm text-muted">
                   Pengaturan tersimpan, tapi halaman maintenance untuk pengunjung

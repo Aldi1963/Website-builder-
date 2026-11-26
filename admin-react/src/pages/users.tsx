@@ -3,12 +3,13 @@ import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { useToast } from '../lib/toast'
 import { PageHeader } from '../components/PageHeader'
-import { Card } from '../components/Card'
-import { Table, Th, Td } from '../components/Table'
+import { Table, Th, Td, EmptyRow } from '../components/Table'
 import { Badge } from '../components/Badge'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { Spinner } from '../components/Spinner'
-import { avatarInitial, errMessage, fmtDateShort, fmtNum, timeAgo } from '../components/BFormat'
+import { Avatar } from '../components/Avatar'
+import { btnOutlineDangerSm, btnOutlineWarningSm } from '../components/DFormat'
+import { errMessage, fmtDateShort, fmtNum, timeAgo } from '../components/BFormat'
 
 interface AdminUser {
   id: number
@@ -30,11 +31,6 @@ type Pending =
   | { kind: 'toggle'; user: AdminUser; disable: boolean }
   | { kind: 'delete'; user: AdminUser }
   | null
-
-const btnWarn =
-  'rounded-lg border border-warning/40 bg-surface px-3 py-1.5 text-sm font-medium text-warning hover:bg-warning-soft disabled:opacity-50'
-const btnDanger =
-  'rounded-lg border border-danger/40 bg-surface px-3 py-1.5 text-sm font-medium text-danger hover:bg-danger-soft disabled:opacity-50'
 
 export default function UsersPage() {
   const toast = useToast()
@@ -101,13 +97,14 @@ export default function UsersPage() {
     <div className="space-y-4">
       <PageHeader
         title="Pengguna"
-        description={rows === null ? '' : `${fmtNum(rows.length)} akun terdaftar`}
+        description={
+          rows === null ? 'Akun yang terdaftar di VibeBuilder.' : `Akun yang terdaftar di VibeBuilder — ${fmtNum(rows.length)} akun`
+        }
       />
-      <Card>
-        {rows === null ? (
-          <Spinner />
-        ) : (
-          <Table>
+      {rows === null ? (
+        <Spinner />
+      ) : (
+        <Table>
             <thead>
               <tr>
                 <Th>Pengguna</Th>
@@ -122,19 +119,20 @@ export default function UsersPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((u) => {
+              {rows.length === 0 ? (
+                <EmptyRow colSpan={9}>Belum ada pengguna.</EmptyRow>
+              ) : (
+                rows.map((u) => {
                 const isSelf = me ? u.email.toLowerCase() === me.email.toLowerCase() : false
                 return (
                   <tr key={u.id}>
                     <Td>
                       <div className="flex items-center gap-2">
-                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-soft text-sm font-semibold text-accent">
-                          {avatarInitial(u.name, u.email)}
-                        </span>
+                        <Avatar name={u.name} email={u.email} />
                         <span>
                           {u.name || ''}
                           <br />
-                          <small className="text-muted">{u.email}</small>
+                          <span className="text-xs text-muted">{u.email}</span>
                         </span>
                       </div>
                     </Td>
@@ -162,14 +160,14 @@ export default function UsersPage() {
                         <span className="inline-flex gap-2">
                           <button
                             type="button"
-                            className={btnWarn}
+                            className={btnOutlineWarningSm}
                             onClick={() => setPending({ kind: 'toggle', user: u, disable: !u.disabled })}
                           >
                             {u.disabled ? 'Aktifkan' : 'Nonaktifkan'}
                           </button>
                           <button
                             type="button"
-                            className={btnDanger}
+                            className={btnOutlineDangerSm}
                             onClick={() => setPending({ kind: 'delete', user: u })}
                           >
                             Hapus
@@ -179,11 +177,11 @@ export default function UsersPage() {
                     </Td>
                   </tr>
                 )
-              })}
+                })
+              )}
             </tbody>
           </Table>
-        )}
-      </Card>
+      )}
 
       <ConfirmDialog
         open={pending !== null}

@@ -4,7 +4,7 @@ import { useToast } from '../lib/toast'
 import { PageHeader } from '../components/PageHeader'
 import { Badge } from '../components/Badge'
 import { Card } from '../components/Card'
-import { inputClass } from '../components/Field'
+import { Field, inputClass } from '../components/Field'
 import { Spinner } from '../components/Spinner'
 import { btnOutline, btnPrimary } from '../components/DFormat'
 
@@ -105,20 +105,24 @@ export default function AiSettingsPage() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title="Pengaturan AI"
         description="Model dan provider LLM yang dipakai server. Perubahan berlaku langsung tanpa restart."
       />
       {settings === null ? (
         <Spinner />
       ) : (
         <div className="grid gap-4 lg:grid-cols-5">
-          <div className="lg:col-span-3">
+          <div className="min-w-0 lg:col-span-3">
             <Card title="Konfigurasi AI">
               <form onSubmit={(e) => void save(e)} autoComplete="off" className="space-y-4">
-                <div>
-                  <label htmlFor="ai-model" className="mb-1 flex items-center gap-2 text-sm font-medium">
-                    Model utama <SrcBadge src={settings.sources.model} />
-                  </label>
+                <Field
+                  label={
+                    <>
+                      Model utama <SrcBadge src={settings.sources.model} />
+                    </>
+                  }
+                  htmlFor="ai-model"
+                  hint="Model default untuk chat dan agent. Kosongkan untuk kembali ke environment/default."
+                >
                   <input
                     type="text"
                     className={inputClass}
@@ -127,17 +131,16 @@ export default function AiSettingsPage() {
                     value={model}
                     onChange={(e) => setModel(e.target.value)}
                   />
-                  <p className="mt-1 text-sm text-muted">
-                    Model default untuk chat dan agent. Kosongkan untuk kembali ke environment/default.
-                  </p>
-                </div>
-                <div>
-                  <label
-                    htmlFor="ai-model-strong"
-                    className="mb-1 flex items-center gap-2 text-sm font-medium"
-                  >
-                    Model kuat <SrcBadge src={settings.sources.modelStrong} />
-                  </label>
+                </Field>
+                <Field
+                  label={
+                    <>
+                      Model kuat <SrcBadge src={settings.sources.modelStrong} />
+                    </>
+                  }
+                  htmlFor="ai-model-strong"
+                  hint="Model untuk pekerjaan berat bila diminta klien."
+                >
                   <input
                     type="text"
                     className={inputClass}
@@ -146,17 +149,16 @@ export default function AiSettingsPage() {
                     value={modelStrong}
                     onChange={(e) => setModelStrong(e.target.value)}
                   />
-                  <p className="mt-1 text-sm text-muted">
-                    Model untuk pekerjaan berat bila diminta klien.
-                  </p>
-                </div>
-                <div>
-                  <label
-                    htmlFor="ai-model-audit"
-                    className="mb-1 flex items-center gap-2 text-sm font-medium"
-                  >
-                    Model audit <SrcBadge src={settings.sources.modelAudit} />
-                  </label>
+                </Field>
+                <Field
+                  label={
+                    <>
+                      Model audit <SrcBadge src={settings.sources.modelAudit} />
+                    </>
+                  }
+                  htmlFor="ai-model-audit"
+                  hint="Model peninjau keamanan/aksesibilitas sesudah penulisan file."
+                >
                   <input
                     type="text"
                     className={inputClass}
@@ -165,17 +167,16 @@ export default function AiSettingsPage() {
                     value={modelAudit}
                     onChange={(e) => setModelAudit(e.target.value)}
                   />
-                  <p className="mt-1 text-sm text-muted">
-                    Model peninjau keamanan/aksesibilitas sesudah penulisan file.
-                  </p>
-                </div>
-                <div>
-                  <label
-                    htmlFor="ai-endpoint"
-                    className="mb-1 flex items-center gap-2 text-sm font-medium"
-                  >
-                    Endpoint LLM <SrcBadge src={settings.sources.endpoint} />
-                  </label>
+                </Field>
+                <Field
+                  label={
+                    <>
+                      Endpoint LLM <SrcBadge src={settings.sources.endpoint} />
+                    </>
+                  }
+                  htmlFor="ai-endpoint"
+                  hint="URL lengkap endpoint OpenAI-compatible (chat/completions)."
+                >
                   <input
                     type="url"
                     className={inputClass}
@@ -184,14 +185,16 @@ export default function AiSettingsPage() {
                     value={endpoint}
                     onChange={(e) => setEndpoint(e.target.value)}
                   />
-                  <p className="mt-1 text-sm text-muted">
-                    URL lengkap endpoint OpenAI-compatible (chat/completions).
-                  </p>
-                </div>
-                <div>
-                  <label htmlFor="ai-key" className="mb-1 flex items-center gap-2 text-sm font-medium">
-                    API key <SrcBadge src={settings.sources.key} />
-                  </label>
+                </Field>
+                <Field
+                  label={
+                    <>
+                      API key <SrcBadge src={settings.sources.key} />
+                    </>
+                  }
+                  htmlFor="ai-key"
+                  hint="Isi untuk mengganti key, atau kosongkan untuk memakai yang sudah tersimpan / environment. Nilai key tidak pernah ditampilkan."
+                >
                   <input
                     type="password"
                     className={inputClass}
@@ -203,11 +206,7 @@ export default function AiSettingsPage() {
                     value={key}
                     onChange={(e) => setKey(e.target.value)}
                   />
-                  <p className="mt-1 text-sm text-muted">
-                    Isi untuk mengganti key, atau kosongkan untuk memakai yang sudah tersimpan /
-                    environment. Nilai key tidak pernah ditampilkan.
-                  </p>
-                </div>
+                </Field>
                 <div className="flex gap-2">
                   <button type="submit" className={btnPrimary} disabled={busy}>
                     Simpan Pengaturan AI
@@ -220,9 +219,9 @@ export default function AiSettingsPage() {
             </Card>
           </div>
 
-          <div className="space-y-4 lg:col-span-2">
+          <div className="min-w-0 space-y-4 lg:col-span-2">
             <Card title="Konfigurasi Efektif">
-              <dl className="grid grid-cols-[120px_1fr] gap-x-4 gap-y-2 text-sm">
+              <dl className="grid grid-cols-[160px_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
                 <dt className="text-muted">Model utama</dt>
                 <dd className="font-mono break-all">{settings.model}</dd>
                 <dt className="text-muted">Model kuat</dt>
@@ -237,9 +236,7 @@ export default function AiSettingsPage() {
             </Card>
             <Card title="Hasil Tes Koneksi">
               {testing ? (
-                <p className="text-sm text-muted">
-                  <Spinner label="Mengirim prompt tes ke LLM…" />
-                </p>
+                <Spinner label="Mengirim prompt tes ke LLM…" />
               ) : testResult === null ? (
                 <p className="text-sm text-muted">
                   Belum ada tes. Tekan &ldquo;Tes Koneksi&rdquo; untuk mengirim satu prompt kecil ke LLM
@@ -249,9 +246,9 @@ export default function AiSettingsPage() {
                 <>
                   <p className="mb-1 text-sm">
                     <Badge tone="success">Berhasil</Badge>{' '}
-                    <small className="text-muted">
+                    <span className="text-xs text-muted">
                       {testResult.latencyMs} ms · model <code>{testResult.model}</code>
-                    </small>
+                    </span>
                   </p>
                   <p className="mb-0 text-sm">
                     Balasan: <strong>{testResult.reply}</strong>

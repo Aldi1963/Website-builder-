@@ -2,12 +2,15 @@
    Dipakai Dashboard (line 2 dataset + doughnut) dan Penggunaan (line 3
    dataset). Palet sama seperti chartColors di admin.js lama. */
 
+/* Warna seri chart diambil dari token tema (var(--...)) supaya ikut
+   dark mode — nilai hex fixed lama tidak berubah saat tema gelap. */
+
 export const CHART_COLORS = {
-  blue: '#2563eb',
-  green: '#16a34a',
-  amber: '#d97706',
-  red: '#dc2626',
-  slate: '#64748b',
+  blue: 'var(--info)',
+  green: 'var(--success)',
+  amber: 'var(--warning)',
+  red: 'var(--danger)',
+  slate: 'var(--muted)',
   teal: '#0d9488',
 } as const
 
@@ -141,7 +144,7 @@ export function BDoughnut({ slices }: { slices: DoughnutSlice[] }) {
       {total > 0 ? (
         <svg
           viewBox="0 0 200 200"
-          style={{ width: '100%', maxWidth: 260, height: 260, margin: '0 auto', display: 'block' }}
+          className="mx-auto block aspect-square w-full max-w-[220px] sm:max-w-[260px]"
           role="img"
           aria-label="Grafik status proyek"
         >

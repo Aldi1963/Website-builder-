@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, ApiError } from '../lib/api'
 import { useToast } from '../lib/toast'
 import { PageHeader } from '../components/PageHeader'
-import { Table, Th, Td } from '../components/Table'
+import { Table, Th, Td, EmptyRow } from '../components/Table'
+import { btnOutlineLg } from '../components/DFormat'
+import { fmtDate, fmtNum } from '../components/BFormat'
 import { Badge } from '../components/Badge'
 import { SearchInput } from '../components/SearchInput'
 import { Select } from '../components/Select'
@@ -16,21 +18,6 @@ interface AuditLog {
   target_id: string | null
   detail: string | null
   created_at: number
-}
-
-function fmtNum(n: number | null | undefined): string {
-  return Number(n ?? 0).toLocaleString('id-ID')
-}
-
-function fmtDate(ts: number | null | undefined): string {
-  if (!ts) return '–'
-  return new Date(ts).toLocaleString('id-ID', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
 }
 
 export default function AuditPage() {
@@ -67,7 +54,7 @@ export default function AuditPage() {
   }, [load])
 
   const subtitle =
-    logs === null ? 'Memuat…' : `${fmtNum(logs.length)} entri log`
+    logs === null ? 'Log audit.' : `Log audit — ${fmtNum(logs.length)} entri log`
 
   const currentActions =
     logs === null ? [] : [...new Set(logs.map((l) => l.action))].sort()
@@ -91,7 +78,7 @@ export default function AuditPage() {
         description={subtitle}
         actions={
           <div className="flex flex-wrap gap-2">
-            <div style={{ maxWidth: 220 }} className="w-full sm:w-auto">
+            <div className="w-full max-w-[220px] sm:w-auto">
               <Select
                 value={action}
                 onChange={(e) => onFilterChange(e.target.value)}
@@ -105,9 +92,7 @@ export default function AuditPage() {
                 ))}
               </Select>
             </div>
-            <form
-              className="flex w-full gap-2 sm:w-auto"
-              style={{ maxWidth: 320 }}
+            <form className="flex w-full max-w-[320px] gap-2 sm:w-auto" 
               onSubmit={(e) => {
                 e.preventDefault()
                 runSearch(searchInput.trim(), action)
@@ -121,11 +106,7 @@ export default function AuditPage() {
                   ariaLabel="Cari log"
                 />
               </div>
-              <button
-                type="submit"
-                aria-label="Cari"
-                className="shrink-0 rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium hover:bg-surface-muted"
-              >
+              <button type="submit" aria-label="Cari" className={`shrink-0 ${btnOutlineLg}`}>
                 Cari
               </button>
             </form>
@@ -148,11 +129,7 @@ export default function AuditPage() {
           </thead>
           <tbody>
             {logs.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="border-b border-border px-4 py-3 text-muted">
-                  Tidak ada log yang cocok.
-                </td>
-              </tr>
+              <EmptyRow colSpan={5}>Tidak ada log yang cocok.</EmptyRow>
             ) : (
               logs.map((l) => (
                 <tr key={l.id}>
@@ -166,7 +143,7 @@ export default function AuditPage() {
                     {l.target_id ? (
                       <>
                         <br />
-                        <small className="font-mono text-muted">{l.target_id}</small>
+                        <span className="font-mono text-xs text-muted">{l.target_id}</span>
                       </>
                     ) : null}
                   </Td>

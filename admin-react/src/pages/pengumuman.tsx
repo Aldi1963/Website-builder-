@@ -3,7 +3,7 @@ import { api, ApiError } from '../lib/api'
 import { useToast } from '../lib/toast'
 import { PageHeader } from '../components/PageHeader'
 import { Card } from '../components/Card'
-import { Table, Th, Td } from '../components/Table'
+import { Table, Th, Td, EmptyRow } from '../components/Table'
 import { Badge } from '../components/Badge'
 import { Alert } from '../components/Alert'
 import { Modal } from '../components/Modal'
@@ -11,6 +11,8 @@ import { ConfirmDialog } from '../components/ConfirmDialog'
 import { Field, inputClass } from '../components/Field'
 import { Textarea } from '../components/Textarea'
 import { Spinner } from '../components/Spinner'
+import { btnOutline, btnOutlineDangerSm, btnOutlineSm, btnOutlineSuccessSm, btnOutlineWarningSm, btnPrimary } from '../components/DFormat'
+import { errMessage, fmtDate } from '../components/BFormat'
 
 interface Announcement {
   id: number
@@ -20,28 +22,6 @@ interface Announcement {
   created_at: number
   updated_at: number
 }
-
-function fmtDate(ts: number | null | undefined): string {
-  if (!ts) return '–'
-  return new Date(ts).toLocaleString('id-ID', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
-function errMessage(e: unknown): string {
-  return e instanceof ApiError ? e.message : 'Gagal memuat pengumuman.'
-}
-
-const btnBase =
-  'rounded-lg border px-3 py-1.5 text-sm font-medium disabled:opacity-50'
-const btnSuccess = `${btnBase} border-success/40 bg-surface text-success hover:bg-success-soft`
-const btnWarning = `${btnBase} border-warning/40 bg-surface text-warning hover:bg-warning-soft`
-const btnPrimary = `${btnBase} border-accent/40 bg-surface text-accent hover:bg-accent-soft`
-const btnDanger = `${btnBase} border-danger/40 bg-surface text-danger hover:bg-danger-soft`
 
 type FormState =
   | { mode: 'create' }
@@ -161,7 +141,7 @@ export default function PengumumanPage() {
           <button
             type="button"
             onClick={openCreate}
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover"
+            className={btnPrimary}
           >
             Buat Pengumuman
           </button>
@@ -220,7 +200,7 @@ export default function PengumumanPage() {
                         {isActive ? (
                           <button
                             type="button"
-                            className={btnWarning}
+                            className={btnOutlineWarningSm}
                             disabled={busyId === a.id}
                             onClick={() => deactivate(a)}
                           >
@@ -229,7 +209,7 @@ export default function PengumumanPage() {
                         ) : (
                           <button
                             type="button"
-                            className={btnSuccess}
+                            className={btnOutlineSuccessSm}
                             disabled={busyId === a.id}
                             onClick={() => setConfirm({ kind: 'activate', item: a })}
                           >
@@ -245,7 +225,7 @@ export default function PengumumanPage() {
                         </button>
                         <button
                           type="button"
-                          className={btnDanger}
+                          className={btnOutlineDangerSm}
                           disabled={busyId === a.id}
                           onClick={() => setConfirm({ kind: 'delete', item: a })}
                         >
@@ -310,14 +290,14 @@ export default function PengumumanPage() {
               type="button"
               onClick={() => setForm(null)}
               disabled={saving}
-              className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-surface-muted disabled:opacity-50"
+              className={btnOutline}
             >
               Batal
             </button>
             <button
               type="submit"
               disabled={saving}
-              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+              className={btnPrimary}
             >
               {saving ? 'Menyimpan…' : 'Simpan'}
             </button>

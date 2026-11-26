@@ -47,6 +47,16 @@ export function timeAgo(ts: number | null | undefined): string {
 export const avatarInitial = (name?: string | null, email?: string | null): string =>
   (name || email || '?').trim().charAt(0).toUpperCase()
 
+/** Tone badge untuk status proyek — satu pemetaan untuk semua halaman
+    (dulu ditulis dua kali: statusTone di projects, STATUS_TONE di moderasi). */
+export function projectStatusTone(s: string): 'success' | 'accent' | 'warning' | 'danger' | 'default' {
+  if (s === 'idle') return 'success'
+  if (s === 'working') return 'accent'
+  if (s === 'building') return 'warning'
+  if (s === 'error') return 'danger'
+  return 'default'
+}
+
 /** Pesan error dari catch API: pakai pesan server bila ApiError. */
 export function errMessage(e: unknown): string {
   return e instanceof Error ? e.message : 'Gagal memuat.'

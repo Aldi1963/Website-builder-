@@ -5,13 +5,14 @@ import { useToast } from '../lib/toast'
 import { PageHeader } from '../components/PageHeader'
 import { Card } from '../components/Card'
 import { StatCard } from '../components/StatCard'
-import { Table, Th, Td } from '../components/Table'
+import { Table, Th, Td, EmptyRow } from '../components/Table'
+import { btnOutlineDangerSm, btnOutlineLg, btnOutlineSm, btnPrimary } from '../components/DFormat'
 import { Spinner } from '../components/Spinner'
 import { Alert } from '../components/Alert'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { Select } from '../components/Select'
 import { CFormDialog, type CFormField, type CFormValues } from '../components/CFormDialog'
-import { fmtNum, fmtRp } from '../components/CFormat'
+import { fmtNum, fmtRp } from '../components/BFormat'
 
 interface PriceEntry {
   prompt_per_1k: number
@@ -168,7 +169,6 @@ export default function BiayaPage() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title="Biaya LLM"
         description="Perkiraan biaya dari token tercatat di token_usage, dikali harga per model yang diisi admin."
         actions={
           <>
@@ -185,7 +185,7 @@ export default function BiayaPage() {
             <button
               type="button"
               onClick={() => void downloadCsv()}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium whitespace-nowrap hover:bg-surface-muted"
+              className={`inline-flex items-center gap-1.5 whitespace-nowrap ${btnOutlineLg}`}
             >
               <DownloadSimple size={16} /> Unduh CSV
             </button>
@@ -197,7 +197,7 @@ export default function BiayaPage() {
         <Spinner />
       ) : (
         <>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard label="Total Token" value={fmtNum(data.totals.total_tokens)} sub={rangeLabel} />
             <StatCard label="Permintaan LLM" value={fmtNum(data.totals.requests)} sub="dalam rentang yang dipilih" />
             <StatCard label="Perkiraan Biaya" value={fmtRp(data.totals.cost_idr)} sub="hanya model yang harganya sudah diisi" />
@@ -211,7 +211,7 @@ export default function BiayaPage() {
           </Alert>
 
           <Card title="Biaya per Model">
-            <Table>
+            <Table bare>
               <thead>
                 <tr>
                   <Th>Model</Th>
@@ -224,11 +224,7 @@ export default function BiayaPage() {
               </thead>
               <tbody>
                 {data.byModel.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="border-b border-border px-4 py-3 text-muted">
-                      Belum ada token tercatat dalam rentang ini.
-                    </td>
-                  </tr>
+                  <EmptyRow colSpan={6}>Belum ada token tercatat dalam rentang ini.</EmptyRow>
                 ) : (
                   data.byModel.map((m) => (
                     <tr key={m.model ?? '(tanpa model)'}>
@@ -250,7 +246,7 @@ export default function BiayaPage() {
               Pengguna yang tokennya tercatat dengan ID yang tidak lagi cocok dengan akun mana pun tampil sebagai
               “Pengguna tak dikenal” beserta ID-nya.
             </p>
-            <Table>
+            <Table bare>
               <thead>
                 <tr>
                   <Th>Pengguna</Th>
@@ -263,11 +259,7 @@ export default function BiayaPage() {
               </thead>
               <tbody>
                 {data.byUser.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="border-b border-border px-4 py-3 text-muted">
-                      Belum ada token tercatat dalam rentang ini.
-                    </td>
-                  </tr>
+                  <EmptyRow colSpan={6}>Belum ada token tercatat dalam rentang ini.</EmptyRow>
                 ) : (
                   data.byUser.map((u) => (
                     <tr key={u.user_id}>
@@ -276,13 +268,13 @@ export default function BiayaPage() {
                           <>
                             {u.name || u.email}
                             <br />
-                            <small className="text-muted">{u.email}</small>
+                            <span className="text-xs text-muted">{u.email}</span>
                           </>
                         ) : (
                           <>
                             Pengguna tak dikenal
                             <br />
-                            <small className="font-mono text-muted">{u.user_id}</small>
+                            <span className="font-mono text-xs text-muted">{u.user_id}</span>
                           </>
                         )}
                       </Td>
@@ -295,7 +287,7 @@ export default function BiayaPage() {
                         {u.unpriced_tokens > 0 ? (
                           <>
                             <br />
-                            <small className="text-muted">{fmtNum(u.unpriced_tokens)} token tanpa harga</small>
+                            <span className="text-xs text-muted">{fmtNum(u.unpriced_tokens)} token tanpa harga</span>
                           </>
                         ) : null}
                       </Td>
@@ -312,7 +304,7 @@ export default function BiayaPage() {
               <button
                 type="button"
                 onClick={() => setPriceDialog({ mode: 'add' })}
-                className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium whitespace-nowrap text-white hover:bg-accent-hover"
+                className={`whitespace-nowrap ${btnPrimary}`}
               >
                 Tambah harga
               </button>
@@ -322,7 +314,7 @@ export default function BiayaPage() {
               Harga disimpan di pengaturan admin (<code>llm_prices</code>) dan langsung dipakai menghitung biaya di
               atas. Kosongkan dengan menghapus baris bila tarif tidak diketahui — biaya model itu kembali tampil “–”.
             </p>
-            <Table>
+            <Table bare>
               <thead>
                 <tr>
                   <Th>Model</Th>
@@ -333,31 +325,27 @@ export default function BiayaPage() {
               </thead>
               <tbody>
                 {priceModels.length === 0 && knownModels.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="border-b border-border px-4 py-3 text-muted">
-                      Belum ada harga dan belum ada model tercatat.
-                    </td>
-                  </tr>
+                  <EmptyRow colSpan={4}>Belum ada harga dan belum ada model tercatat.</EmptyRow>
                 ) : (
                   <>
                     {priceModels.map((m) => (
                       <tr key={m}>
                         <Td className="font-mono">{m}</Td>
-                        <Td>Rp {fmtNum(prices[m].prompt_per_1k)}</Td>
-                        <Td>Rp {fmtNum(prices[m].completion_per_1k)}</Td>
+                        <Td>{fmtRp(prices[m].prompt_per_1k)}</Td>
+                        <Td>{fmtRp(prices[m].completion_per_1k)}</Td>
                         <Td className="text-right whitespace-nowrap">
                           <div className="flex justify-end gap-2">
                             <button
                               type="button"
                               onClick={() => setPriceDialog({ mode: 'edit', model: m })}
-                              className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium hover:bg-surface-muted"
+                              className={btnOutlineSm}
                             >
                               Ubah
                             </button>
                             <button
                               type="button"
                               onClick={() => setDeleteModel(m)}
-                              className="rounded-lg border border-danger/40 bg-surface px-3 py-1.5 text-sm font-medium text-danger hover:bg-danger-soft"
+                              className={btnOutlineDangerSm}
                             >
                               Hapus
                             </button>
@@ -375,7 +363,7 @@ export default function BiayaPage() {
                           <button
                             type="button"
                             onClick={() => setPriceDialog({ mode: 'edit', model: m })}
-                            className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium hover:bg-surface-muted"
+                            className={btnOutlineSm}
                           >
                             Isi harga
                           </button>

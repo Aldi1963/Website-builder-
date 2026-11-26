@@ -9,8 +9,9 @@ import { ConfirmDialog } from '../components/ConfirmDialog'
 import { Field, inputClass } from '../components/Field'
 import { Spinner } from '../components/Spinner'
 import { StatCard } from '../components/StatCard'
-import { Table, Th, Td } from '../components/Table'
-import { btnOutlineWarningSm, btnPrimary, btnWarningSolid, fmtBytes, fmtDate, fmtNum } from '../components/DFormat'
+import { Table, Th, Td, EmptyRow } from '../components/Table'
+import { btnOutlineWarningSm, btnPrimary, btnWarningSolid } from '../components/DFormat'
+import { fmtBytes, fmtDate, fmtNum } from '../components/BFormat'
 
 interface BackupFile {
   name: string
@@ -133,37 +134,37 @@ export default function CadanganPage() {
         <Spinner />
       ) : (
         <>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard
               label="Ukuran database"
               value={fmtBytes(data.dbSize)}
               sub="file vibebuilder.db aktif"
-              icon={<Database size={22} />}
+              icon={<Database size={20} />}
             />
             <StatCard
               label="Pengguna"
               value={fmtNum(data.counts.users)}
               sub={`${fmtNum(data.counts.projects)} proyek`}
-              icon={<Users size={22} />}
+              icon={<Users size={20} />}
             />
             <StatCard
               label="Pesan"
               value={fmtNum(data.counts.messages)}
               sub={`${fmtNum(data.counts.builds)} build tercatat`}
-              icon={<ChatDots size={22} />}
+              icon={<ChatDots size={20} />}
             />
             <StatCard
               label="File cadangan"
               value={fmtNum(data.files.length)}
               sub="di direktori data server"
-              icon={<Archive size={22} />}
+              icon={<Archive size={20} />}
             />
           </div>
 
           <div className="grid gap-4 lg:grid-cols-5">
-            <div className="lg:col-span-3">
+            <div className="min-w-0 lg:col-span-3">
               <Card title="File Cadangan di Server">
-                <Table>
+                <Table bare>
                   <thead>
                     <tr>
                       <Th>Nama file</Th>
@@ -174,12 +175,10 @@ export default function CadanganPage() {
                   </thead>
                   <tbody>
                     {data.files.length === 0 ? (
-                      <tr>
-                        <td colSpan={4} className="px-4 py-3 text-sm text-muted">
-                          Belum ada file cadangan. Unduh cadangan dulu, atau pulihkan sekali — cadangan
-                          otomatis akan muncul di sini.
-                        </td>
-                      </tr>
+                      <EmptyRow colSpan={4}>
+                        Belum ada file cadangan. Unduh cadangan dulu, atau pulihkan sekali — cadangan
+                        otomatis akan muncul di sini.
+                      </EmptyRow>
                     ) : (
                       data.files.map((f) => (
                         <tr key={f.name}>
@@ -216,7 +215,7 @@ export default function CadanganPage() {
               </Card>
             </div>
 
-            <div className="lg:col-span-2">
+            <div className="min-w-0 lg:col-span-2">
               <Card title="Pulihkan dari File">
                 <p className="text-sm text-muted">
                   Unggah file <code>.db</code> hasil unduhan cadangan. File divalidasi dulu (integritas
@@ -224,7 +223,7 @@ export default function CadanganPage() {
                   Bila valid, server menyimpan cadangan otomatis lalu restart sendiri dengan database
                   baru.
                 </p>
-                <form onSubmit={submitRestoreForm} className="mt-4 space-y-3">
+                <form onSubmit={submitRestoreForm} className="mt-4 space-y-4">
                   <Field label="File cadangan (.db)" htmlFor="restore-file">
                     <input
                       ref={fileRef}

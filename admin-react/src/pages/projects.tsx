@@ -2,12 +2,12 @@ import { useCallback, useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toast'
 import { PageHeader } from '../components/PageHeader'
-import { Card } from '../components/Card'
-import { Table, Th, Td } from '../components/Table'
+import { Table, Th, Td, EmptyRow } from '../components/Table'
 import { Badge } from '../components/Badge'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { Spinner } from '../components/Spinner'
-import { errMessage, fmtDateShort, fmtNum } from '../components/BFormat'
+import { btnOutlineDangerSm, btnOutlineSm } from '../components/DFormat'
+import { errMessage, fmtDateShort, fmtNum, projectStatusTone } from '../components/BFormat'
 
 interface AdminProject {
   id: string
@@ -23,19 +23,6 @@ interface AdminProject {
   files: number
   last_build_ok: boolean | null
 }
-
-function statusTone(s: string): 'success' | 'accent' | 'warning' | 'danger' | 'default' {
-  if (s === 'idle') return 'success'
-  if (s === 'working') return 'accent'
-  if (s === 'building') return 'warning'
-  if (s === 'error') return 'danger'
-  return 'default'
-}
-
-const btnPrimary =
-  'rounded-lg border border-accent/40 bg-surface px-3 py-1.5 text-sm font-medium text-accent hover:bg-accent-soft'
-const btnDanger =
-  'rounded-lg border border-danger/40 bg-surface px-3 py-1.5 text-sm font-medium text-danger hover:bg-danger-soft disabled:opacity-50'
 
 export default function ProjectsPage() {
   const toast = useToast()
@@ -75,13 +62,16 @@ export default function ProjectsPage() {
     <div className="space-y-4">
       <PageHeader
         title="Proyek"
-        description={rows === null ? '' : `${fmtNum(rows.length)} proyek dari semua pengguna`}
+        description={
+          rows === null
+            ? 'Proyek dari semua pengguna.'
+            : `Proyek dari semua pengguna — ${fmtNum(rows.length)} proyek`
+        }
       />
-      <Card>
-        {rows === null ? (
-          <Spinner />
-        ) : (
-          <Table>
+      {rows === null ? (
+        <Spinner />
+      ) : (
+        <Table>
             <thead>
               <tr>
                 <Th>Proyek</Th>
@@ -95,16 +85,19 @@ export default function ProjectsPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((p) => (
+              {rows.length === 0 ? (
+                <EmptyRow colSpan={8}>Belum ada proyek.</EmptyRow>
+              ) : (
+                rows.map((p) => (
                 <tr key={p.id}>
                   <Td>
                     <strong>{p.name}</strong>
                     <br />
-                    <small className="font-mono text-muted">{p.id}</small>
+                    <span className="font-mono text-xs text-muted">{p.id}</span>
                   </Td>
                   <Td>{p.owner_email || 'tanpa pemilik'}</Td>
                   <Td>
-                    <Badge tone={statusTone(p.status)}>{p.status}</Badge>
+                    <Badge tone={projectStatusTone(p.status)}>{p.status}</Badge>
                   </Td>
                   <Td>{fmtNum(p.messages)}</Td>
                   <Td>{fmtNum(p.files)}</Td>
@@ -120,20 +113,20 @@ export default function ProjectsPage() {
                   <Td>{fmtDateShort(p.updated_at)}</Td>
                   <Td className="text-right whitespace-nowrap">
                     <span className="inline-flex gap-2">
-                      <a href={`/proyek/${p.id}`} className={btnPrimary}>
+                      <a href={`/proyek/${p.id}`} className={btnOutlineSm}>
                         Buka
                       </a>
-                      <button type="button" className={btnDanger} onClick={() => setPending(p)}>
+                      <button type="button" className={btnOutlineDangerSm} onClick={() => setPending(p)}>
                         Hapus
                       </button>
                     </span>
                   </Td>
                 </tr>
-              ))}
+                ))
+              )}
             </tbody>
           </Table>
-        )}
-      </Card>
+      )}
 
       <ConfirmDialog
         open={pending !== null}

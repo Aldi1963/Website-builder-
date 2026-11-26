@@ -3,21 +3,21 @@ import { api, ApiError } from '../lib/api'
 import { useToast } from '../lib/toast'
 import { PageHeader } from '../components/PageHeader'
 import { Alert } from '../components/Alert'
-import { Badge, type BadgeTone } from '../components/Badge'
+import { Badge } from '../components/Badge'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { Field } from '../components/Field'
 import { Modal } from '../components/Modal'
 import { Spinner } from '../components/Spinner'
-import { Table, Th, Td } from '../components/Table'
+import { Table, Th, Td, EmptyRow } from '../components/Table'
 import { Textarea } from '../components/Textarea'
 import {
   btnOutlineDangerSm,
   btnOutlineSuccessSm,
   btnOutlineWarningSm,
   btnOutlineSm,
-  fmtDateShort,
-  fmtNum,
 } from '../components/DFormat'
+import { fmtDateShort, fmtNum, projectStatusTone } from '../components/BFormat'
+import { btnOutline, btnPrimary } from '../components/DFormat'
 
 interface ModerationProject {
   id: string
@@ -38,12 +38,7 @@ interface ModerationProject {
 
 type ConfirmKind = 'unflag' | 'suspend'
 
-const STATUS_TONE: Record<string, BadgeTone> = {
-  idle: 'success',
-  working: 'accent',
-  building: 'warning',
-  error: 'danger',
-}
+/* Tone badge status proyek — lihat projectStatusTone di BFormat. */
 
 export default function ModerasiPage() {
   const toast = useToast()
@@ -133,8 +128,8 @@ export default function ModerasiPage() {
         title="Moderasi"
         description={
           projects === null
-            ? 'Memuat…'
-            : `${fmtNum(projects.length)} proyek · ${fmtNum(flagged)} ditandai · ${fmtNum(suspended)} ditangguhkan`
+            ? 'Moderasi proyek.'
+            : `Moderasi proyek — ${fmtNum(projects.length)} proyek · ${fmtNum(flagged)} ditandai · ${fmtNum(suspended)} ditangguhkan`
         }
       />
       <Alert tone="warning">
@@ -159,33 +154,29 @@ export default function ModerasiPage() {
           </thead>
           <tbody>
             {projects.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="px-4 py-3 text-sm text-muted">
-                  Belum ada proyek.
-                </td>
-              </tr>
+              <EmptyRow colSpan={7}>Belum ada proyek.</EmptyRow>
             ) : (
               projects.map((p) => (
                 <tr key={p.id}>
                   <Td>
                     <strong>{p.name}</strong>
                     <br />
-                    <small className="font-mono text-muted">{p.id}</small>
+                    <span className="font-mono text-xs text-muted">{p.id}</span>
                   </Td>
                   <Td>{p.owner_email || 'tanpa pemilik'}</Td>
                   <Td>
-                    <Badge tone={STATUS_TONE[p.status] ?? 'default'}>{p.status}</Badge>
+                    <Badge tone={projectStatusTone(p.status)}>{p.status}</Badge>
                   </Td>
                   <Td>
                     {p.flagged ? (
                       <>
                         <Badge tone="warning">Ditandai</Badge>
                         <br />
-                        <small className="text-muted">{p.flag_reason}</small>
+                        <span className="text-xs text-muted">{p.flag_reason}</span>
                         <br />
-                        <small className="text-muted">
+                        <span className="text-xs text-muted">
                           oleh {p.flag_by || '–'} · {fmtDateShort(p.flagged_at)}
-                        </small>
+                        </span>
                       </>
                     ) : (
                       <span className="text-muted">–</span>
@@ -279,7 +270,7 @@ export default function ModerasiPage() {
               type="button"
               onClick={() => setFlagTarget(null)}
               disabled={busy}
-              className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-surface-muted disabled:opacity-50"
+              className={btnOutline}
             >
               Batal
             </button>
@@ -287,7 +278,7 @@ export default function ModerasiPage() {
               type="button"
               onClick={() => void doFlag()}
               disabled={busy || !flagReason.trim()}
-              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+              className={btnPrimary}
             >
               Simpan
             </button>

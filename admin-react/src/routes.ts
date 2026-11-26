@@ -132,9 +132,15 @@ export const ROUTES: AdminRoute[] = [
   { slug: 'settings', path: '/admin/settings', title: 'Pengaturan', icon: Gear, component: page('settings') },
 ]
 
-/** Slug yang masuk kelompok "Admin" di sidebar (ada pemisah + label
-    "Admin" sebelum Log Audit, seperti shell.html). */
-export const ADMIN_SECTION_SLUGS = ['audit', 'pemeliharaan', 'settings']
+/** Kelompok menu sidebar: label tampil di atas item pertama tiap seksi.
+    URUTAN menu tidak berubah — seksi hanya memberi label, seperti label
+    "Admin" di shell.html lama. */
+export const ADMIN_SECTIONS: { label: string; slugs: string[] }[] = [
+  { label: 'Utama', slugs: ['dashboard', 'users', 'projects', 'moderasi', 'domain'] },
+  { label: 'Layanan', slugs: ['plans', 'credits', 'ai', 'billing'] },
+  { label: 'Operasional', slugs: ['builds', 'messages', 'pengumuman', 'sessions', 'health', 'cadangan', 'pembersihan'] },
+  { label: 'Admin', slugs: ['audit', 'pemeliharaan', 'settings'] },
+]
 
 /** Tautan keluar sidebar (bukan route admin). */
 export const SITE_LINK = { title: 'Kembali ke Builder', href: '/', icon: ArrowSquareOut }

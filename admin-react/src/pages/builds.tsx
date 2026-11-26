@@ -2,12 +2,12 @@ import { useCallback, useEffect, useState } from 'react'
 import { api, ApiError } from '../lib/api'
 import { useToast } from '../lib/toast'
 import { PageHeader } from '../components/PageHeader'
-import { Card } from '../components/Card'
-import { Table, Th, Td } from '../components/Table'
+import { Table, Th, Td, EmptyRow } from '../components/Table'
+import { btnOutlineSm } from '../components/DFormat'
 import { Badge } from '../components/Badge'
 import { Spinner } from '../components/Spinner'
 import { Modal } from '../components/Modal'
-import { fmtNum, fmtDate } from '../components/CFormat'
+import { fmtNum, fmtDate } from '../components/BFormat'
 
 interface BuildRow {
   id: number
@@ -42,14 +42,15 @@ export default function BuildsPage() {
       <PageHeader
         title="Build"
         description={
-          builds === null ? 'Riwayat build produksi semua proyek.' : `${fmtNum(builds.length)} build terakhir dari semua proyek`
+          builds === null
+            ? 'Riwayat build produksi semua proyek.'
+            : `Riwayat build produksi semua proyek — ${fmtNum(builds.length)} build terakhir`
         }
       />
       {builds === null ? (
         <Spinner />
       ) : (
-        <Card>
-          <Table>
+        <Table>
             <thead>
               <tr>
                 <Th>#</Th>
@@ -62,11 +63,7 @@ export default function BuildsPage() {
             </thead>
             <tbody>
               {builds.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="border-b border-border px-4 py-3 text-muted">
-                    Belum ada build.
-                  </td>
-                </tr>
+                <EmptyRow colSpan={6}>Belum ada build.</EmptyRow>
               ) : (
                 builds.map((b) => (
                   <tr key={b.id}>
@@ -74,7 +71,7 @@ export default function BuildsPage() {
                     <Td>
                       <strong>{b.project_name}</strong>
                       <br />
-                      <small className="font-mono text-muted">{b.project_id}</small>
+                      <span className="font-mono text-xs text-muted">{b.project_id}</span>
                     </Td>
                     <Td>{b.owner_email || '–'}</Td>
                     <Td>
@@ -85,7 +82,7 @@ export default function BuildsPage() {
                       <button
                         type="button"
                         onClick={() => setLogBuild(b)}
-                        className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium hover:bg-surface-muted"
+                        className={btnOutlineSm}
                       >
                         Lihat log
                       </button>
@@ -95,7 +92,6 @@ export default function BuildsPage() {
               )}
             </tbody>
           </Table>
-        </Card>
       )}
 
       <Modal

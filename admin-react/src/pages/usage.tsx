@@ -4,7 +4,7 @@ import { useToast } from '../lib/toast'
 import { PageHeader } from '../components/PageHeader'
 import { Card } from '../components/Card'
 import { StatCard } from '../components/StatCard'
-import { Table, Th, Td } from '../components/Table'
+import { Table, Th, Td, EmptyRow } from '../components/Table'
 import { Spinner } from '../components/Spinner'
 import { BLineChart, CHART_COLORS } from '../components/BCharts'
 import { errMessage, fmtNum } from '../components/BFormat'
@@ -37,7 +37,6 @@ export default function UsagePage() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title="Penggunaan"
         description="Token LLM sejak server start & aktivitas 14 hari terakhir."
       />
 
@@ -57,7 +56,7 @@ export default function UsagePage() {
           </div>
 
           <div className="grid gap-4 lg:grid-cols-3">
-            <Card title="Aktivitas Harian" className="lg:col-span-2">
+            <Card title="Aktivitas Harian" className="min-w-0 lg:col-span-2">
               <BLineChart
                 labels={data.daily.map((d) => d.date.slice(5))}
                 datasets={[
@@ -68,7 +67,7 @@ export default function UsagePage() {
               />
             </Card>
             <Card title="Pesan per Pengguna">
-              <Table>
+              <Table bare>
                 <thead>
                   <tr>
                     <Th>Pengguna</Th>
@@ -82,15 +81,13 @@ export default function UsagePage() {
                         <Td>
                           {u.name || u.email}
                           <br />
-                          <small className="text-muted">{u.email}</small>
+                          <span className="text-xs text-muted">{u.email}</span>
                         </Td>
                         <Td>{fmtNum(u.messages)}</Td>
                       </tr>
                     ))
                   ) : (
-                    <tr>
-                      <td colSpan={2} className="border-b border-border px-4 py-3 align-top text-muted">Belum ada data.</td>
-                    </tr>
+                    <EmptyRow colSpan={2}>Belum ada data.</EmptyRow>
                   )}
                 </tbody>
               </Table>
@@ -102,7 +99,7 @@ export default function UsagePage() {
               Token LLM tercatat per pengguna sejak pencatatan aktif (riwayat sebelum itu tidak ada datanya).
               Total token tercatat: <strong>{fmtNum(data.totals.tokens || 0)}</strong>.
             </p>
-            <Table>
+            <Table bare>
               <thead>
                 <tr>
                   <Th>Pengguna</Th>
@@ -118,7 +115,7 @@ export default function UsagePage() {
                       <Td>
                         {u.name || u.email}
                         <br />
-                        <small className="text-muted">{u.email}</small>
+                        <span className="text-xs text-muted">{u.email}</span>
                       </Td>
                       <Td>{fmtNum(u.tokens)}</Td>
                       <Td>{fmtNum(u.prompt_tokens)}</Td>
@@ -126,9 +123,7 @@ export default function UsagePage() {
                     </tr>
                   ))
                 ) : (
-                  <tr>
-                    <td colSpan={4} className="border-b border-border px-4 py-3 align-top text-muted">Belum ada token tercatat per pengguna.</td>
-                  </tr>
+                  <EmptyRow colSpan={4}>Belum ada token tercatat per pengguna.</EmptyRow>
                 )}
               </tbody>
             </Table>

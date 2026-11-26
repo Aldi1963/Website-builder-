@@ -9,7 +9,8 @@ import { Field, inputClass } from '../components/Field'
 import { Spinner } from '../components/Spinner'
 import { StatCard } from '../components/StatCard'
 import { Toggle } from '../components/Toggle'
-import { btnPrimary, fmtDate, fmtNum } from '../components/DFormat'
+import { btnPrimary } from '../components/DFormat'
+import { fmtDate, fmtNum } from '../components/BFormat'
 
 interface CleanupData {
   settings: {
@@ -101,29 +102,29 @@ export default function PembersihanPage() {
         <Spinner />
       ) : (
         <>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             <StatCard
               label="Build lama"
               value={fmtNum(data.counts.builds)}
               sub={`lebih lama dari ${data.settings.retentionDays} hari`}
-              icon={<Trash size={22} />}
+              icon={<Trash size={20} />}
             />
             <StatCard
               label="Sesi kedaluwarsa"
               value={fmtNum(data.counts.sessions)}
               sub="sesi login yang sudah lewat masa berlaku"
-              icon={<Key size={22} />}
+              icon={<Key size={20} />}
             />
             <StatCard
               label="Preview berjalan"
               value={fmtNum(data.counts.previewsRunning)}
               sub="tidak pernah dihentikan pembersihan"
-              icon={<Pulse size={22} />}
+              icon={<Pulse size={20} />}
             />
           </div>
 
           <div className="grid gap-4 lg:grid-cols-5">
-            <div className="lg:col-span-3">
+            <div className="min-w-0 lg:col-span-3">
               <Card title="Pengaturan Retensi">
                 <form onSubmit={(e) => void saveSettings(e)} className="space-y-4">
                   <Field
@@ -153,10 +154,10 @@ export default function PembersihanPage() {
               </Card>
             </div>
 
-            <div className="space-y-4 lg:col-span-2">
+            <div className="min-w-0 space-y-4 lg:col-span-2">
               <Card title="Hasil Terakhir">
                 {last ? (
-                  <dl className="grid grid-cols-[140px_1fr] gap-x-4 gap-y-2 text-sm">
+                  <dl className="grid grid-cols-[160px_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
                     <dt className="text-muted">Waktu</dt>
                     <dd>{fmtDate(last.at)}</dd>
                     <dt className="text-muted">Build dihapus</dt>

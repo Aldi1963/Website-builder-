@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
-import { MagnifyingGlass } from '@phosphor-icons/react'
 import { api, ApiError } from '../lib/api'
 import { useToast } from '../lib/toast'
 import { PageHeader } from '../components/PageHeader'
-import { Card } from '../components/Card'
-import { Table, Th, Td } from '../components/Table'
+import { Table, Th, Td, EmptyRow } from '../components/Table'
+import { btnOutlineLg } from '../components/DFormat'
 import { Badge } from '../components/Badge'
 import { Spinner } from '../components/Spinner'
 import { SearchInput } from '../components/SearchInput'
-import { fmtDate } from '../components/CFormat'
+import { fmtDate } from '../components/BFormat'
 
 interface MessageRow {
   id: number
@@ -59,16 +58,12 @@ export default function MessagesPage() {
         title="Pesan"
         description="Semua pesan chat di semua proyek."
         actions={
-          <form onSubmit={runSearch} className="flex w-[320px] max-w-full gap-2">
+          <form onSubmit={runSearch} className="flex w-full gap-2 sm:w-[320px]">
             <div className="min-w-0 flex-1">
               <SearchInput value={query} onChange={setQuery} placeholder="Cari isi pesan…" ariaLabel="Cari pesan" />
             </div>
-            <button
-              type="submit"
-              aria-label="Cari"
-              className="shrink-0 rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium hover:bg-surface-muted"
-            >
-              <MagnifyingGlass size={16} />
+            <button type="submit" className={`shrink-0 ${btnOutlineLg}`}>
+              Cari
             </button>
           </form>
         }
@@ -76,8 +71,7 @@ export default function MessagesPage() {
       {messages === null ? (
         <Spinner />
       ) : (
-        <Card>
-          <Table>
+        <Table>
             <thead>
               <tr>
                 <Th>Proyek</Th>
@@ -89,18 +83,14 @@ export default function MessagesPage() {
             </thead>
             <tbody>
               {messages.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="border-b border-border px-4 py-3 text-muted">
-                    Tidak ada pesan.
-                  </td>
-                </tr>
+                <EmptyRow colSpan={5}>Tidak ada pesan.</EmptyRow>
               ) : (
                 messages.map((m) => (
                   <tr key={m.id}>
                     <Td>
                       <strong>{m.project_name}</strong>
                       <br />
-                      <small className="font-mono text-muted">{m.project_id}</small>
+                      <span className="font-mono text-xs text-muted">{m.project_id}</span>
                     </Td>
                     <Td>{m.owner_email || '–'}</Td>
                     <Td>
@@ -113,7 +103,6 @@ export default function MessagesPage() {
               )}
             </tbody>
           </Table>
-        </Card>
       )}
     </div>
   )

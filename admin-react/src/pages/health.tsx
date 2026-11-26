@@ -8,7 +8,7 @@ import { Card } from '../components/Card'
 import { Spinner } from '../components/Spinner'
 import { StatCard } from '../components/StatCard'
 import { Table, Th, Td } from '../components/Table'
-import { fmtBytes, fmtNum } from '../components/DFormat'
+import { fmtBytes, fmtNum } from '../components/BFormat'
 
 interface HealthData {
   ok: boolean
@@ -74,36 +74,36 @@ export default function HealthPage() {
         <Spinner />
       ) : (
         <>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard
               label="Uptime server"
               value={`${upH} jam ${upM} mnt`}
               sub={`Node ${health.node} · ${health.platform}`}
-              icon={<Pulse size={22} />}
+              icon={<Pulse size={20} />}
             />
             <StatCard
               label="Memori (RSS)"
               value={fmtBytes(health.memory.rss)}
               sub={`Heap ${fmtBytes(health.memory.heapUsed)} / ${fmtBytes(health.memory.heapTotal)}`}
-              icon={<Cpu size={22} />}
+              icon={<Cpu size={20} />}
             />
             <StatCard
               label="Ukuran database"
               value={fmtBytes(health.dbSize)}
               sub={`${fmtNum(health.counts.users)} pengguna · ${fmtNum(health.counts.projects)} proyek`}
-              icon={<Database size={22} />}
+              icon={<Database size={20} />}
             />
             <StatCard
               label="Sesi aktif"
               value={fmtNum(health.counts.sessions)}
               sub={`${fmtNum(health.counts.messages)} pesan · ${fmtNum(health.counts.builds)} build`}
-              icon={<ChatDots size={22} />}
+              icon={<ChatDots size={20} />}
             />
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
             <Card title="LLM Gateway">
-              <dl className="grid grid-cols-[120px_1fr] gap-x-4 gap-y-2 text-sm">
+              <dl className="grid grid-cols-[160px_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
                 <dt className="text-muted">Endpoint</dt>
                 <dd className="font-mono break-all">{health.llm.host}</dd>
                 <dt className="text-muted">Model</dt>
@@ -123,13 +123,13 @@ export default function HealthPage() {
                       <Badge tone="success">
                         Terjangkau{health.llm.status ? ` (HTTP ${health.llm.status})` : ''}
                       </Badge>{' '}
-                      <small className="text-muted">{health.llm.latencyMs} ms</small>
+                      <span className="text-xs text-muted">{health.llm.latencyMs} ms</span>
                     </>
                   ) : (
                     <>
                       <Badge tone="danger">Tidak terjangkau</Badge>
                       <br />
-                      <small className="text-danger">{health.llm.error || ''}</small>
+                      <span className="text-xs text-danger">{health.llm.error || ''}</span>
                     </>
                   )}
                 </dd>
@@ -140,7 +140,7 @@ export default function HealthPage() {
               {health.previews.length === 0 ? (
                 <p className="text-sm text-muted">Tidak ada preview yang berjalan saat ini.</p>
               ) : (
-                <Table>
+                <Table bare>
                   <thead>
                     <tr>
                       <Th>Proyek</Th>
@@ -150,10 +150,8 @@ export default function HealthPage() {
                   <tbody>
                     {health.previews.map((p) => (
                       <tr key={`${p.projectId}:${p.port}`}>
-                        <td className="border-b border-border px-4 py-3 font-mono text-sm last:border-b-0">
-                          {p.projectId}
-                        </td>
-                        <td className="border-b border-border px-4 py-3 text-sm last:border-b-0">{p.port}</td>
+                        <Td className="font-mono">{p.projectId}</Td>
+                        <Td>{p.port}</Td>
                       </tr>
                     ))}
                   </tbody>
@@ -162,13 +160,12 @@ export default function HealthPage() {
             </Card>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-2">
-            <Card title="Ambang Peringatan">
-              {alertsData === null ? (
-                <p className="text-sm text-muted">Memuat…</p>
-              ) : (
+          <Card title="Ambang Peringatan">
+            {alertsData === null ? (
+              <Spinner label="Memuat ambang peringatan…" />
+            ) : (
                 <>
-                  <dl className="grid grid-cols-[160px_1fr] gap-x-4 gap-y-2 text-sm">
+                  <dl className="grid grid-cols-[160px_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
                     <dt className="text-muted">Build gagal (1 jam)</dt>
                     <dd>
                       {th?.buildFailCount ?? 3} gagal atau &gt;{th?.buildFailPct ?? 50}% gagal
@@ -195,8 +192,7 @@ export default function HealthPage() {
                   </p>
                 </>
               )}
-            </Card>
-          </div>
+          </Card>
         </>
       )}
     </div>

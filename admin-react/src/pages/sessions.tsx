@@ -5,8 +5,9 @@ import { PageHeader } from '../components/PageHeader'
 import { Badge } from '../components/Badge'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { Spinner } from '../components/Spinner'
-import { Table, Th, Td } from '../components/Table'
-import { btnOutlineDangerSm, fmtDate } from '../components/DFormat'
+import { Table, Th, Td, EmptyRow } from '../components/Table'
+import { btnOutlineDangerSm } from '../components/DFormat'
+import { fmtDate } from '../components/BFormat'
 
 interface SessionRow {
   hash: string
@@ -75,11 +76,7 @@ export default function SessionsPage() {
           </thead>
           <tbody>
             {sessions.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="px-4 py-3 text-sm text-muted">
-                  Tidak ada sesi.
-                </td>
-              </tr>
+              <EmptyRow colSpan={6}>Tidak ada sesi.</EmptyRow>
             ) : (
               sessions.map((s) => (
                 <tr key={s.hash}>
@@ -88,7 +85,7 @@ export default function SessionsPage() {
                     {s.email ? (
                       <>
                         <br />
-                        <small className="text-muted">{s.email}</small>
+                        <span className="text-xs text-muted">{s.email}</span>
                       </>
                     ) : null}
                   </Td>

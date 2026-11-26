@@ -3,12 +3,13 @@ import { api, ApiError } from '../lib/api'
 import { useToast } from '../lib/toast'
 import { PageHeader } from '../components/PageHeader'
 import { Card } from '../components/Card'
-import { Table, Th, Td } from '../components/Table'
+import { Table, Th, Td, EmptyRow } from '../components/Table'
+import { btnOutlineLg, btnPrimary } from '../components/DFormat'
 import { Badge } from '../components/Badge'
 import { Spinner } from '../components/Spinner'
 import { Alert } from '../components/Alert'
 import { Field, inputClass } from '../components/Field'
-import { fmtNum, fmtDate } from '../components/CFormat'
+import { fmtNum, fmtDate, fmtRp } from '../components/BFormat'
 
 interface BillingPackage {
   id: string
@@ -110,7 +111,7 @@ export default function BillingPage() {
         <Spinner />
       ) : (
         <div className="grid gap-4 lg:grid-cols-7">
-          <div className="space-y-4 lg:col-span-4">
+          <div className="min-w-0 space-y-4 lg:col-span-4">
             <Card title="Kredensial Clipku Pay">
               <form onSubmit={(e) => void save(e)} autoComplete="off" className="space-y-4">
                 <Field
@@ -166,11 +167,7 @@ export default function BillingPage() {
                   </div>
                 </Field>
                 {data.apiKeyFromEnv ? <Alert tone="warning">{ENV_WARNING}</Alert> : null}
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
-                >
+                <button type="submit" disabled={saving} className={btnPrimary}>
                   {saving ? 'Menyimpan…' : 'Simpan'}
                 </button>
               </form>
@@ -194,7 +191,7 @@ export default function BillingPage() {
                     type="button"
                     onClick={() => void copyWebhook()}
                     disabled={!data.webhookUrl}
-                    className="shrink-0 rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium hover:bg-surface-muted disabled:opacity-50"
+                    className={`shrink-0 ${btnOutlineLg}`}
                   >
                     Salin
                   </button>
@@ -203,9 +200,9 @@ export default function BillingPage() {
             </Card>
           </div>
 
-          <div className="space-y-4 lg:col-span-3">
+          <div className="min-w-0 space-y-4 lg:col-span-3">
             <Card title="Status">
-              <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+              <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
                 <dt className="text-muted">API key</dt>
                 <dd className="font-mono">{data.configured ? 'Terpasang' : 'Belum terpasang'}</dd>
                 <dt className="text-muted">Sumber key</dt>
@@ -225,7 +222,7 @@ export default function BillingPage() {
               <ul className="list-disc space-y-1 pl-5 text-sm">
                 {(data.packages || []).map((p) => (
                   <li key={p.id}>
-                    Rp {fmtNum(p.amountIdr)} = {fmtNum(p.credits)} credit
+                    {fmtRp(p.amountIdr)} = {fmtNum(p.credits)} credit
                   </li>
                 ))}
               </ul>
@@ -243,7 +240,7 @@ export default function BillingPage() {
                   ))
                 )}
               </p>
-              <Table>
+              <Table bare>
                 <thead>
                   <tr>
                     <Th>Order</Th>
@@ -255,11 +252,7 @@ export default function BillingPage() {
                 </thead>
                 <tbody>
                   {(data.recentWebhookEvents || []).length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="border-b border-border px-4 py-3 text-muted">
-                        Belum ada event webhook.
-                      </td>
-                    </tr>
+                    <EmptyRow colSpan={5}>Belum ada event webhook.</EmptyRow>
                   ) : (
                     (data.recentWebhookEvents || []).map((ev, i) => (
                       <tr key={`${ev.order_id}-${ev.event}-${i}`}>

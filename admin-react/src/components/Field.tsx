@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react'
 
 interface FieldProps {
-  label: string
+  /** Label boleh menampung elemen (mis. badge sumber di Pengaturan AI). */
+  label: ReactNode
   htmlFor?: string
   hint?: string
   error?: string

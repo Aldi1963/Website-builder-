@@ -5,10 +5,11 @@ import { useToast } from '../lib/toast'
 import { PageHeader } from '../components/PageHeader'
 import { Card } from '../components/Card'
 import { StatCard } from '../components/StatCard'
-import { Table, Th, Td } from '../components/Table'
+import { Table, Th, Td, EmptyRow } from '../components/Table'
 import { Spinner } from '../components/Spinner'
 import { BDoughnut, BLineChart, CHART_COLORS } from '../components/BCharts'
-import { avatarInitial, errMessage, fmtNum, timeAgo } from '../components/BFormat'
+import { errMessage, fmtNum, timeAgo } from '../components/BFormat'
+import { Avatar } from '../components/Avatar'
 
 interface Overview {
   users: { total: number; new7d: number; disabled: number }
@@ -128,12 +129,7 @@ export default function DashboardPage() {
           <div className="grid gap-4 lg:grid-cols-3">
             <Card
               title="Pesan per Hari (14 hari)"
-              className="lg:col-span-2"
-              actions={
-                /* Badge #chart-range-label: di admin.js lama tidak pernah diisi
-                   (SPEC §3 Q1) — dipertahankan kosong persis seperti lama. */
-                <span className="inline-flex items-center rounded-full bg-surface-muted px-2 py-0.5 text-xs font-medium text-ink" />
-              }
+              className="min-w-0 lg:col-span-2"
             >
               {usage ? (
                 <BLineChart
@@ -157,7 +153,7 @@ export default function DashboardPage() {
                       </span>
                       <div className="min-w-0">
                         <p className="text-sm break-words">{r.text}</p>
-                        <small className="text-muted">{timeAgo(r.at)}</small>
+                        <span className="text-xs text-muted">{timeAgo(r.at)}</span>
                       </div>
                     </li>
                   ))}
@@ -175,7 +171,7 @@ export default function DashboardPage() {
               />
             </Card>
             <Card title="Pengguna Teraktif">
-              <Table>
+              <Table bare>
                 <thead>
                   <tr>
                     <Th>Pengguna</Th>
@@ -189,13 +185,11 @@ export default function DashboardPage() {
                       <tr key={u.id}>
                         <Td>
                           <div className="flex items-center gap-2">
-                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-soft text-sm font-semibold text-accent">
-                              {avatarInitial(u.name, u.email)}
-                            </span>
+                            <Avatar name={u.name} email={u.email} />
                             <span>
                               {u.name || u.email}
                               <br />
-                              <small className="text-muted">{u.email}</small>
+                              <span className="text-xs text-muted">{u.email}</span>
                             </span>
                           </div>
                         </Td>
@@ -204,9 +198,7 @@ export default function DashboardPage() {
                       </tr>
                     ))
                   ) : (
-                    <tr>
-                      <td colSpan={3} className="border-b border-border px-4 py-3 align-top text-muted">Belum ada data.</td>
-                    </tr>
+                    <EmptyRow colSpan={3}>Belum ada data.</EmptyRow>
                   )}
                 </tbody>
               </Table>

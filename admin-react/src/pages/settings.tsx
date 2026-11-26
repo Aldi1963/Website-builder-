@@ -4,6 +4,7 @@ import { useToast } from '../lib/toast'
 import { PageHeader } from '../components/PageHeader'
 import { Card } from '../components/Card'
 import { Spinner } from '../components/Spinner'
+import { fmtBytes } from '../components/BFormat'
 
 interface SettingsData {
   model: string
@@ -18,13 +19,6 @@ interface SettingsData {
   dbSize: number
   signupOpen: boolean
   admin: { email: string; via: 'env' | 'first-account' } | null
-}
-
-function fmtBytes(n: number | null | undefined): string {
-  if (!n && n !== 0) return '–'
-  if (n < 1024) return `${n} B`
-  if (n < 1048576) return `${(n / 1024).toFixed(1)} KB`
-  return `${(n / 1048576).toFixed(1)} MB`
 }
 
 export default function SettingsPage() {
@@ -67,7 +61,7 @@ export default function SettingsPage() {
       />
 
       <div className="grid gap-4 lg:grid-cols-7">
-        <div className="lg:col-span-4">
+        <div className="min-w-0 lg:col-span-4">
           <Card title="Konfigurasi">
             {data === null ? (
               <Spinner label="Memuat…" />
@@ -76,9 +70,9 @@ export default function SettingsPage() {
                 {rows.map(([k, v]) => (
                   <div
                     key={k}
-                    className="grid grid-cols-1 gap-x-4 gap-y-0.5 border-b border-border py-2 last:border-b-0 sm:grid-cols-[160px_1fr]"
+                    className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-[160px_minmax(0,1fr)]"
                   >
-                    <dt className="text-sm font-medium">{k}</dt>
+                    <dt className="text-sm text-muted">{k}</dt>
                     <dd className="font-mono text-sm break-words">{v}</dd>
                   </div>
                 ))}
@@ -87,7 +81,7 @@ export default function SettingsPage() {
           </Card>
         </div>
 
-        <div className="space-y-4 lg:col-span-3">
+        <div className="min-w-0 space-y-4 lg:col-span-3">
           <Card title="Admin">
             {data === null ? (
               <Spinner label="Memuat…" />

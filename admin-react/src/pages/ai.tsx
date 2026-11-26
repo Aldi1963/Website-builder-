@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { NAVIGATE_EVENT, navigate, useRoute } from '../lib/router'
+import { PageHeader } from '../components/PageHeader'
 import { Spinner } from '../components/Spinner'
 import AiSettingsPage from './ai-settings'
 import BiayaPage from './biaya'
@@ -37,6 +38,10 @@ export default function AiPage() {
 
   return (
     <div className="space-y-4">
+      <PageHeader
+        title="AI"
+        description="Provider, model, pengaturan, biaya, dan penggunaan LLM."
+      />
       <div className="flex gap-1 overflow-x-auto border-b border-border" role="tablist" aria-label="AI">
         {TABS.map((t) => (
           <button

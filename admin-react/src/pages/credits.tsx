@@ -4,7 +4,8 @@ import { useToast } from '../lib/toast'
 import { PageHeader } from '../components/PageHeader'
 import { Card } from '../components/Card'
 import { StatCard } from '../components/StatCard'
-import { Table, Th, Td } from '../components/Table'
+import { Table, Th, Td, EmptyRow } from '../components/Table'
+import { btnOutlineLg, btnOutlineSm, btnPrimary } from '../components/DFormat'
 import { Badge } from '../components/Badge'
 import { SearchInput } from '../components/SearchInput'
 import { Field, inputClass } from '../components/Field'
@@ -187,16 +188,12 @@ export default function CreditsPage() {
           <div className="min-w-0 flex-1">
             <SearchInput value={query} onChange={setQuery} placeholder="Cari email atau nama…" />
           </div>
-          <button
-            type="submit"
-            disabled={searching}
-            className="shrink-0 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
-          >
+          <button type="submit" disabled={searching} className={`shrink-0 ${btnOutlineLg}`}>
             Cari
           </button>
         </form>
         <div className="mt-3">
-          <Table>
+          <Table bare>
             <thead>
               <tr>
                 <Th>Pengguna</Th>
@@ -210,16 +207,14 @@ export default function CreditsPage() {
             </thead>
             <tbody>
               {!searched ? (
-                <tr>
-                  <td colSpan={7} className="border-b border-border px-4 py-3 align-top text-muted">Ketik email/nama lalu tekan Cari.</td>
-                </tr>
+                <EmptyRow colSpan={7}>Ketik email/nama lalu tekan Cari.</EmptyRow>
               ) : rows.length ? (
                 rows.map((u) => (
                   <tr key={u.id}>
                     <Td>
                       {u.name || u.email}
                       <br />
-                      <small className="text-muted">{u.email}</small>
+                      <span className="text-xs text-muted">{u.email}</span>
                     </Td>
                     <Td>{u.plan_name}</Td>
                     <Td>{fmtNum(u.free_balance)}</Td>
@@ -229,20 +224,14 @@ export default function CreditsPage() {
                       <strong>{fmtNum(u.total)}</strong>
                     </Td>
                     <Td className="text-right">
-                      <button
-                        type="button"
-                        onClick={() => void loadDetail(u.id)}
-                        className="rounded-lg border border-accent/40 bg-surface px-3 py-1.5 text-sm font-medium text-accent hover:bg-accent-soft"
-                      >
+                      <button type="button" onClick={() => void loadDetail(u.id)} className={btnOutlineSm}>
                         Lihat
                       </button>
                     </Td>
                   </tr>
                 ))
               ) : (
-                <tr>
-                  <td colSpan={7} className="border-b border-border px-4 py-3 align-top text-muted">Tidak ada pengguna yang cocok.</td>
-                </tr>
+                <EmptyRow colSpan={7}>Tidak ada pengguna yang cocok.</EmptyRow>
               )}
             </tbody>
           </Table>
@@ -253,15 +242,7 @@ export default function CreditsPage() {
 
       {detail && b ? (
         <div ref={detailRef} className="space-y-4">
-          <Card
-            title={`${detail.user.name || detail.user.email} (${detail.user.email})`}
-            actions={
-              <Badge tone="info">
-                {detail.plan.planName} · {fmtNum(detail.plan.monthlyCredits)} credit/bln
-              </Badge>
-            }
-          >
-            <div className="mb-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <StatCard
                 label="Gratis"
                 value={fmtNum(b.free)}
@@ -287,6 +268,15 @@ export default function CreditsPage() {
                 }
               />
             </div>
+
+          <Card
+            title={`${detail.user.name || detail.user.email} (${detail.user.email})`}
+            actions={
+              <Badge tone="info">
+                {detail.plan.planName} · {fmtNum(detail.plan.monthlyCredits)} credit/bln
+              </Badge>
+            }
+          >
 
             <form onSubmit={submitAdjust} className="grid items-end gap-3 md:grid-cols-[1fr_1fr_1.5fr_auto]">
               <Field label="Bucket" htmlFor="credit-adjust-bucket">
@@ -320,11 +310,7 @@ export default function CreditsPage() {
                   onChange={(e) => setReason(e.target.value)}
                 />
               </Field>
-              <button
-                type="submit"
-                disabled={adjustBusy}
-                className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
-              >
+              <button type="submit" disabled={adjustBusy} className={btnPrimary}>
                 Terapkan
               </button>
             </form>
@@ -336,7 +322,7 @@ export default function CreditsPage() {
 
           <div className="grid gap-4 lg:grid-cols-2">
             <Card title="Riwayat Pemakaian (50 terakhir)">
-              <Table>
+              <Table bare>
                 <thead>
                   <tr>
                     <Th>Waktu</Th>
@@ -356,15 +342,13 @@ export default function CreditsPage() {
                       </tr>
                     ))
                   ) : (
-                    <tr>
-                      <td colSpan={4} className="border-b border-border px-4 py-3 align-top text-muted">Belum ada pemakaian.</td>
-                    </tr>
+                    <EmptyRow colSpan={4}>Belum ada pemakaian.</EmptyRow>
                   )}
                 </tbody>
               </Table>
             </Card>
             <Card title="Riwayat Top-up">
-              <Table>
+              <Table bare>
                 <thead>
                   <tr>
                     <Th>Order</Th>
@@ -384,9 +368,7 @@ export default function CreditsPage() {
                       </tr>
                     ))
                   ) : (
-                    <tr>
-                      <td colSpan={4} className="border-b border-border px-4 py-3 align-top text-muted">Belum ada top-up.</td>
-                    </tr>
+                    <EmptyRow colSpan={4}>Belum ada top-up.</EmptyRow>
                   )}
                 </tbody>
               </Table>
@@ -394,7 +376,7 @@ export default function CreditsPage() {
           </div>
 
           <Card title="Riwayat Transaksi (100 terakhir)">
-            <Table>
+            <Table bare>
               <thead>
                 <tr>
                   <Th>Waktu</Th>
@@ -421,9 +403,7 @@ export default function CreditsPage() {
                     </tr>
                   ))
                 ) : (
-                  <tr>
-                    <td colSpan={6} className="border-b border-border px-4 py-3 align-top text-muted">Belum ada transaksi.</td>
-                  </tr>
+                  <EmptyRow colSpan={6}>Belum ada transaksi.</EmptyRow>
                 )}
               </tbody>
             </Table>
@@ -515,11 +495,7 @@ export default function CreditsPage() {
               bucket gratis. Pengguna berbayar = punya plan selain Gratis. Batas panggilan/jam dihitung dari
               pemakaian tercatat.
             </p>
-            <button
-              type="submit"
-              disabled={settingsBusy}
-              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
-            >
+            <button type="submit" disabled={settingsBusy} className={btnPrimary}>
               Simpan Pengaturan
             </button>
           </form>

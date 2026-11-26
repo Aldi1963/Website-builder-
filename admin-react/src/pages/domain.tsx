@@ -3,14 +3,15 @@ import { api, ApiError } from '../lib/api'
 import { useToast } from '../lib/toast'
 import { PageHeader } from '../components/PageHeader'
 import { Card } from '../components/Card'
-import { Table, Th, Td } from '../components/Table'
+import { Table, Th, Td, EmptyRow } from '../components/Table'
+import { btnOutlineDangerSm, btnOutlineSm, btnPrimary } from '../components/DFormat'
 import { Badge } from '../components/Badge'
 import { Spinner } from '../components/Spinner'
 import { Alert } from '../components/Alert'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { Field, inputClass } from '../components/Field'
 import { Select } from '../components/Select'
-import { fmtNum, fmtDateShort } from '../components/CFormat'
+import { fmtNum, fmtDateShort } from '../components/BFormat'
 
 interface DomainRow {
   id: number | string
@@ -43,7 +44,7 @@ interface VerifyResult {
 export default function DomainPage() {
   const toast = useToast()
   const [domains, setDomains] = useState<DomainRow[] | null>(null)
-  const [subtitle, setSubtitle] = useState('')
+  const [subtitle, setSubtitle] = useState('Domain kustom proyek.')
   const [projects, setProjects] = useState<ProjectOption[]>([])
   const [projectId, setProjectId] = useState('')
   const [domainName, setDomainName] = useState('')
@@ -61,7 +62,7 @@ export default function DomainPage() {
       ])
       setDomains(data.domains || [])
       setSubtitle(
-        `${fmtNum(data.domains.length)} domain terdaftar · target CNAME ${data.expectedCname} · SSL: ${data.ssl}`,
+        `Domain kustom proyek — ${fmtNum(data.domains.length)} domain terdaftar · target CNAME ${data.expectedCname} · SSL: ${data.ssl}`,
       )
       setProjects(projectsData.projects || [])
       setProjectId((prev) => prev || projectsData.projects?.[0]?.id || '')
@@ -106,7 +107,7 @@ export default function DomainPage() {
         <Alert tone={r.matched ? 'success' : 'warning'}>
           <strong>{r.domain}</strong> — {r.matched ? 'CNAME cocok dengan target platform.' : 'Belum cocok.'}
           <br />
-          <small>
+          <span className="text-xs">
             CNAME yang ditemukan: {r.cnames.length ? r.cnames.join(', ') : r.cnameError || 'tidak ada'}
             <br />
             A yang ditemukan: {r.addresses.length ? r.addresses.join(', ') : r.aError || 'tidak ada'}
@@ -116,7 +117,7 @@ export default function DomainPage() {
             {r.note}
             <br />
             SSL: {r.ssl}
-          </small>
+          </span>
         </Alert>,
       )
       await load()
@@ -188,7 +189,7 @@ export default function DomainPage() {
             type="button"
             onClick={() => void addDomain()}
             disabled={adding}
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+            className={btnPrimary}
           >
             {adding ? 'Menambah…' : 'Tambah'}
           </button>
@@ -200,8 +201,7 @@ export default function DomainPage() {
       {domains === null ? (
         <Spinner />
       ) : (
-        <Card>
-          <Table>
+        <Table>
             <thead>
               <tr>
                 <Th>Domain</Th>
@@ -214,11 +214,7 @@ export default function DomainPage() {
             </thead>
             <tbody>
               {domains.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="border-b border-border px-4 py-3 text-muted">
-                    Belum ada domain.
-                  </td>
-                </tr>
+                <EmptyRow colSpan={6}>Belum ada domain.</EmptyRow>
               ) : (
                 domains.map((d) => (
                   <tr key={d.id}>
@@ -228,7 +224,7 @@ export default function DomainPage() {
                     <Td>
                       {d.project_name || d.project_id}
                       <br />
-                      <small className="font-mono text-muted">{d.project_id}</small>
+                      <span className="font-mono text-xs text-muted">{d.project_id}</span>
                     </Td>
                     <Td>
                       {d.status === 'verified' ? (
@@ -245,14 +241,14 @@ export default function DomainPage() {
                           type="button"
                           onClick={() => void verifyDomain(d)}
                           disabled={checkingId === d.id}
-                          className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium hover:bg-surface-muted disabled:opacity-50"
+                          className={btnOutlineSm}
                         >
                           {checkingId === d.id ? 'Memeriksa…' : 'Periksa DNS'}
                         </button>
                         <button
                           type="button"
                           onClick={() => setDeleteTarget(d)}
-                          className="rounded-lg border border-danger/40 bg-surface px-3 py-1.5 text-sm font-medium text-danger hover:bg-danger-soft"
+                          className={btnOutlineDangerSm}
                         >
                           Hapus
                         </button>
@@ -263,7 +259,6 @@ export default function DomainPage() {
               )}
             </tbody>
           </Table>
-        </Card>
       )}
 
       <ConfirmDialog
