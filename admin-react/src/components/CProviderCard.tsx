@@ -7,10 +7,9 @@ import { Toggle } from './Toggle'
 import { Alert } from './Alert'
 import { Spinner } from './Spinner'
 import { Table, Th, Td, EmptyRow } from './Table'
-import { btnOutline, btnOutlineSm, btnPrimary } from './DFormat'
+import { btnOutline, btnOutlineSm } from './DFormat'
+import { inputClass } from './Field'
 import { SearchInput } from './SearchInput'
-import { ConfirmDialog } from './ConfirmDialog'
-import { Field, inputClass } from './Field'
 import { fmtNum } from './BFormat'
 
 export interface ProviderModel {
@@ -112,13 +111,10 @@ export function CProviderCard({ provider: p, onReload }: { provider: Provider; o
   const [providerActive, setProviderActive] = useState(p.active)
   const [modelActive, setModelActive] = useState<Record<string, boolean>>({})
   const [rates, setRates] = useState<Record<string, { in: string; out: string }>>({})
-  const [keyInput, setKeyInput] = useState('')
   const [search, setSearch] = useState('')
   const [result, setResult] = useState<ReactNode>(null)
   const [busy, setBusy] = useState<'test' | 'sync' | null>(null)
   const [savingRate, setSavingRate] = useState<string | null>(null)
-  const [savingKey, setSavingKey] = useState(false)
-  const [confirmDeleteKey, setConfirmDeleteKey] = useState(false)
 
   // Sinkronkan state lokal dari data server setiap kali provider dimuat ulang.
   useEffect(() => {
@@ -134,7 +130,6 @@ export function CProviderCard({ provider: p, onReload }: { provider: Provider; o
     }
     setModelActive(act)
     setRates(r)
-    setKeyInput('')
     setSearch('')
     setResult(null)
   }, [p])
@@ -187,39 +182,6 @@ export function CProviderCard({ provider: p, onReload }: { provider: Provider; o
       toast.error(e instanceof ApiError ? e.message : 'Gagal menyimpan tarif.')
     } finally {
       setSavingRate(null)
-    }
-  }
-
-  const saveKey = async () => {
-    const key = keyInput.trim()
-    if (key === '') {
-      if (!p.keyConfigured) {
-        toast.success('Tidak ada key tersimpan untuk provider ini.')
-        return
-      }
-      setConfirmDeleteKey(true)
-      return
-    }
-    if (key.length < 8) {
-      toast.error('API key terlalu pendek (min 8 karakter).')
-      return
-    }
-    await putKey(key)
-  }
-
-  const putKey = async (key: string) => {
-    setSavingKey(true)
-    try {
-      const r = await api.put<{ ok: boolean; keyConfigured: boolean }>(
-        `/api/admin/llm/providers/${encodeURIComponent(p.id)}/key`,
-        { key },
-      )
-      toast.success(r.keyConfigured ? `Key ${p.id} disimpan — terpasang.` : `Key ${p.id} dihapus — belum terpasang.`)
-      onReload()
-    } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : 'Gagal menyimpan key.')
-    } finally {
-      setSavingKey(false)
     }
   }
 
@@ -349,37 +311,14 @@ export function CProviderCard({ provider: p, onReload }: { provider: Provider; o
         ) : null}
 
         <div className="flex flex-wrap items-end gap-3">
-          <div className="min-w-[240px] flex-1">
-            <Field
-              label="API key"
-              htmlFor={`prov-key-${p.id}`}
-              hint="Nilai key tidak pernah ditampilkan. Kosongkan lalu simpan (dengan konfirmasi) untuk menghapus key panel."
-            >
-              <div className="flex items-center gap-2">
-                <input
-                  id={`prov-key-${p.id}`}
-                  type="password"
-                  className={`${inputClass} font-mono`}
-                  autoComplete="new-password"
-                  placeholder={
-                    p.keyConfigured ? '•••••••• (terpasang — isi untuk mengganti)' : 'Belum ada key — tempel API key'
-                  }
-                  value={keyInput}
-                  onChange={(e) => setKeyInput(e.target.value)}
-                />
-                {p.keyConfigured ? <Badge tone="accent">terpasang</Badge> : <Badge>belum terpasang</Badge>}
-              </div>
-            </Field>
-          </div>
+          <p className="min-w-[260px] flex-1 text-sm text-muted">
+            API key provider dikelola di halaman{' '}
+            <a href="/admin/settings#api-keys" className="text-accent underline">
+              Pengaturan → API Key &amp; Secret
+            </a>
+            . Di sini hanya status terpasang — tombol tes &amp; sinkron tetap tersedia.
+          </p>
           <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => void saveKey()}
-              disabled={savingKey}
-              className={btnPrimary}
-            >
-              {savingKey ? 'Menyimpan…' : 'Simpan key'}
-            </button>
             <button type="button" onClick={() => void testProvider()} disabled={busy !== null} className={btnOutline}>
               Tes koneksi
             </button>
@@ -497,18 +436,6 @@ export function CProviderCard({ provider: p, onReload }: { provider: Provider; o
         </p>
       </div>
 
-      <ConfirmDialog
-        open={confirmDeleteKey}
-        title="Hapus key"
-        message={`Hapus API key ${p.id} yang tersimpan di panel? Model provider ini kembali memakai key environment (bila ada) atau tidak bisa dipakai.`}
-        confirmLabel="Ya, hapus key"
-        loading={savingKey}
-        onConfirm={() => {
-          setConfirmDeleteKey(false)
-          void putKey('')
-        }}
-        onCancel={() => setConfirmDeleteKey(false)}
-      />
     </Card>
   )
 }

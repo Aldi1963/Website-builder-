@@ -73,9 +73,11 @@ export default function ProvidersPage({ embedded = false }: ProvidersPageProps) 
         />
       ) : null}
       <Alert tone="info">
-        Nilai API key <strong>tidak pernah ditampilkan</strong> di halaman ini — hanya status terpasang/belum. Isi
-        field key untuk mengganti key; simpan dalam keadaan kosong (dengan konfirmasi) untuk menghapus key yang
-        tersimpan di panel. Key dari environment server tetap berlaku bila tidak ada key panel.
+        Halaman ini mengelola provider, model, dan tarif. API key tidak ditampilkan di sini — kelola di{' '}
+        <a href="/admin/settings#api-keys" className="text-accent underline">
+          Pengaturan → API Key &amp; Secret
+        </a>
+        . Key dari environment server tetap berlaku bila tidak ada key panel.
         {pricesResult ? <span className="mt-2 block">{pricesResult}</span> : null}
       </Alert>
 

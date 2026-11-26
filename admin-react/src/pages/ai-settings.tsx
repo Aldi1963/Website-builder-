@@ -47,7 +47,7 @@ export default function AiSettingsPage({ embedded = false }: AiSettingsPageProps
   const [modelStrong, setModelStrong] = useState('')
   const [modelAudit, setModelAudit] = useState('')
   const [endpoint, setEndpoint] = useState('')
-  const [key, setKey] = useState('')
+  /* API key dikelola terpusat di halaman Pengaturan (ApiKeysSection). */
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<TestResult | { ok: false; error: string } | null>(null)
 
@@ -59,7 +59,6 @@ export default function AiSettingsPage({ embedded = false }: AiSettingsPageProps
       setModelStrong(s.modelStrong || '')
       setModelAudit(s.modelAudit || '')
       setEndpoint(s.endpoint || '')
-      setKey('')
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : 'Gagal memuat pengaturan AI.')
       setSettings(null)
@@ -80,11 +79,8 @@ export default function AiSettingsPage({ embedded = false }: AiSettingsPageProps
         modelAudit: modelAudit.trim(),
         endpoint: endpoint.trim(),
       }
-      const k = key.trim()
-      if (k) payload.key = k
       await api.put('/api/admin/ai-settings', payload)
       toast.success('Pengaturan AI disimpan — berlaku langsung tanpa restart.')
-      setKey('')
       await load()
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Gagal menyimpan pengaturan AI.')
@@ -193,27 +189,10 @@ export default function AiSettingsPage({ embedded = false }: AiSettingsPageProps
                     onChange={(e) => setEndpoint(e.target.value)}
                   />
                 </Field>
-                <Field
-                  label={
-                    <>
-                      API key <SrcBadge src={settings.sources.key} />
-                    </>
-                  }
-                  htmlFor="ai-key"
-                  hint="Isi untuk mengganti key, atau kosongkan untuk memakai yang sudah tersimpan / environment. Nilai key tidak pernah ditampilkan."
-                >
-                  <input
-                    type="password"
-                    className={inputClass}
-                    id="ai-key"
-                    autoComplete="new-password"
-                    placeholder={
-                      settings.keyConfigured ? '•••••••• (terpasang — isi untuk mengganti)' : 'Belum ada key'
-                    }
-                    value={key}
-                    onChange={(e) => setKey(e.target.value)}
-                  />
-                </Field>
+                <p className="text-sm text-muted">
+                  API key LLM, pembayaran, dan provider dikelola di halaman{' '}
+                  <a href="/admin/settings#api-keys" className="text-accent underline">Pengaturan → API Key &amp; Secret</a>.
+                </p>
                 <div className="flex gap-2">
                   <button type="submit" className={btnPrimary} disabled={busy}>
                     Simpan Pengaturan AI
@@ -237,8 +216,6 @@ export default function AiSettingsPage({ embedded = false }: AiSettingsPageProps
                 <dd className="font-mono break-all">{settings.modelAudit}</dd>
                 <dt className="text-muted">Endpoint</dt>
                 <dd className="font-mono break-all">{settings.endpoint}</dd>
-                <dt className="text-muted">API key</dt>
-                <dd className="font-mono">{settings.keyConfigured ? 'Terpasang' : 'Tidak ada'}</dd>
               </dl>
             </Card>
             <Card title="Hasil Tes Koneksi">
@@ -275,7 +252,8 @@ export default function AiSettingsPage({ embedded = false }: AiSettingsPageProps
                 <Badge tone="accent">panel</Badge> diubah dari panel admin ini (tersimpan di database).{' '}
                 <Badge tone="warning">env</Badge> berasal dari environment server.{' '}
                 <Badge tone="default">default</Badge> nilai bawaan kode. Nilai panel selalu menang atas
-                env.
+                env. API key tidak ditampilkan di sini — kelola di{' '}
+                <a href="/admin/settings#api-keys" className="text-accent underline">Pengaturan</a>.
               </p>
             </Card>
           </div>

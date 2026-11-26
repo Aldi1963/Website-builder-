@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { api, ApiError } from '../lib/api'
 import { useToast } from '../lib/toast'
 import { PageHeader } from '../components/PageHeader'
 import { Card } from '../components/Card'
+import { Alert } from '../components/Alert'
 import { Table, Th, Td, EmptyRow } from '../components/Table'
 import { btnOutlineLg, btnPrimary } from '../components/DFormat'
 import { Badge } from '../components/Badge'
 import { Spinner } from '../components/Spinner'
-import { Alert } from '../components/Alert'
 import { Field, inputClass } from '../components/Field'
 import { fmtNum, fmtDate, fmtRp } from '../components/BFormat'
 
@@ -35,9 +35,6 @@ interface BillingData {
   recentWebhookEvents: WebhookEvent[]
 }
 
-const ENV_WARNING =
-  'Key aktif saat ini berasal dari environment server (env menang atas panel). Mengisi key di halaman ini belum berpengaruh sampai entri VB_CLIPKUPAY_API_KEY di env VPS dihapus/diubah.'
-
 interface BillingPageProps {
   /** Disematkan di halaman gabungan: PageHeader induk disembunyikan. */
   embedded?: boolean
@@ -46,9 +43,6 @@ interface BillingPageProps {
 export default function BillingPage({ embedded = false }: BillingPageProps) {
   const toast = useToast()
   const [data, setData] = useState<BillingData | null>(null)
-  const [apiKey, setApiKey] = useState('')
-  const [webhookSecret, setWebhookSecret] = useState('')
-  const [saving, setSaving] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -62,29 +56,6 @@ export default function BillingPage({ embedded = false }: BillingPageProps) {
   useEffect(() => {
     void load()
   }, [load])
-
-  const save = async (e: FormEvent) => {
-    e.preventDefault()
-    setSaving(true)
-    try {
-      const r = await api.put<{ ok: boolean; configured: boolean; hasWebhookSecret: boolean }>('/api/admin/billing', {
-        apiKey: apiKey.trim(),
-        webhookSecret: webhookSecret.trim(),
-      })
-      toast.success(
-        r.configured
-          ? 'Kredensial pembayaran disimpan — API key terpasang.'
-          : 'Kredensial pembayaran disimpan — API key belum terpasang.',
-      )
-      setApiKey('')
-      setWebhookSecret('')
-      await load()
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Gagal menyimpan kredensial.')
-    } finally {
-      setSaving(false)
-    }
-  }
 
   const copyWebhook = async () => {
     const url = data?.webhookUrl || ''
@@ -118,65 +89,14 @@ export default function BillingPage({ embedded = false }: BillingPageProps) {
       ) : (
         <div className="grid gap-4 lg:grid-cols-7">
           <div className="min-w-0 space-y-4 lg:col-span-4">
-            <Card title="Kredensial Clipku Pay">
-              <form onSubmit={(e) => void save(e)} autoComplete="off" className="space-y-4">
-                <Field
-                  label="Merchant API key"
-                  htmlFor="billing-api-key"
-                  hint="Tempel merchant API key dari panel merchant Clipku Pay (regenerate bila perlu). Isi untuk mengganti key; kosongkan lalu simpan untuk menghapus nilai yang tersimpan di panel ini."
-                >
-                  <div className="flex items-center gap-2">
-                    <input
-                      id="billing-api-key"
-                      type="password"
-                      className={`${inputClass} font-mono`}
-                      autoComplete="new-password"
-                      placeholder={
-                        data.configured
-                          ? '•••••••• (terpasang — isi untuk mengganti)'
-                          : 'Belum ada key — tempel merchant API key Clipku Pay'
-                      }
-                      value={apiKey}
-                      onChange={(e) => setApiKey(e.target.value)}
-                    />
-                    {data.configured ? (
-                      data.apiKeyFromEnv ? (
-                        <Badge tone="warning">env</Badge>
-                      ) : (
-                        <Badge tone="accent">panel</Badge>
-                      )
-                    ) : (
-                      <Badge>belum</Badge>
-                    )}
-                  </div>
-                </Field>
-                <Field
-                  label="Webhook secret"
-                  htmlFor="billing-webhook-secret"
-                  hint="Opsional. Isi hanya bila gateway terbukti mengirim header x-clipkupay-signature — bila terisi, webhook yang signaturenya salah ditolak (401). Kosongkan lalu simpan untuk menghapus."
-                >
-                  <div className="flex items-center gap-2">
-                    <input
-                      id="billing-webhook-secret"
-                      type="password"
-                      className={`${inputClass} font-mono`}
-                      autoComplete="new-password"
-                      placeholder={
-                        data.hasWebhookSecret
-                          ? '•••••••• (terpasang — isi untuk mengganti)'
-                          : 'Belum ada secret (opsional)'
-                      }
-                      value={webhookSecret}
-                      onChange={(e) => setWebhookSecret(e.target.value)}
-                    />
-                    {data.hasWebhookSecret ? <Badge tone="accent">panel</Badge> : <Badge>belum</Badge>}
-                  </div>
-                </Field>
-                {data.apiKeyFromEnv ? <Alert tone="warning">{ENV_WARNING}</Alert> : null}
-                <button type="submit" disabled={saving} className={btnPrimary}>
-                  {saving ? 'Menyimpan…' : 'Simpan'}
-                </button>
-              </form>
+            <Card title="Kredensial">
+              <Alert tone="info">
+                Merchant API key dan webhook secret dikelola di halaman{' '}
+                <a href="/admin/settings#api-keys" className="text-accent underline">
+                  Pengaturan → API Key &amp; Secret
+                </a>
+                . Halaman ini hanya menampilkan status &amp; URL webhook untuk paket credit.
+              </Alert>
             </Card>
 
             <Card title="Webhook">
@@ -274,16 +194,6 @@ export default function BillingPage({ embedded = false }: BillingPageProps) {
               </Table>
             </Card>
 
-            <Card title="Cara Mengganti Key">
-              <ol className="list-decimal space-y-1 pl-5 text-sm">
-                <li>Buka panel merchant Clipku Pay, regenerate merchant API key bila perlu.</li>
-                <li>Tempel key baru di kolom atas lalu tekan Simpan.</li>
-                <li>
-                  Bila status key masih “dari environment”, key aktif masih berasal dari env server — ubah/hapus
-                  entri <code>VB_CLIPKUPAY_API_KEY</code> di env VPS, baru isi di halaman ini.
-                </li>
-              </ol>
-            </Card>
           </div>
         </div>
       )}

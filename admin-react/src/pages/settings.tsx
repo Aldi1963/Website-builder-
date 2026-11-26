@@ -5,14 +5,11 @@ import { PageHeader } from '../components/PageHeader'
 import { Card } from '../components/Card'
 import { Spinner } from '../components/Spinner'
 import { fmtBytes } from '../components/BFormat'
+import { SectionNav, PageSection, type SectionNavItem } from '../components/SectionNav'
+import { ApiKeysSection } from '../components/ApiKeysSection'
+import { Gear, Key, ShieldCheck } from '@phosphor-icons/react'
 
 interface SettingsData {
-  model: string
-  modelStrong: string
-  modelAudit: string
-  endpoint: string
-  keyConfigured: boolean
-  llmHost: string
   publicSuffix: string
   publicOrigin: string
   dbPath: string
@@ -25,6 +22,12 @@ interface SettingsPageProps {
   /** Disematkan di halaman gabungan: PageHeader induk disembunyikan. */
   embedded?: boolean
 }
+
+const sections: SectionNavItem[] = [
+  { id: 'api-keys', label: 'API Key & Secret', description: 'Semua kredensial dalam satu tempat', icon: Key },
+  { id: 'konfigurasi', label: 'Konfigurasi', description: 'Domain, database, pendaftaran', icon: Gear },
+  { id: 'admin-akses', label: 'Akses Admin', description: 'Akun admin & catatan', icon: ShieldCheck },
+]
 
 export default function SettingsPage({ embedded = false }: SettingsPageProps) {
   const toast = useToast()
@@ -42,7 +45,7 @@ export default function SettingsPage({ embedded = false }: SettingsPageProps) {
   }, [toast])
 
   useEffect(() => {
-    load()
+    void load()
   }, [load])
 
   const rows: Array<[string, string]> = data
@@ -59,35 +62,59 @@ export default function SettingsPage({ embedded = false }: SettingsPageProps) {
     : []
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {!embedded ? (
         <PageHeader
           title="Pengaturan"
-          description="Konfigurasi server saat ini (tampilan saja)."
+          description="Semua API key, secret, dan konfigurasi server dalam satu halaman."
         />
       ) : null}
-      <div className="grid gap-4 lg:grid-cols-7">
-        <div className="min-w-0 lg:col-span-4">
-          <Card title="Konfigurasi">
-            {data === null ? (
-              <Spinner label="Memuat…" />
-            ) : (
-              <dl className="mb-0">
-                {rows.map(([k, v]) => (
-                  <div
-                    key={k}
-                    className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-[160px_minmax(0,1fr)]"
-                  >
-                    <dt className="text-sm text-muted">{k}</dt>
-                    <dd className="font-mono text-sm break-words">{v}</dd>
-                  </div>
-                ))}
-              </dl>
-            )}
-          </Card>
-        </div>
+      <SectionNav items={sections} />
 
-        <div className="min-w-0 space-y-4 lg:col-span-3">
+      <PageSection
+        id="api-keys"
+        index={1}
+        title="API Key & Secret"
+        description="Satu tempat untuk semua kredensial: LLM, pembayaran, dan provider."
+        icon={Key}
+      >
+        <ApiKeysSection />
+      </PageSection>
+
+      <PageSection
+        id="konfigurasi"
+        index={2}
+        title="Konfigurasi"
+        description="Informasi server saat ini (tampilan saja)."
+        icon={Gear}
+      >
+        <Card>
+          {data === null ? (
+            <Spinner label="Memuat…" />
+          ) : (
+            <dl className="mb-0">
+              {rows.map(([k, v]) => (
+                <div
+                  key={k}
+                  className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-[160px_minmax(0,1fr)]"
+                >
+                  <dt className="text-sm text-muted">{k}</dt>
+                  <dd className="font-mono text-sm break-words">{v}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+        </Card>
+      </PageSection>
+
+      <PageSection
+        id="admin-akses"
+        index={3}
+        title="Akses Admin"
+        description="Akun admin dan catatan konfigurasi."
+        icon={ShieldCheck}
+      >
+        <div className="grid gap-4 lg:grid-cols-2">
           <Card title="Admin">
             {data === null ? (
               <Spinner label="Memuat…" />
@@ -115,18 +142,17 @@ export default function SettingsPage({ embedded = false }: SettingsPageProps) {
               </p>
             )}
           </Card>
-
           <Card title="Catatan">
             <p className="mb-0 text-sm text-muted">
-              Model dan provider LLM bisa diubah dari halaman{' '}
-              <strong>AI</strong> (tab Pengaturan, tersimpan di database, berlaku
-              tanpa restart). Akun admin adalah akun pertama yang dibuat,
-              kecuali <code className="font-mono text-xs">VB_ADMIN_EMAIL</code>{' '}
-              diset.
+              Model, endpoint, biaya, dan penggunaan LLM ada di halaman{' '}
+              <strong>AI</strong>. Semua kredensial — termasuk kunci LLM,
+              pembayaran, dan provider — dikelola di bagian{' '}
+              <strong>API Key &amp; Secret</strong> di halaman ini. Nilai key tidak
+              pernah ditampilkan, hanya status terpasang/sumbernya.
             </p>
           </Card>
         </div>
-      </div>
+      </PageSection>
     </div>
   )
 }
