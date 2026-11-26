@@ -314,7 +314,28 @@ export function projectBySlug(slug: string): Project | undefined {
 }
 
 export function deleteProject(id: string) {
-  db.prepare(`DELETE FROM projects WHERE id = ?`).run(id)
+  /* Hapus menyeluruh: semua record yang ber-relasi dengan proyek, lalu
+     record proyeknya sendiri. Dipakai endpoint DELETE /api/projects/:id
+     dan pembersihan massal. Tabel tanpa FK ke projects ikut dibersihkan
+     agar tidak ada data yatim. */
+  const related = [
+    `DELETE FROM messages WHERE project_id = ?`,
+    `DELETE FROM files WHERE project_id = ?`,
+    `DELETE FROM builds WHERE project_id = ?`,
+    `DELETE FROM project_settings WHERE project_id = ?`,
+    `DELETE FROM marketplace_listings WHERE project_id = ?`,
+  ]
+  db.exec('BEGIN')
+  try {
+    for (const sql of related) {
+      try { db.prepare(sql).run(id) } catch { /* tabel mungkin belum ada — abaikan */ }
+    }
+    db.prepare(`DELETE FROM projects WHERE id = ?`).run(id)
+    db.exec('COMMIT')
+  } catch (e) {
+    db.exec('ROLLBACK')
+    throw e
+  }
 }
 
 export type Message = { id: number; role: string; content: string; created_at: number }

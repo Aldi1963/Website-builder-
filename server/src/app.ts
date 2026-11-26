@@ -3,7 +3,7 @@ import { serveStatic } from '@hono/node-server/serve-static'
 import { streamSSE } from 'hono/streaming'
 import { cors } from 'hono/cors'
 import { randomBytes } from 'node:crypto'
-import { appendFileSync } from 'node:fs'
+import { appendFileSync, rmSync } from 'node:fs'
 import {
   createProject,
   getProject,
@@ -45,6 +45,7 @@ import {
   previewPort,
   readProjectFile,
   writeProjectFile,
+  projectDir,
 } from './workspace.ts'
 import { captureScreenshot, listScreenshots, readScreenshot } from './screenshots.ts'
 import { dropProjectDb, projectDbPool, isManagedDbEnabled } from './managed-db.ts'
@@ -449,6 +450,8 @@ app.delete('/api/projects/:id', async (c) => {
   if ('error' in r) return c.json({ error: r.error }, r.status)
   stopPreview(r.project.id)
   try { await dropProjectDb(r.project.id) } catch { /* DB terkelola opsional */ }
+  // Hapus folder file fisik proyek (source, node_modules, dist, dsb.) dari VPS.
+  try { rmSync(projectDir(r.project.id), { recursive: true, force: true }) } catch { /* folder mungkin tak ada */ }
   deleteProject(r.project.id)
   return c.json({ ok: true })
 })
