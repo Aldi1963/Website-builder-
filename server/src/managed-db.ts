@@ -69,16 +69,20 @@ export async function provisionProjectDb(projectId: string): Promise<{ role: str
 
     // Provision baru.
     const password = randomBytes(24).toString('hex')
-    // Bersihkan sisa role lama (kalau ada) agar createrole_self_grant berlaku.
+    // Role lama (sisa percobaan yang gagal) TIDAK di-drop: kalau database-nya
+    // sudah berisi objek milik role itu, `drop role` gagal dan seluruh
+    // provisioning ikut gagal. Cukup rotasi password + pastikan database ada.
     const roleExists = await admin.query(`select 1 from pg_roles where rolname = $1`, [role])
     if (roleExists.rowCount) {
-      await admin.query(`select pg_terminate_backend(pid) from pg_stat_activity where usename = $1`, [role])
-      await admin.query(`drop role "${role}"`)
+      await admin.query(`alter role "${role}" with login password '${password}'`)
+    } else {
+      await admin.query(`create role "${role}" with login password '${password}'`)
     }
-    await admin.query(`create role "${role}" with login password '${password}'`)
     const dbExists = await admin.query(`select 1 from pg_database where datname = $1`, [database])
     if (!dbExists.rowCount) {
       await createProjectDatabase(admin, role, database)
+    } else {
+      await grantProjectSchema(admin, role, database)
     }
     // Simpan password di platform DB.
     await admin.query(
@@ -91,14 +95,15 @@ export async function provisionProjectDb(projectId: string): Promise<{ role: str
   }
 }
 
-/** Buat database proyek + beri role proyek hak DDL penuh di schema public. */
-async function createProjectDatabase(admin: Pool, role: string, database: string): Promise<void> {
-  await admin.query(`create database "${database}"`)
+/** Beri role proyek hak DDL penuh di schema public database proyek. */
+async function grantProjectSchema(admin: Pool, role: string, database: string): Promise<void> {
   const projUrl = withDb(adminUrlWithPassword(), database)
   const projAdmin = new Pool({ connectionString: projUrl, max: 1 })
   try {
+    // Admin perlu membership pada role proyek untuk ALTER SCHEMA ... OWNER TO.
+    await projAdmin.query(`grant "${role}" to current_user`).catch(() => {})
     await projAdmin.query(`grant all on schema public to "${role}"`)
-    await projAdmin.query(`alter schema public owner to "${role}"`)
+    await projAdmin.query(`alter schema public owner to "${role}"`).catch(() => {})
     await projAdmin.query(`alter default privileges in schema public grant all on tables to "${role}"`)
     await projAdmin.query(`alter default privileges in schema public grant all on sequences to "${role}"`)
   } finally {
@@ -106,12 +111,18 @@ async function createProjectDatabase(admin: Pool, role: string, database: string
   }
 }
 
+/** Buat database proyek + beri role proyek hak DDL penuh di schema public. */
+async function createProjectDatabase(admin: Pool, role: string, database: string): Promise<void> {
+  await admin.query(`create database "${database}"`)
+  await grantProjectSchema(admin, role, database)
+}
+
 /** Koneksi pool untuk proyek (server-side). Cache untuk reuse. */
 export async function projectDbPool(projectId: string): Promise<{ pool: Pool; database: string }> {
   const cached = poolCache.get(projectId)
   if (cached) return { pool: cached.pool, database: dbName(projectId) }
   const { role, database, password } = await provisionProjectDb(projectId)
-  const url = `postgres://${encodeURIComponent(role)}:${encodeURIComponent(password)}@${dbHostPort()}/${encodeURIComponent(database)}`
+  const url = projectConnectionUrl(role, database, password)
   const pool = new Pool({ connectionString: url, max: 5, idleTimeoutMillis: 30_000 })
   poolCache.set(projectId, { pool, password })
   return { pool, database }
@@ -126,20 +137,18 @@ export async function projectDbUrl(projectId: string): Promise<string | null> {
   if (!isManagedDbEnabled()) return null
   try {
     const { role, database, password } = await provisionProjectDb(projectId)
-    return `postgres://${encodeURIComponent(role)}:${encodeURIComponent(password)}@${dbHostPort()}/${encodeURIComponent(database)}`
+    return projectConnectionUrl(role, database, password)
   } catch {
     return null
   }
 }
 
-function dbHostPort(): string {
-  // Ambil host:port dari VB_PG_URL; fallback lokal.
-  try {
-    const u = new URL(ADMIN_URL)
-    return `${u.hostname}:${u.port || 5432}`
-  } catch {
-    return '127.0.0.1:5432'
-  }
+function projectConnectionUrl(role: string, database: string, password: string): string {
+  const url = new URL(ADMIN_URL)
+  url.username = role
+  url.password = password
+  url.pathname = `/${database}`
+  return url.toString()
 }
 
 /** ADMIN_URL lengkap (dengan password admin). */

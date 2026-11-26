@@ -48,7 +48,7 @@ import {
   projectDir,
 } from './workspace.ts'
 import { captureScreenshot, listScreenshots, readScreenshot } from './screenshots.ts'
-import { dropProjectDb, projectDbPool, isManagedDbEnabled } from './managed-db.ts'
+import { dropProjectDb, projectDbPool, isManagedDbEnabled, provisionProjectDb } from './managed-db.ts'
 import {
   SESSION_COOKIE,
   sessionCookie,
@@ -73,6 +73,7 @@ import { runAgent, type AgentEvent } from './agent.ts'
 import { complete, effectiveModel, llmUsage } from './llm.ts'
 import { DISCOVERY_SYSTEM } from './prompts.ts'
 import { registerAdmin } from './admin.ts'
+import { proxyPreview, previewPrefix } from './preview-proxy.ts'
 
 type Env = { Variables: { user: User } }
 
@@ -427,6 +428,14 @@ app.post('/api/projects', async (c) => {
   const name = (body.name ?? body.prompt ?? defaultName).slice(0, 60)
   const project = createProject(id, name, body.prompt ?? '', c.get('user').id, starter)
   ensureWorkspace(id, starter)
+  if (starter === 'lms') {
+    try {
+      await provisionProjectDb(id)
+    } catch {
+      setStatus(id, 'error')
+      return c.json({ project: getProject(id), error: 'Database LMS belum siap. Periksa konfigurasi database terkelola lalu coba lagi.' }, 503)
+    }
+  }
   return c.json({ project }, 201)
 })
 
@@ -511,7 +520,8 @@ app.post('/api/projects/:id/build', async (c) => {
   if ('error' in r) return c.json({ error: r.error }, r.status)
   const id = r.project.id
   setStatus(id, 'building')
-  const build = await buildProject(id)
+  const installed = await installDeps(id)
+  const build = installed.code === 0 ? await buildProject(id) : installed
   recordBuild(id, build.code === 0, build.output)
   setStatus(id, build.code === 0 ? 'idle' : 'error')
   return c.json({ ok: build.code === 0, log: build.output.slice(-8000) })
@@ -529,7 +539,7 @@ app.post('/api/projects/:id/preview', async (c) => {
   if ('error' in r) return c.json({ error: r.error }, r.status)
   try {
     const port = await startPreview(r.project.id)
-    return c.json({ ok: true, port, url: `http://127.0.0.1:${port}/` })
+    return c.json({ ok: true, port, url: `${previewPrefix(r.project.id)}/`, directPort: `http://127.0.0.1:${port}/` })
   } catch (err) {
     return c.json({ ok: false, error: (err as Error).message }, 500)
   }
@@ -631,6 +641,21 @@ app.get('/p/:slug', async (c) => {
     return c.text('Aplikasi terdaftar tapi preview-nya tidak bisa dinyalakan. Buka workspace proyeknya.', 503)
   }
   return c.redirect(`http://127.0.0.1:${port}/`, 302)
+})
+
+/* Live preview over the platform origin. Ownership is checked on every request,
+   including assets and RPC posts, so a preview URL cannot leak to guests or to a
+   different account. */
+app.all('/api/projects/:id/live/*', async (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  let port: number
+  try {
+    port = await startPreview(r.project.id)
+  } catch (err) {
+    return c.json({ ok: false, error: (err as Error).message }, 503)
+  }
+  return proxyPreview(c, r.project.id, port)
 })
 
 app.delete('/api/projects/:id/preview', (c) => {

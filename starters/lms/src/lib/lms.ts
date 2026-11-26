@@ -1,10 +1,20 @@
 import { query } from './db'
+import { ensureAuthSchema, type SafeUser } from './auth'
+
+/** Publication permits catalog discovery, never access to protected content. */
+export async function coursePermissions(course: { id: number; created_by: number | null }, user: SafeUser | null) {
+  const canManage = Boolean(user && (user.role === 'admin' || (user.role === 'guru' && course.created_by === user.id)))
+  const enrolled = Boolean(user && (await query('select 1 from enrollments where course_id=$1 and user_id=$2', [course.id, user.id])).rows.length)
+  return { canManage, enrolled, canViewContent: canManage || Boolean(user?.role === 'siswa' && enrolled) }
+}
 
 /**
  * Schema LMS: courses, lessons, enrollments, assignments, submissions,
  * discussions. Semua idempoten — aman dipanggil berulang dari bootstrap.
+ * Tabel `users` dipastikan lebih dulu karena courses.created_by mereferensikannya.
  */
 export async function ensureLmsSchema(): Promise<void> {
+  await ensureAuthSchema()
   await query(`
     create table if not exists courses (
       id serial primary key,

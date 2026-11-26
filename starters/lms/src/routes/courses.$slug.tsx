@@ -4,19 +4,21 @@ import { createServerFn } from '@tanstack/react-start'
 import { getCookie } from '@tanstack/react-start/server'
 import { query } from '~/lib/db'
 import { getCurrentUser, AUTH_COOKIE_NAME } from '~/lib/auth'
-import { ensureLmsSchema } from '~/lib/lms'
+import { ensureLmsSchema, coursePermissions } from '~/lib/lms'
 
 type Lesson = { id: number; title: string; content: string; video_url: string | null; position: number; done: boolean }
 type Assignment = { id: number; title: string; description: string; due_at: string | null }
 type Discussion = { id: number; body: string; user_name: string; created_at: string }
 type GradeItem = { assignment_id: number; title: string; grade: number | null; feedback: string | null; content: string }
 type Detail = {
-  course: { id: number; title: string; description: string; slug: string; published: boolean }
+  course: { id: number; title: string; description: string; slug: string; published: boolean; created_by: number | null }
   lessons: Lesson[]
   assignments: Assignment[]
   discussions: Discussion[]
   user: { id: number; role: string | null; name: string | null; email: string } | null
   enrolled: boolean
+  canManage: boolean
+  canViewContent: boolean
   progress: number
   myGrades: GradeItem[]
 }
@@ -28,17 +30,16 @@ const loadCourse = createServerFn({ method: 'GET' })
     const token = getCookie(AUTH_COOKIE_NAME)
     const user = await getCurrentUser(token)
     const r = await query<Detail['course']>(
-      `select id, title, description, slug, published from courses where slug=$1`,
+      `select id, title, description, slug, published, created_by from courses where slug=$1`,
       [data.slug],
     )
     const course = r.rows[0]
     if (!course) throw new Error('Kursus tidak ditemukan.')
-    if (!course.published && user?.role !== 'admin' && user?.role !== 'guru') {
+    const { canViewContent, canManage, enrolled } = await coursePermissions(course, user)
+    if (!course.published && !canViewContent) {
       throw new Error('Kursus ini belum diterbitkan.')
     }
 
-    const access = user ? await requireCourseAccess({ data: { slug: data.slug } }) : { ok: false }
-    const canViewContent = Boolean(user && (user.role === 'admin' || user.role === 'guru' || access.ok))
 
     const lessons = canViewContent
       ? (
@@ -71,14 +72,11 @@ const loadCourse = createServerFn({ method: 'GET' })
         ).rows
       : []
 
-    const enrolled = user
-      ? Boolean((await query(`select 1 from enrollments where user_id=$1 and course_id=$2`, [user.id, course.id])).rows.length)
-      : false
 
     const doneCount = lessons.filter((l) => l.done).length
     const progress = enrolled && lessons.length ? Math.round((doneCount / lessons.length) * 100) : 0
 
-    const myGrades = enrolled
+    const myGrades = canViewContent && enrolled
       ? (
           await query<GradeItem>(
             `select a.id as assignment_id, a.title, s.grade, s.feedback, s.content
@@ -89,19 +87,7 @@ const loadCourse = createServerFn({ method: 'GET' })
         ).rows
       : []
 
-    return { course, lessons, assignments, discussions, user, enrolled, progress, myGrades }
-  })
-
-const requireCourseAccess = createServerFn({ method: 'POST' })
-  .validator((input: { slug: string }) => input)
-  .handler(async ({ data }) => {
-    const user = await getCurrentUser(getCookie(AUTH_COOKIE_NAME))
-    if (!user) return { ok: false }
-    const access = await query(
-      `select 1 from courses c where c.slug=$1 and (c.created_by=$2 or c.published = true or exists(select 1 from enrollments e where e.course_id=c.id and e.user_id=$2))`,
-      [data.slug, user.id],
-    )
-    return { ok: Boolean(access.rows.length) }
+    return { course, lessons, assignments, discussions, user, enrolled, progress, myGrades, canManage, canViewContent }
   })
 
 const enroll = createServerFn({ method: 'POST' })
@@ -157,8 +143,9 @@ const postDiscussion = createServerFn({ method: 'POST' })
     const user = await getCurrentUser(token)
     if (!user) throw new Error('Silakan masuk terlebih dahulu.')
     if (data.body.trim().length < 2) throw new Error('Pesan kosong.')
-    const c = (await query<{ id: number }>(`select id from courses where slug=$1`, [data.slug])).rows[0]
+    const c = (await query<{ id: number; created_by: number | null }>(`select id, created_by from courses where slug=$1`, [data.slug])).rows[0]
     if (!c) throw new Error('Kursus tidak ditemukan.')
+    if (!(await coursePermissions(c, user)).canViewContent) throw new Error('Akses ditolak: kamu bukan anggota kursus ini.')
     await query(`insert into discussions (course_id, user_id, body) values ($1,$2,$3)`, [
       c.id,
       user.id,
@@ -193,7 +180,7 @@ function CoursePage() {
     }
   }
 
-  const canManage = data.user && (data.user.role === 'admin' || data.user.role === 'guru')
+  const canManage = data.canManage
 
   return (
     <main className="min-h-dvh">
@@ -213,7 +200,7 @@ function CoursePage() {
             <p className="mt-2 text-slate-400">{data.course.description}</p>
           </div>
           <div className="flex flex-col items-end gap-2">
-            {!data.enrolled && data.user && (
+            {!data.enrolled && data.user?.role === 'siswa' && data.course.published && (
               <button className="btn-primary" disabled={busy} onClick={() => act(() => enroll({ data: { slug: data.course.slug } }))}>
                 Daftar kursus
               </button>
@@ -317,7 +304,7 @@ function CoursePage() {
 
           <aside>
             <h2 className="text-xl font-semibold text-white">Diskusi</h2>
-            {data.user && (
+            {data.canViewContent && (
               <form
                 className="mt-4 flex gap-2"
                 onSubmit={(e) => {

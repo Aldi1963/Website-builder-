@@ -12,7 +12,7 @@ const starterDb = readFileSync(new URL('../../starters/lms/src/lib/lms.ts', impo
 test('project create endpoint accepts only known starter ids and copies selected template', () => {
   assert.match(appSource, /body\.starter === 'lms' \? 'lms' : 'blank'/)
   assert.match(appSource, /ensureWorkspace\(id, starter\)/)
-  assert.match(workspaceSource, /starter === 'lms' \? join\(STARTERS_DIR, 'lms'\) : TEMPLATE_DIR/)
+  assert.match(workspaceSource, /chosen === 'lms' \? join\(STARTERS_DIR, 'lms'\) : TEMPLATE_DIR/)
 })
 
 test('new-project UI offers blank and LMS options and API transmits selection', () => {
@@ -39,6 +39,6 @@ test('LMS starter includes authenticated roles, course catalog, learning and ass
   assert.match(manageRoute, /created_by=\$3/)
   assert.match(gradeRoute, /c.created_by=\$5/)
   const registerRoute = readFileSync(new URL('../../starters/lms/src/routes/login.tsx', import.meta.url), 'utf8')
-  assert.match(registerRoute, /lock table users in exclusive mode/)
-  assert.match(registerRoute, /count === 0 \? 'admin' : 'siswa'/)
+  assert.match(registerRoute, /register\(data.email, data.password, data.name, 'siswa'\)/)
+  assert.doesNotMatch(registerRoute, /lock table users|count === 0 \? 'admin'/)
 })

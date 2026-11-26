@@ -4,6 +4,7 @@
   "type": "module",
   "workspaces": ["template", "platform", "server"],
   "scripts": {
-    "build": "npm run build --workspaces --if-present"
+    "build": "npm run build --workspaces --if-present",
+    "test": "node --experimental-test-module-mocks --test server/tests/*.test.mjs"
   }
 }

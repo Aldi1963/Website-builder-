@@ -3,7 +3,7 @@ import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { getCookie, setCookie } from '@tanstack/react-start/server'
 import { register, login, logout, getCurrentUser, ensureTables, AUTH_COOKIE_NAME, AUTH_COOKIE_MAX_AGE } from '~/lib/auth'
-import { getPgPool } from '~/lib/db'
+
 
 const cookieOpts = {
   httpOnly: true as const,
@@ -22,26 +22,11 @@ const getSessionUser = createServerFn({ method: 'GET' }).handler(async () => {
 const doRegister = createServerFn({ method: 'POST' })
   .validator((input: { email: string; password: string; name?: string }) => input)
   .handler(async ({ data }) => {
-    await ensureTables()
-    // User pertama bootstrap admin secara atomik; setelah itu registrasi publik selalu siswa.
-    const client = await getPgPool().connect()
-    let role: 'admin' | 'siswa' = 'siswa'
-    try {
-      await client.query('begin')
-      await client.query('lock table users in exclusive mode')
-      const count = Number((await client.query('select count(*)::int as n from users')).rows[0]?.n ?? 0)
-      role = count === 0 ? 'admin' : 'siswa'
-      const created = await register(data.email, data.password, data.name, role)
-      await client.query('commit')
-      const { token } = await login(data.email, data.password)
-      setCookie(AUTH_COOKIE_NAME, token, cookieOpts)
-      return { ok: true, user: created }
-    } catch (err) {
-      await client.query('rollback').catch(() => {})
-      throw err
-    } finally {
-      client.release()
-    }
+    // Public signup never participates in administrator bootstrap.
+    const created = await register(data.email, data.password, data.name, 'siswa')
+    const { token } = await login(data.email, data.password)
+    setCookie(AUTH_COOKIE_NAME, token, cookieOpts)
+    return { ok: true, user: created }
   })
 
 const doLogin = createServerFn({ method: 'POST' })

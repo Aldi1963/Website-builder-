@@ -2,7 +2,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statS
 import { join, dirname } from 'node:path'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { PROJECTS_DIR, TEMPLATE_DIR, STARTERS_DIR, PREVIEW_PORT_BASE, MAX_PREVIEWS } from './paths.ts'
-import { listSettings } from './db.ts'
+import { listSettings, getProject, putFile } from './db.ts'
 import { projectDbUrl } from './managed-db.ts'
 
 const SKIP = new Set(['node_modules', 'dist', '.output', '.tanstack', '.git'])
@@ -11,11 +11,12 @@ export function projectDir(projectId: string) {
   return join(PROJECTS_DIR, projectId)
 }
 
-export function ensureWorkspace(projectId: string, starter = 'blank'): string {
+export function ensureWorkspace(projectId: string, starter?: string): string {
   const dir = projectDir(projectId)
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true })
-    const candidate = starter === 'lms' ? join(STARTERS_DIR, 'lms') : TEMPLATE_DIR
+    const chosen = starter ?? getProject(projectId)?.starter ?? 'blank'
+    const candidate = chosen === 'lms' ? join(STARTERS_DIR, 'lms') : TEMPLATE_DIR
     const source = existsSync(candidate) ? candidate : TEMPLATE_DIR
     cpSync(source, dir, {
       recursive: true,
@@ -25,8 +26,26 @@ export function ensureWorkspace(projectId: string, starter = 'blank'): string {
         return !rel.split('/').some((seg) => SKIP.has(seg))
       },
     })
+    if (getProject(projectId)) indexSource(projectId, dir)
   }
   return dir
+}
+
+/* A fresh copy is the project's source of truth. The file table powers the
+   project file view, so it must reflect the copy before anyone edits a file —
+   otherwise a copied starter shows an empty workspace until the agent writes. */
+function indexSource(projectId: string, dir: string) {
+  const walk = (current: string) => {
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      if (SKIP.has(entry.name)) continue
+      const abs = join(current, entry.name)
+      if (entry.isDirectory()) walk(abs)
+      else if (statSync(abs).size < 512_000) {
+        putFile(projectId, abs.slice(dir.length + 1), readFileSync(abs, 'utf8'))
+      }
+    }
+  }
+  walk(dir)
 }
 
 export function writeProjectFile(projectId: string, relPath: string, content: string) {
@@ -104,7 +123,7 @@ export function run(cmd: string, args: string[], cwd: string, timeoutMs = 180_00
 export async function installDeps(projectId: string) {
   const dir = ensureWorkspace(projectId)
   if (existsSync(join(dir, 'node_modules', '.package-lock.json'))) return { code: 0, output: 'deps cached' }
-  return run('npm', ['install', '--no-audit', '--no-fund'], dir, 300_000)
+  return run('npm', ['install', '--onnxruntime-node-install-cuda=skip', '--no-audit', '--no-fund'], dir, 300_000)
 }
 
 export async function buildProject(projectId: string) {
