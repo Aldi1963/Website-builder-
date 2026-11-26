@@ -491,7 +491,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                 </button>
                 {notifOpen ? (
                   <div className="absolute right-0 z-50 mt-2 w-[calc(100vw-24px)] max-w-[360px] overflow-hidden rounded-xl border border-border bg-surface shadow-lg max-sm:fixed max-sm:top-[64px] max-sm:right-3 max-sm:mt-0">
-                    <p className="border-b border-border px-4 py-2.5 text-sm font-semibold">Notifikasi</p>
+                    <p className="border-b border-border px-3 py-2 text-[13px] font-semibold">Notifikasi</p>
                     <div className="max-h-[60vh] overflow-y-auto">
                       {notifs.length === 0 ? (
                         <a
@@ -501,14 +501,14 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                             navigate('/admin')
                             setNotifOpen(false)
                           }}
-                          className="block px-4 py-6 text-center text-sm text-muted hover:bg-surface-muted"
+                          className="block px-3 py-4 text-center text-[13px] text-muted hover:bg-surface-muted"
                         >
                           Belum ada aktivitas.
                         </a>
                       ) : (
                         <ul>
                           {notifs.some((n) => n.kind === 'alert') ? (
-                            <li className="border-b border-border px-4 pt-2 pb-1 text-xs font-bold tracking-wide text-warning uppercase">
+                            <li className="border-b border-border px-3 pt-1.5 pb-0.5 text-[11px] font-bold tracking-wide text-warning uppercase">
                               Peringatan
                             </li>
                           ) : null}
@@ -522,19 +522,19 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                                   setNotifOpen(false)
                                   closeSidebar()
                                 }}
-                                className="block px-4 py-2.5 text-sm hover:bg-surface-muted"
+                                className="block px-3 py-1.5 hover:bg-surface-muted"
                               >
-                                <span className="flex items-start gap-2">
+                                <span className="flex items-center gap-2">
                                   {n.kind === 'alert' ? (
                                     <Warning
-                                      size={16}
+                                      size={14}
                                       weight="fill"
-                                      className={`mt-0.5 shrink-0 ${n.level === 'critical' ? 'text-danger' : 'text-warning'}`}
+                                      className={`shrink-0 ${n.level === 'critical' ? 'text-danger' : 'text-warning'}`}
                                     />
                                   ) : null}
-                                  <span className="min-w-0 flex-1 break-words">{n.text}</span>
+                                  <span className="min-w-0 flex-1 truncate text-[13px] leading-5">{n.text}</span>
+                                  <span className="shrink-0 text-[11px] text-muted">{timeAgo(n.at)}</span>
                                 </span>
-                                <span className="mt-0.5 block pl-6 text-xs text-muted">{timeAgo(n.at)}</span>
                               </a>
                             </li>
                           ))}
@@ -549,7 +549,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                           navigate('/admin')
                           setNotifOpen(false)
                         }}
-                        className="block border-t border-border px-4 py-2.5 text-center text-sm hover:bg-surface-muted"
+                        className="block border-t border-border px-3 py-2 text-center text-[13px] hover:bg-surface-muted"
                       >
                         Lihat semua aktivitas
                       </a>
