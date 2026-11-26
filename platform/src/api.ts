@@ -101,6 +101,10 @@ export const api = {
   files: (id: string) => req<{ files: FileEntry[] }>(`/api/projects/${id}/files`),
   file: (id: string, path: string) =>
     req<{ path: string; content: string }>(`/api/projects/${id}/file?path=${encodeURIComponent(path)}`),
+  database: (id: string) =>
+    req<{ managed: boolean; engine?: string; database?: string; tables: DbTable[]; error?: string; note?: string }>(
+      `/api/projects/${id}/database`,
+    ),
   saveFile: (id: string, path: string, content: string) =>
     req<{ ok: boolean; path: string }>(`/api/projects/${id}/file`, {
       method: 'PUT',
@@ -176,6 +180,14 @@ export type ProjectSettings = {
   customDomain: string
   secrets: { key: string; hint: string }[]
   overview: { name: string; status: string; slug: string | null; files: number; createdAt: number }
+}
+
+/* Satu tabel di database Postgres terkelola proyek (dipakai panel Database). */
+export type DbTable = {
+  name: string
+  columns: string[]
+  rows: Record<string, string | number | boolean>[]
+  note?: string
 }
 
 export type MarketplaceListing = {

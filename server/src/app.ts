@@ -47,7 +47,7 @@ import {
   writeProjectFile,
 } from './workspace.ts'
 import { captureScreenshot, listScreenshots, readScreenshot } from './screenshots.ts'
-import { dropProjectDb } from './managed-db.ts'
+import { dropProjectDb, projectDbPool, isManagedDbEnabled } from './managed-db.ts'
 import {
   SESSION_COOKIE,
   sessionCookie,
@@ -297,6 +297,57 @@ app.put('/api/projects/:id/secrets', async (c) => {
   if (!value) return c.json({ error: 'Nilai secret kosong.' }, 400)
   setSetting(r.project.id, `secret_${key}`, value)
   return c.json({ ok: true, key })
+})
+
+/* ---------- Database terkelola (introspeksi skema) ---------- */
+
+/* Ringkasan skema database Postgres terkelola proyek: daftar tabel publik,
+   kolom, dan jumlah baris. Dipakai panel Database. Bukan SQLite. */
+app.get('/api/projects/:id/database', async (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  if (!isManagedDbEnabled()) {
+    return c.json({ managed: false, tables: [], note: 'Database terkelola belum aktif.' })
+  }
+  let pool: import('pg').Pool | null = null
+  try {
+    const opened = await projectDbPool(r.project.id)
+    pool = opened.pool
+    const tablesRes = await pool.query<{ table_name: string }>(
+      `SELECT table_name FROM information_schema.tables
+       WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+       ORDER BY table_name`,
+    )
+    const tables: Array<{ name: string; columns: string[]; rows: Record<string, unknown>[]; note: string }> = []
+    for (const t of tablesRes.rows) {
+      const cols = await pool.query<{ column_name: string; data_type: string }>(
+        `SELECT column_name, data_type FROM information_schema.columns
+         WHERE table_schema = 'public' AND table_name = $1 ORDER BY ordinal_position`,
+        [t.table_name],
+      )
+      const q = `SELECT * FROM "${t.table_name.replace(/"/g, '""')}" LIMIT 20`
+      const rowsRes = await pool.query<Record<string, unknown>>(q)
+      const cnt = await pool.query<{ n: string }>(`SELECT COUNT(*)::text AS n FROM "${t.table_name.replace(/"/g, '""')}"`)
+      const total = Number(cnt.rows[0]?.n ?? 0)
+      tables.push({
+        name: t.table_name,
+        columns: cols.rows.map((c) => c.column_name),
+        rows: rowsRes.rows.slice(0, 20).map((row) => {
+          const out: Record<string, unknown> = {}
+          for (const [k, v] of Object.entries(row)) {
+            out[k] = v === null ? '' : v instanceof Date ? v.toISOString() : typeof v === 'object' ? JSON.stringify(v) : (v as string | number | boolean)
+          }
+          return out
+        }),
+        note: `${cols.rows.length} kolom · ${total} baris${rowsRes.rows.length > 20 ? ' · menampilkan 20' : ''}`,
+      })
+    }
+    return c.json({ managed: true, engine: 'postgres', database: opened.database, tables })
+  } catch (err) {
+    return c.json({ managed: true, engine: 'postgres', tables: [], error: (err as Error).message })
+  } finally {
+    void pool?.end()
+  }
 })
 
 /* ---------- GitHub sync ---------- */

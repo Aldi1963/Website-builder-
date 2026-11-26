@@ -141,7 +141,7 @@ function SessionMenu({
 type DbTableView = {
   name: string
   columns: string[]
-  rows: Record<string, string | number>[]
+  rows: Record<string, string | number | boolean>[]
   note?: string
 }
 
@@ -424,7 +424,6 @@ function DatabaseViewer({
   files: { path: string }[]
 }) {
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
-  const [dbFile, setDbFile] = useState('')
   const [tables, setTables] = useState<DbTableView[]>([])
   const [error, setError] = useState('')
 
@@ -443,40 +442,33 @@ function DatabaseViewer({
     setStatus('loading')
     setError('')
     setTables([])
-    setDbFile('')
-    const candidates = [
-      ...files.filter((f) => /(^|\/)db\.server\.ts$/.test(f.path)).map((f) => f.path),
-      ...files.filter((f) => /\.server\.ts$/.test(f.path) && !/(^|\/)db\.server\.ts$/.test(f.path)).map((f) => f.path),
-      ...files.filter((f) => /db/i.test(f.path) && !/\.server\.ts$/.test(f.path)).map((f) => f.path),
-    ]
     const load = async () => {
-      for (const path of candidates.slice(0, 4)) {
-        try {
-          const r = await api.file(projectId, path)
-          const parsed = parseAppDatabase(r.content)
-          if (!parsed.length) continue
-          if (!alive) return
-          setDbFile(path)
-          setTables(parsed)
-          setStatus('ready')
+      try {
+        const r = await api.database(projectId)
+        if (!alive) return
+        if (r.error) {
+          setError(r.error)
+          setStatus('error')
           return
-        } catch {
-          /* file hilang / gagal dibaca — coba kandidat berikutnya */
         }
+        if (!r.tables.length) {
+          setError('Belum ada tabel di database proyek ini. Minta agent membuat tabel lewat chat.')
+          setStatus('error')
+          return
+        }
+        setTables(r.tables)
+        setStatus('ready')
+      } catch (e) {
+        if (!alive) return
+        setError((e as Error).message || 'Gagal memuat database.')
+        setStatus('error')
       }
-      if (!alive) return
-      setError(
-        candidates.length
-          ? 'Tidak ditemukan pernyataan CREATE TABLE di file database proyek ini.'
-          : 'Tidak ditemukan file database di proyek ini.',
-      )
-      setStatus('error')
     }
     void load()
     return () => {
       alive = false
     }
-  }, [open, projectId, files])
+  }, [open, projectId])
 
   if (!open) return null
   return (
@@ -492,13 +484,10 @@ function DatabaseViewer({
           </button>
         </div>
         <p className="mb-3 border-l-2 border-accent pl-2 text-[12px] leading-relaxed text-body">
-          Database aplikasi ini SQLite file persisten di folder proyek (kanonik: data/app.db) — data yang
-          dimasukkan lewat preview tersimpan di file itu dan bertahan melewati restart preview maupun server.
-          Isi di bawah dibaca dari file proyek (skema + data seed), bukan dari file database yang sedang berjalan.
+          Database aplikasi ini Postgres terkelola, dibuat otomatis per proyek — data yang dimasukkan
+          lewat preview tersimpan di sana dan bertahan melewati restart preview maupun server. Isi di
+          bawah dibaca langsung dari database yang sedang berjalan (skema + contoh data).
         </p>
-        {dbFile && (
-          <p className="mb-3 font-mono text-[11px] text-quiet">Sumber: {dbFile}</p>
-        )}
         <div className="vb-scroll min-h-0 flex-1 overflow-y-auto">
           {status === 'loading' && <p className="text-[12px] text-quiet">Membaca database…</p>}
           {status === 'error' && <p className="border-l-2 border-accent pl-2 text-[12px] text-body">{error}</p>}
@@ -508,7 +497,7 @@ function DatabaseViewer({
                 <p className="text-[12.5px] font-medium text-body">
                   {t.name}{' '}
                   <span className="font-normal text-quiet">
-                    · {t.columns.length} kolom · {t.rows.length} baris{t.rows.length ? ' (dari seed)' : ''}
+                    · {t.note ?? `${t.columns.length} kolom · ${t.rows.length} baris`}
                   </span>
                 </p>
                 {t.rows.length > 0 ? (
