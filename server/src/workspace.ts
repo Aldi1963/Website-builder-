@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { PROJECTS_DIR, TEMPLATE_DIR, PREVIEW_PORT_BASE, MAX_PREVIEWS } from './paths.ts'
@@ -108,7 +108,14 @@ export async function installDeps(projectId: string) {
 export async function buildProject(projectId: string) {
   const dir = ensureWorkspace(projectId)
   const r = await run('npm', ['run', 'build'], dir, 240_000)
-  if (r.code === 0) reconcileAssets(dir)
+  if (r.code === 0) {
+    reconcileAssets(dir)
+    // A fresh build emits new content-hashed assets. A running SSR preview still
+    // holds the previous manifest in memory, so its HTML references stale
+    // /assets/<hash>.css|js paths that no longer exist → 404 and unstyled UI.
+    // Stop it here; startPreview() will relaunch it against the new dist.
+    stopPreview(projectId)
+  }
   return r
 }
 
@@ -148,7 +155,18 @@ function reconcileAssets(dir: string) {
   }
 }
 
-const previews = new Map<string, { port: number; proc: ChildProcess; settingsFingerprint: string }>()
+const previews = new Map<string, { port: number; proc: ChildProcess; settingsFingerprint: string; buildFingerprint: string }>()
+
+function buildFingerprint(dir: string): string {
+  // Content hashes change on every rebuild; mtime of the emitted SSR bundle is a
+  // cheap signal that a new dist exists even if buildProject was bypassed.
+  try {
+    const st = statSync(join(dir, 'dist', 'server', 'server.js'))
+    return String(st.mtimeMs)
+  } catch {
+    return 'none'
+  }
+}
 
 export function previewPort(projectId: string): number {
   const existing = previews.get(projectId)
@@ -170,9 +188,11 @@ export async function startPreview(projectId: string): Promise<number> {
   // prosesnya supaya env baru dipakai — kalau tidak, key baru tidak pernah
   // sampai ke aplikasi yang sedang di-preview.
   const settingsFingerprint = JSON.stringify(listSettings(projectId))
+  const dir = ensureWorkspace(projectId)
+  const nextBuildFingerprint = buildFingerprint(dir)
   const existing = previews.get(projectId)
   if (existing && existing.proc.exitCode === null) {
-    if (existing.settingsFingerprint === settingsFingerprint) return existing.port
+    if (existing.settingsFingerprint === settingsFingerprint && existing.buildFingerprint === nextBuildFingerprint) return existing.port
     existing.proc.kill('SIGTERM')
     for (let i = 0; i < 20 && existing.proc.exitCode === null; i++) {
       await new Promise((r) => setTimeout(r, 100))
@@ -180,7 +200,6 @@ export async function startPreview(projectId: string): Promise<number> {
     previews.delete(projectId)
   }
 
-  const dir = ensureWorkspace(projectId)
   // keep the static-asset server in sync with the platform's current version
   const serverFile = join(TEMPLATE_DIR, 'server.mjs')
   if (existsSync(serverFile)) cpSync(serverFile, join(dir, 'server.mjs'))
@@ -203,7 +222,7 @@ export async function startPreview(projectId: string): Promise<number> {
   proc.stdout?.on('data', () => {})
   proc.stderr?.on('data', () => {})
   proc.on('exit', () => previews.delete(projectId))
-  previews.set(projectId, { port, proc, settingsFingerprint })
+  previews.set(projectId, { port, proc, settingsFingerprint, buildFingerprint: nextBuildFingerprint })
 
   for (let i = 0; i < 40; i++) {
     await new Promise((r) => setTimeout(r, 250))
