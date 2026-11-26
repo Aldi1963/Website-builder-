@@ -80,10 +80,11 @@ const LLM_FEATURES = `Fitur AI di aplikasi hasil generate (web LLM):
 - Saat user minta fitur AI (chatbot, ringkas teks, tanya-jawab dokumen, dll): bangun halaman yang memanggil /api/chat lewat helper streamChat, tampilkan jawaban yang mengalir (streaming), dan tangani error dengan pesan yang jelas.`
 
 const AUTH = `Autentikasi bawaan (saat aplikasi butuh login/akun user):
-- Helper server-only tersedia di src/lib/auth.ts (sudah disediakan template, jangan ditulis ulang). Fungsi: register(email,password,name), login(email,password) -> {user,token,expiresInDays}, logout(token), getCurrentUser(token), ensureAuthSchema(), AUTH_COOKIE_NAME, AUTH_COOKIE_MAX_AGE.
+- Helper server-only tersedia di src/lib/auth.ts (sudah disediakan template, jangan ditulis ulang). Fungsi: registerUser(email,password,name?,role?), loginUser(email,password) -> {user,token,expiresInDays}, logout(token), getSessionUser(token), requireUser(token), requireRole(token, ['admin']), ensureTables(), ensureAuthSchema(), AUTH_COOKIE_NAME, AUTH_COOKIE_MAX_AGE.
 - Halaman contoh: src/routes/login.tsx. Salin pola ini untuk halaman login/register: server function memakai getCookie/setCookie dari '@tanstack/react-start/server', simpan token ke cookie httpOnly AUTH_COOKIE_NAME.
-- Untuk melindungi data milik user: buat tabel milik user dengan kolom user_id integer (references users(id)), lalu di createServerFn ambil user via getCurrentUser(getCookie(AUTH_COOKIE_NAME)); tolak bila null dengan pesan "Silakan masuk terlebih dahulu". Jangan percaya user_id dari client.
-- Sebelum query ke tabel users/sessions pertama kali, panggil ensureAuthSchema() (idempotent) — mis. di server function bootstrap atau loader halaman login.
+- Untuk melindungi data milik user: buat tabel milik user dengan kolom user_id integer (references users(id)), lalu di createServerFn panggil requireUser(getCookie(AUTH_COOKIE_NAME)) untuk mendapat user; tolak otomatis dengan pesan "Silakan masuk terlebih dahulu". Jangan percaya user_id dari client.
+- Role: tabel users punya kolom role (text, default null). Untuk halaman/aksi khusus admin gunakan requireRole(getCookie(AUTH_COOKIE_NAME), ['admin']) — jangan pernah mengecek role hanya di client. Saat membuat akun admin pertama, panggil registerUser(..., 'admin') dari server function/bootstrap, bukan dari form publik.
+- Sebelum query ke tabel users/sessions pertama kali, panggil ensureTables() (idempotent, sekaligus memigrasikan kolom role) — mis. di server function bootstrap atau loader halaman login.
 - DILARANG mengimplementasikan hash password sendiri, menyimpan password plaintext, atau menaruh token sesi di localStorage.`
 
 const RAG = `Basis pengetahuan / tanya-jawab dokumen (RAG) — server-side saja:

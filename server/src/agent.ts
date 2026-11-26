@@ -88,9 +88,10 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'db_schema',
-      description: 'Buat atau ubah tabel di database proyek (Postgres terkelola, permanen). Gunakan untuk CREATE/ALTER TABLE, index. Data tersimpan permanen, tidak hilang saat restart.',
+      description: 'Buat atau ubah tabel di database proyek (Postgres terkelola, permanen). Gunakan untuk CREATE TABLE / ALTER TABLE / CREATE INDEX yang idempotent (CREATE TABLE IF NOT EXISTS). Data tersimpan permanen, tidak hilang saat restart. Dilarang operasi administratif (DROP DATABASE, CREATE ROLE, dsb).',
       parameters: {
         type: 'object',
+        additionalProperties: false,
         properties: { sql: { type: 'string', description: 'Satu pernyataan SQL DDL. Contoh: CREATE TABLE IF NOT EXISTS notes (id serial primary key, user_email text not null, title text not null, body text, created_at timestamptz default now())' } },
         required: ['sql'],
       },
@@ -103,6 +104,7 @@ const TOOLS = [
       description: 'Jalankan pernyataan SQL (SELECT/INSERT/UPDATE/DELETE) di database proyek untuk memverifikasi skema atau seed data. JANGAN pakai untuk operasi administratif.',
       parameters: {
         type: 'object',
+        additionalProperties: false,
         properties: { sql: { type: 'string', description: 'Satu pernyataan SQL.' } },
         required: ['sql'],
       },

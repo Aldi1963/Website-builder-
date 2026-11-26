@@ -8,14 +8,15 @@ import { query } from './db'
  *  - Registrasi user (password di-hash scrypt + salt).
  *  - Login dengan verifikasi password.
  *  - Session token (cookie httpOnly) — token disimpan sebagai hash di DB.
- *  - getcurrentUser() untuk membaca user dari cookie di createServerFn.
+ *  - Role user (`users.role`) + helper requireUser/requireRole untuk guard.
+ *  - getSessionUser() untuk membaca user dari cookie di createServerFn.
  *
- * Jalankan sekali (idempotent) schema: panggil ensureAuthSchema() dari
+ * Jalankan sekali (idempotent) lewat ensureAuthSchema()/ensureTables() dari
  * server function bootstrap, atau buat tabelnya lewat tool db_schema.
  *
  * Pemakaian di route (server function):
  *   import { createServerFn } from '@tanstack/react-start'
- *   import { register, login, logout, getCurrentUser } from '~/lib/auth'
+ *   import { loginUser, logout, getSessionUser, requireUser } from '~/lib/auth'
  *
  * JANGAN import file ini dari komponen klien (berisi logika + akses DB).
  */
@@ -44,17 +45,23 @@ function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex')
 }
 
-/** Buat tabel users + sessions bila belum ada (idempotent). */
+/**
+ * Buat tabel users + sessions bila belum ada (idempotent) dan migrasikan
+ * kolom `role` untuk database lama. Aman dipanggil berkali-kali.
+ */
 export async function ensureAuthSchema(): Promise<void> {
   await query(`
     create table if not exists users (
       id serial primary key,
       email text not null unique,
       name text,
+      role text default null,
       password_hash text not null,
       created_at timestamptz default now()
     )
   `)
+  // Migrasi database lama: tambah kolom role tanpa menghapus data.
+  await query(`alter table users add column if not exists role text default null`)
   await query(`
     create table if not exists sessions (
       id serial primary key,
@@ -67,10 +74,20 @@ export async function ensureAuthSchema(): Promise<void> {
   await query(`create index if not exists sessions_user_id_idx on sessions(user_id)`)
 }
 
-export type SafeUser = { id: number; email: string; name: string | null }
+/** Alias eksplisit untuk bootstrap: pastikan semua tabel auth siap. */
+export async function ensureTables(): Promise<void> {
+  await ensureAuthSchema()
+}
+
+export type SafeUser = { id: number; email: string; name: string | null; role: string | null }
 
 /** Registrasi user baru. Melempar Error bila email sudah dipakai. */
-export async function register(email: string, password: string, name?: string): Promise<SafeUser> {
+export async function register(
+  email: string,
+  password: string,
+  name?: string,
+  role?: string,
+): Promise<SafeUser> {
   await ensureAuthSchema()
   const normEmail = email.trim().toLowerCase()
   if (!normEmail.includes('@')) throw new Error('Email tidak valid.')
@@ -78,19 +95,22 @@ export async function register(email: string, password: string, name?: string): 
   const exists = await query(`select id from users where email = $1`, [normEmail])
   if (exists.rows.length) throw new Error('Email sudah terdaftar.')
   const hash = hashPassword(password)
-  const r = await query<{ id: number; email: string; name: string | null }>(
-    `insert into users (email, name, password_hash) values ($1,$2,$3) returning id, email, name`,
-    [normEmail, name?.trim() || null, hash],
+  const r = await query<SafeUser>(
+    `insert into users (email, name, role, password_hash) values ($1,$2,$3,$4) returning id, email, name, role`,
+    [normEmail, name?.trim() || null, role?.trim() || null, hash],
   )
   return r.rows[0]
 }
 
 /** Login: verifikasi kredensial, buat session, kembalikan token + user. */
-export async function login(email: string, password: string): Promise<{ user: SafeUser; token: string; expiresInDays: number }> {
+export async function login(
+  email: string,
+  password: string,
+): Promise<{ user: SafeUser; token: string; expiresInDays: number }> {
   await ensureAuthSchema()
   const normEmail = email.trim().toLowerCase()
-  const r = await query<{ id: number; email: string; name: string | null; password_hash: string }>(
-    `select id, email, name, password_hash from users where email = $1`,
+  const r = await query<SafeUser & { password_hash: string }>(
+    `select id, email, name, role, password_hash from users where email = $1`,
     [normEmail],
   )
   const user = r.rows[0]
@@ -103,8 +123,17 @@ export async function login(email: string, password: string): Promise<{ user: Sa
   await query(`insert into sessions (user_id, token_hash, expires_at) values ($1,$2,$3)`, [user.id, tokenHash, expiresAt])
   // bersihkan session kedaluwarsa milik user ini.
   await query(`delete from sessions where user_id = $1 and expires_at < now()`, [user.id])
-  return { user: { id: user.id, email: user.email, name: user.name }, token, expiresInDays: SESSION_TTL_DAYS }
+  return {
+    user: { id: user.id, email: user.email, name: user.name, role: user.role },
+    token,
+    expiresInDays: SESSION_TTL_DAYS,
+  }
 }
+
+/** Alias semantik untuk alur login di server function. */
+export const loginUser = login
+/** Alias semantik untuk alur registrasi di server function. */
+export const registerUser = register
 
 /** Logout: hapus session berdasarkan token. */
 export async function logout(token: string): Promise<void> {
@@ -115,8 +144,8 @@ export async function logout(token: string): Promise<void> {
 /** Ambil user saat ini dari token session (panggil dari server function). */
 export async function getCurrentUser(token: string | undefined | null): Promise<SafeUser | null> {
   if (!token) return null
-  const r = await query<{ id: number; email: string; name: string | null; expires_at: Date }>(
-    `select u.id, u.email, u.name, s.expires_at
+  const r = await query<SafeUser & { expires_at: Date }>(
+    `select u.id, u.email, u.name, u.role, s.expires_at
        from sessions s join users u on u.id = s.user_id
       where s.token_hash = $1`,
     [hashToken(token)],
@@ -127,7 +156,30 @@ export async function getCurrentUser(token: string | undefined | null): Promise<
     await logout(token)
     return null
   }
-  return { id: row.id, email: row.email, name: row.name }
+  return { id: row.id, email: row.email, name: row.name, role: row.role }
+}
+
+/** Alias semantik: baca user dari cookie session. */
+export const getSessionUser = getCurrentUser
+
+/** Guard: wajib login. Lempar Error yang aman ditampilkan ke UI. */
+export async function requireUser(token: string | undefined | null): Promise<SafeUser> {
+  const user = await getCurrentUser(token)
+  if (!user) throw new Error('Silakan masuk terlebih dahulu.')
+  return user
+}
+
+/** Guard: wajib login DAN punya salah satu role yang diizinkan. */
+export async function requireRole(
+  token: string | undefined | null,
+  roles: string | string[],
+): Promise<SafeUser> {
+  const user = await requireUser(token)
+  const allowed = Array.isArray(roles) ? roles : [roles]
+  if (!user.role || !allowed.includes(user.role)) {
+    throw new Error('Akses ditolak: role tidak mencukupi.')
+  }
+  return user
 }
 
 export const AUTH_COOKIE_NAME = SESSION_COOKIE
