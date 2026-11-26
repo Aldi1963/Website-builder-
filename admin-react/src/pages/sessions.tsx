@@ -19,7 +19,12 @@ interface SessionRow {
   active: boolean
 }
 
-export default function SessionsPage() {
+interface SessionsPageProps {
+  /** Disematkan di halaman gabungan: PageHeader induk disembunyikan. */
+  embedded?: boolean
+}
+
+export default function SessionsPage({ embedded = false }: SessionsPageProps) {
   const toast = useToast()
   const [sessions, setSessions] = useState<SessionRow[] | null>(null)
   const [busy, setBusy] = useState(false)
@@ -56,10 +61,12 @@ export default function SessionsPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="Sesi"
-        description="Sesi login aktif dan kedaluwarsa. Hash sesi hanya ditampilkan 12 karakter pertama."
-      />
+      {!embedded ? (
+        <PageHeader
+          title="Sesi"
+          description="Sesi login aktif dan kedaluwarsa. Hash sesi hanya ditampilkan 12 karakter pertama."
+        />
+      ) : null}
       {sessions === null ? (
         <Spinner />
       ) : (

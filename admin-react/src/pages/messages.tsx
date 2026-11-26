@@ -25,7 +25,12 @@ function roleTone(role: string): 'accent' | 'success' | 'default' {
   return 'default'
 }
 
-export default function MessagesPage() {
+interface MessagesPageProps {
+  /** Disematkan di halaman gabungan: PageHeader induk disembunyikan. */
+  embedded?: boolean
+}
+
+export default function MessagesPage({ embedded = false }: MessagesPageProps) {
   const toast = useToast()
   const [messages, setMessages] = useState<MessageRow[] | null>(null)
   const [query, setQuery] = useState('')
@@ -54,20 +59,22 @@ export default function MessagesPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="Pesan"
-        description="Semua pesan chat di semua proyek."
-        actions={
-          <form onSubmit={runSearch} className="flex w-full gap-2 sm:w-[320px]">
-            <div className="min-w-0 flex-1">
-              <SearchInput value={query} onChange={setQuery} placeholder="Cari isi pesan…" ariaLabel="Cari pesan" />
-            </div>
-            <button type="submit" className={`shrink-0 ${btnOutlineLg}`}>
-              Cari
-            </button>
-          </form>
-        }
-      />
+      {!embedded ? (
+        <PageHeader
+          title="Pesan"
+          description="Semua pesan chat di semua proyek."
+          actions={
+            <form onSubmit={runSearch} className="flex w-full gap-2 sm:w-[320px]">
+              <div className="min-w-0 flex-1">
+                <SearchInput value={query} onChange={setQuery} placeholder="Cari isi pesan…" ariaLabel="Cari pesan" />
+              </div>
+              <button type="submit" className={`shrink-0 ${btnOutlineLg}`}>
+                Cari
+              </button>
+            </form>
+          }
+        />
+      ) : null}
       {messages === null ? (
         <Spinner />
       ) : (

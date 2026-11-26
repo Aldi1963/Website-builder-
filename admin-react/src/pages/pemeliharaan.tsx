@@ -19,7 +19,12 @@ interface Maintenance {
   updated_at: number | null
 }
 
-export default function PemeliharaanPage() {
+interface PemeliharaanPageProps {
+  /** Disematkan di halaman gabungan: PageHeader induk disembunyikan. */
+  embedded?: boolean
+}
+
+export default function PemeliharaanPage({ embedded = false }: PemeliharaanPageProps) {
   const toast = useToast()
   const [data, setData] = useState<Maintenance | null>(null)
   const [enabled, setEnabled] = useState(false)
@@ -67,11 +72,12 @@ export default function PemeliharaanPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="Pemeliharaan"
-        description="Mode pemeliharaan untuk pengunjung. Pengaturan tersimpan di database."
-      />
-
+      {!embedded ? (
+        <PageHeader
+          title="Pemeliharaan"
+          description="Mode pemeliharaan untuk pengunjung. Pengaturan tersimpan di database."
+        />
+      ) : null}
       <Alert tone="warning">
         <strong>Belum berlaku.</strong> Mengaktifkan mode pemeliharaan di sini
         baru menyimpan pengaturannya. Halaman maintenance untuk pengunjung baru

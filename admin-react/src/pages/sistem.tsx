@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { NAVIGATE_EVENT, navigate, useRoute } from '../lib/router'
+import { NAVIGATE_EVENT } from '../lib/router'
 import { PageHeader } from '../components/PageHeader'
 import { Spinner } from '../components/Spinner'
 import HealthPage from './health'
@@ -10,70 +10,52 @@ import SettingsPage from './settings'
 import SessionsPage from './sessions'
 import BuildsPage from './builds'
 
-/* Halaman "Sistem": gabungan 7 halaman lama menjadi satu
-   halaman bertab. Isi tiap tab adalah komponen halaman asalnya — tidak
-   diubah, hanya dipindah ke dalam tab. Tab aktif dibaca dari query
-   ?tab= (default: health). URL lama tetap jalan lewat komponen
-   redirect di bawah (replaceState ke URL bersih). */
-
-export type SistemTabId = 'health' | 'cadangan' | 'pembersihan' | 'pemeliharaan' | 'settings' | 'sessions' | 'builds'
-
-const TABS: Array<{ id: SistemTabId; label: string; Page: () => React.JSX.Element }> = [
-  { id: 'health', label: 'Kesehatan', Page: HealthPage },
-  { id: 'cadangan', label: 'Cadangan', Page: CadanganPage },
-  { id: 'pembersihan', label: 'Pembersihan', Page: PembersihanPage },
-  { id: 'pemeliharaan', label: 'Pemeliharaan', Page: PemeliharaanPage },
-  { id: 'settings', label: 'Pengaturan', Page: SettingsPage },
-  { id: 'sessions', label: 'Sesi', Page: SessionsPage },
-  { id: 'builds', label: 'Build', Page: BuildsPage },
-]
-
-function readTab(): SistemTabId {
-  const tab = new URLSearchParams(window.location.search).get('tab')
-  if (tab === 'health' || tab === 'cadangan' || tab === 'pembersihan' || tab === 'pemeliharaan' || tab === 'settings' || tab === 'sessions' || tab === 'builds') return tab as SistemTabId
-  return 'health'
-}
+/* Halaman "Sistem": tujuh fitur asli disusun bertumpuk dalam SATU
+   halaman, tanpa tab / query parameter tab. Satu PageHeader induk, tiap fitur
+   punya heading <h2> agar tetap terbaca. URL lama tetap jalan lewat
+   komponen redirect di bawah (replaceState ke URL bersih). */
 
 export default function SistemPage() {
-  /* RouterProvider me-render ulang tiap navigate/popstate, sehingga
-     perubahan ?tab= langsung tercermin di sini. */
-  useRoute()
-  const active = readTab()
-  const ActivePage = TABS.find((t) => t.id === active)?.Page ?? TABS[0].Page
-
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <PageHeader title="Sistem" description="Kesehatan, cadangan, pembersihan, pemeliharaan, pengaturan, sesi, dan build dalam satu halaman." />
-      <div className="flex gap-1 overflow-x-auto border-b border-border" role="tablist" aria-label="Sistem">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            role="tab"
-            aria-selected={active === t.id}
-            onClick={() => navigate(`/admin/sistem?tab=${t.id}`)}
-            className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium whitespace-nowrap ${
-              active === t.id
-                ? 'border-accent text-accent'
-                : 'border-transparent text-muted hover:text-ink'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-      <ActivePage />
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold">{'Kesehatan'}</h2>
+        <HealthPage embedded />
+      </section>
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold">{'Cadangan'}</h2>
+        <CadanganPage embedded />
+      </section>
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold">{'Pembersihan'}</h2>
+        <PembersihanPage embedded />
+      </section>
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold">{'Pemeliharaan'}</h2>
+        <PemeliharaanPage embedded />
+      </section>
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold">{'Pengaturan'}</h2>
+        <SettingsPage embedded />
+      </section>
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold">{'Sesi'}</h2>
+        <SessionsPage embedded />
+      </section>
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold">{'Build'}</h2>
+        <BuildsPage embedded />
+      </section>
     </div>
   )
 }
 
-/* Redirect URL lama ke tab yang benar. replaceState mencegah tombol
-   kembali berputar di URL lama. */
-function TabRedirect({ tab }: { tab: SistemTabId }) {
+function PageRedirect() {
   useEffect(() => {
-    window.history.replaceState(null, '', `/admin/sistem?tab=${tab}`)
+    window.history.replaceState(null, '', '/admin/sistem')
     window.dispatchEvent(new Event(NAVIGATE_EVENT))
-  }, [tab])
+  }, [])
   return (
     <div className="flex justify-center py-16">
       <Spinner label="Memuat halaman…" />
@@ -81,10 +63,10 @@ function TabRedirect({ tab }: { tab: SistemTabId }) {
   )
 }
 
-export const HealthRedirect = () => <TabRedirect tab="health" />
-export const CadanganRedirect = () => <TabRedirect tab="cadangan" />
-export const PembersihanRedirect = () => <TabRedirect tab="pembersihan" />
-export const PemeliharaanRedirect = () => <TabRedirect tab="pemeliharaan" />
-export const SettingsRedirect = () => <TabRedirect tab="settings" />
-export const SessionsRedirect = () => <TabRedirect tab="sessions" />
-export const BuildsRedirect = () => <TabRedirect tab="builds" />
+export const HealthRedirect = PageRedirect
+export const CadanganRedirect = PageRedirect
+export const PembersihanRedirect = PageRedirect
+export const PemeliharaanRedirect = PageRedirect
+export const SettingsRedirect = PageRedirect
+export const SessionsRedirect = PageRedirect
+export const BuildsRedirect = PageRedirect

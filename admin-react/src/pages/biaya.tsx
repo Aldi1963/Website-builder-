@@ -56,7 +56,12 @@ type PriceDialog =
   | { mode: 'add' }
   | null
 
-export default function BiayaPage() {
+interface BiayaPageProps {
+  /** Disematkan di halaman gabungan: PageHeader induk disembunyikan. */
+  embedded?: boolean
+}
+
+export default function BiayaPage({ embedded = false }: BiayaPageProps) {
   const toast = useToast()
   const [days, setDays] = useState(30)
   const [data, setData] = useState<CostData | null>(null)
@@ -168,31 +173,32 @@ export default function BiayaPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        description="Perkiraan biaya dari token tercatat di token_usage, dikali harga per model yang diisi admin."
-        actions={
-          <>
-            <Select
-              aria-label="Rentang waktu"
-              value={String(days)}
-              onChange={(e) => setDays(Number(e.target.value) || 0)}
-              className="w-auto"
-            >
-              <option value="7">7 hari terakhir</option>
-              <option value="30">30 hari terakhir</option>
-              <option value="0">Semua riwayat</option>
-            </Select>
-            <button
-              type="button"
-              onClick={() => void downloadCsv()}
-              className={`inline-flex items-center gap-1.5 whitespace-nowrap ${btnOutlineLg}`}
-            >
-              <DownloadSimple size={16} /> Unduh CSV
-            </button>
-          </>
-        }
-      />
-
+      {!embedded ? (
+        <PageHeader
+          description="Perkiraan biaya dari token tercatat di token_usage, dikali harga per model yang diisi admin."
+          actions={
+            <>
+              <Select
+                aria-label="Rentang waktu"
+                value={String(days)}
+                onChange={(e) => setDays(Number(e.target.value) || 0)}
+                className="w-auto"
+              >
+                <option value="7">7 hari terakhir</option>
+                <option value="30">30 hari terakhir</option>
+                <option value="0">Semua riwayat</option>
+              </Select>
+              <button
+                type="button"
+                onClick={() => void downloadCsv()}
+                className={`inline-flex items-center gap-1.5 whitespace-nowrap ${btnOutlineLg}`}
+              >
+                <DownloadSimple size={16} /> Unduh CSV
+              </button>
+            </>
+          }
+        />
+      ) : null}
       {data === null ? (
         <Spinner />
       ) : (

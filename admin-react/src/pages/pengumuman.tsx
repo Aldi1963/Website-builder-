@@ -27,7 +27,12 @@ type FormState =
   | { mode: 'create' }
   | { mode: 'edit'; id: number; title: string; body: string }
 
-export default function PengumumanPage() {
+interface PengumumanPageProps {
+  /** Disematkan di halaman gabungan: PageHeader induk disembunyikan. */
+  embedded?: boolean
+}
+
+export default function PengumumanPage({ embedded = false }: PengumumanPageProps) {
   const toast = useToast()
   const [rows, setRows] = useState<Announcement[] | null>(null)
   const [form, setForm] = useState<FormState | null>(null)
@@ -134,20 +139,21 @@ export default function PengumumanPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="Pengumuman"
-        description="Pengumuman untuk semua pengguna. Hanya satu pengumuman yang aktif dalam satu waktu."
-        actions={
-          <button
-            type="button"
-            onClick={openCreate}
-            className={btnPrimary}
-          >
-            Buat Pengumuman
-          </button>
-        }
-      />
-
+      {!embedded ? (
+        <PageHeader
+          title="Pengumuman"
+          description="Pengumuman untuk semua pengguna. Hanya satu pengumuman yang aktif dalam satu waktu."
+          actions={
+            <button
+              type="button"
+              onClick={openCreate}
+              className={btnPrimary}
+            >
+              Buat Pengumuman
+            </button>
+          }
+        />
+      ) : null}
       <Alert tone="info">
         Pengumuman aktif akan ditampilkan sebagai banner di builder setelah
         perubahan penyajian dipasang (belum tersedia — lihat catatan di bawah).

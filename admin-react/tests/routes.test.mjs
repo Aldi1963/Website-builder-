@@ -1,4 +1,5 @@
-/* TDD: kontrak routes setelah penggabungan halaman bertab.
+/* TDD: kontrak routes setelah penggabungan halaman menjadi satu halaman
+   bertumpuk (tanpa tab / tanpa query ?tab=).
    Jalankan: cd admin-react && node --test tests/routes.test.mjs */
 import test from 'node:test'
 import assert from 'node:assert/strict'
@@ -18,35 +19,38 @@ const MERGES = [
   {
     slug: 'konten',
     path: '/admin/konten',
-    tabs: { projects: 'Proyek', moderasi: 'Moderasi', domain: 'Domain' },
+    children: { projects: 'Daftar Proyek', moderasi: 'Moderasi', domain: 'Domain' },
   },
   {
     slug: 'monetisasi',
     path: '/admin/monetisasi',
-    tabs: { plans: 'Plan', credits: 'Credit', billing: 'Pembayaran' },
+    children: { plans: 'Plan', credits: 'Credit', billing: 'Pembayaran' },
   },
   {
     slug: 'komunikasi',
     path: '/admin/komunikasi',
-    tabs: { messages: 'Pesan', pengumuman: 'Pengumuman', audit: 'Log Audit' },
+    children: { messages: 'Pesan', pengumuman: 'Pengumuman', audit: 'Log Audit' },
   },
   {
     slug: 'sistem',
     path: '/admin/sistem',
-    tabs: {
-      health: 'Kesehatan',
-      cadangan: 'Cadangan',
-      pembersihan: 'Pembersihan',
-      pemeliharaan: 'Pemeliharaan',
-      settings: 'Pengaturan',
-      sessions: 'Sesi',
-      builds: 'Build',
+    children: {
+      health: 'Kesehatan', cadangan: 'Cadangan', pembersihan: 'Pembersihan',
+      pemeliharaan: 'Pemeliharaan', settings: 'Pengaturan', sessions: 'Sesi', builds: 'Build',
     },
   },
+  { slug: 'ai', path: '/admin/ai', children: { providers: 'Provider', 'ai-settings': 'Pengaturan AI', biaya: 'Biaya', usage: 'Usage' } },
 ]
-const oldSlugs = MERGES.flatMap((m) => Object.keys(m.tabs))
+const oldSlugs = MERGES.flatMap((m) => Object.keys(m.children))
 
-test('route baru bertab tersedia dan dapat dicocokkan matchRoute', () => {
+function redirectName(slug) {
+  return `${slug.split('-').map((s) => s.charAt(0).toUpperCase() + s.slice(1)).join('')}Redirect`
+}
+function componentName(slug) {
+  return redirectName(slug).replace(/Redirect$/, 'Page')
+}
+
+test('lima halaman induk tersedia dan dapat dicocokkan matchRoute', () => {
   for (const m of MERGES) {
     const route = ROUTES.find((r) => r.slug === m.slug)
     assert.ok(route, `route ${m.slug} harus ada`)
@@ -56,13 +60,13 @@ test('route baru bertab tersedia dan dapat dicocokkan matchRoute', () => {
   }
 })
 
-test('semua route lama yang tergabung hidden dan redirect ke tab baru', () => {
+test('semua route lama yang tergabung hidden dan redirect tanpa ?tab=', () => {
   for (const m of MERGES) {
-    for (const old of Object.keys(m.tabs)) {
+    for (const old of Object.keys(m.children)) {
       const route = ROUTES.find((r) => r.slug === old)
       assert.ok(route, `route lama ${old} harus tetap ada`)
       assert.equal(route.hidden, true, `${old} harus hidden`)
-      const exportName = `${old.charAt(0).toUpperCase()}${old.slice(1)}Redirect`
+      const exportName = redirectName(old)
       assert.match(
         routesText,
         new RegExp(
@@ -70,31 +74,48 @@ test('semua route lama yang tergabung hidden dan redirect ke tab baru', () => {
         ),
         `${old} harus di-redirect ke ${m.slug}.${exportName}`,
       )
-      redirectName(old).includes('Redirect')
     }
   }
 })
 
-function redirectName(slug) {
-  return `${slug.charAt(0).toUpperCase()}${slug.slice(1)}Redirect`
-}
-
-test('halaman bertab punya PageHeader, tab bar, query ?tab=, dan ekspor redirect', async () => {
+test('halaman induk benar-benar menyatu: tanpa tab bar, tanpa ?tab=, merender >=2 komponen asli', async () => {
   for (const m of MERGES) {
     const text = readFileSync(src(`src/pages/${m.slug}.tsx`), 'utf8')
-    assert.match(text, /<PageHeader[\s\S]*title=/, `${m.slug} butuh PageHeader induk`)
-    assert.match(text, /role="tablist"/, `${m.slug} butuh tab bar`)
-    assert.match(text, /URLSearchParams\(window\.location\.search\)\.get\('tab'\)/, `${m.slug} harus membaca ?tab=`)
-    for (const [old, label] of Object.entries(m.tabs)) {
-      assert.match(text, new RegExp(`from '\\./${old}'`), `${m.slug} harus merender halaman ${old}`)
-      assert.ok(text.includes(`'${label}'`), `${m.slug} butuh label tab ${label}`)
+    assert.match(text, /<PageHeader[\s\S]*title=/, `${m.slug} butuh satu PageHeader induk`)
+    assert.doesNotMatch(text, /role="tablist"/, `${m.slug} tidak boleh punya tab bar`)
+    assert.doesNotMatch(text, /\?tab=/, `${m.slug} tidak boleh memakai query ?tab=`)
+    const rendered = []
+    for (const old of Object.keys(m.children)) {
+      assert.match(text, new RegExp(`import ${componentName(old)} from '\\./${old}'`), `${m.slug} harus import komponen ${old}`)
+      assert.match(text, new RegExp(`<${componentName(old)}\\b`), `${m.slug} harus merender komponen ${old}`)
       assert.match(text, new RegExp(`export const ${redirectName(old)}`), `${m.slug} butuh ${redirectName(old)}`)
+      rendered.push(old)
+    }
+    assert.ok(rendered.length >= 2 && new Set(rendered).size === rendered.length, `${m.slug} harus merender >=2 komponen asli`)
+    // Section berurutan: tiap komponen diberi judul section.
+    for (const [old, label] of Object.entries(m.children)) {
+      assert.ok(text.includes(`'${label}'`), `${m.slug} butuh judul section '${label}'`)
     }
     const mod = await jiti.import(src(`src/pages/${m.slug}.tsx`))
     assert.equal(typeof mod.default, 'function', `${m.slug} default export harus komponen`)
-    for (const old of Object.keys(m.tabs)) {
+    for (const old of Object.keys(m.children)) {
       assert.equal(typeof mod[redirectName(old)], 'function', `${redirectName(old)} harus diekspor`)
     }
+  }
+})
+
+test('halaman asli mendukung prop embedded untuk menyembunyikan PageHeader ganda', () => {
+  for (const old of oldSlugs) {
+    const text = readFileSync(src(`src/pages/${old}.tsx`), 'utf8')
+    assert.match(text, /embedded\?: boolean/, `${old} butuh prop embedded`)
+    assert.match(text, /!embedded\s*\?[\s\S]{0,400}<PageHeader/, `${old} harus menyembunyikan PageHeader saat embedded`)
+  }
+})
+
+test('redirect lama menuju path induk bersih tanpa query', () => {
+  for (const m of MERGES) {
+    const text = readFileSync(src(`src/pages/${m.slug}.tsx`), 'utf8')
+    assert.match(text, new RegExp(`replaceState\\(null, '', '${m.path}'\\)`), `${m.slug} redirect harus ke ${m.path}`)
   }
 })
 
@@ -113,6 +134,12 @@ test('setiap slug di ADMIN_SECTIONS punya route yang tidak hidden', () => {
     ['Utama', 'Konten', 'Layanan', 'Sistem'],
     ' Empat grup sesuai permintaan',
   )
+  assert.deepEqual(ADMIN_SECTIONS.map((s) => s.slugs), [
+    ['dashboard', 'users'],
+    ['konten'],
+    ['monetisasi', 'ai'],
+    ['komunikasi', 'sistem'],
+  ])
   assert.ok(oldSlugs.every((s) => !all.has(s)), 'slug lama tidak boleh muncul di sidebar')
   assert.ok(MERGES.every((m) => all.has(m.slug)), 'slug baru harus muncul di sidebar')
   for (const slug of all) {

@@ -20,7 +20,12 @@ interface AuditLog {
   created_at: number
 }
 
-export default function AuditPage() {
+interface AuditPageProps {
+  /** Disematkan di halaman gabungan: PageHeader induk disembunyikan. */
+  embedded?: boolean
+}
+
+export default function AuditPage({ embedded = false }: AuditPageProps) {
   const toast = useToast()
   const [logs, setLogs] = useState<AuditLog[] | null>(null)
   const [searchInput, setSearchInput] = useState('')
@@ -73,47 +78,48 @@ export default function AuditPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="Log Audit"
-        description={subtitle}
-        actions={
-          <div className="flex flex-wrap gap-2">
-            <div className="w-full max-w-[220px] sm:w-auto">
-              <Select
-                value={action}
-                onChange={(e) => onFilterChange(e.target.value)}
-                aria-label="Filter aksi"
-              >
-                <option value="">Semua aksi</option>
-                {options.map((a) => (
-                  <option key={a} value={a}>
-                    {a}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <form className="flex w-full max-w-[320px] gap-2 sm:w-auto" 
-              onSubmit={(e) => {
-                e.preventDefault()
-                runSearch(searchInput.trim(), action)
-              }}
-            >
-              <div className="min-w-0 flex-1">
-                <SearchInput
-                  value={searchInput}
-                  onChange={setSearchInput}
-                  placeholder="Cari admin, aksi, target…"
-                  ariaLabel="Cari log"
-                />
+      {!embedded ? (
+        <PageHeader
+          title="Log Audit"
+          description={subtitle}
+          actions={
+            <div className="flex flex-wrap gap-2">
+              <div className="w-full max-w-[220px] sm:w-auto">
+                <Select
+                  value={action}
+                  onChange={(e) => onFilterChange(e.target.value)}
+                  aria-label="Filter aksi"
+                >
+                  <option value="">Semua aksi</option>
+                  {options.map((a) => (
+                    <option key={a} value={a}>
+                      {a}
+                    </option>
+                  ))}
+                </Select>
               </div>
-              <button type="submit" aria-label="Cari" className={`shrink-0 ${btnOutlineLg}`}>
-                Cari
-              </button>
-            </form>
-          </div>
-        }
-      />
-
+              <form className="flex w-full max-w-[320px] gap-2 sm:w-auto" 
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  runSearch(searchInput.trim(), action)
+                }}
+              >
+                <div className="min-w-0 flex-1">
+                  <SearchInput
+                    value={searchInput}
+                    onChange={setSearchInput}
+                    placeholder="Cari admin, aksi, target…"
+                    ariaLabel="Cari log"
+                  />
+                </div>
+                <button type="submit" aria-label="Cari" className={`shrink-0 ${btnOutlineLg}`}>
+                  Cari
+                </button>
+              </form>
+            </div>
+          }
+        />
+      ) : null}
       {logs === null ? (
         <Spinner label="Memuat log audit…" />
       ) : (

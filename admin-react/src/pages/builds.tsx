@@ -19,7 +19,12 @@ interface BuildRow {
   owner_email: string | null
 }
 
-export default function BuildsPage() {
+interface BuildsPageProps {
+  /** Disematkan di halaman gabungan: PageHeader induk disembunyikan. */
+  embedded?: boolean
+}
+
+export default function BuildsPage({ embedded = false }: BuildsPageProps) {
   const toast = useToast()
   const [builds, setBuilds] = useState<BuildRow[] | null>(null)
   const [logBuild, setLogBuild] = useState<BuildRow | null>(null)
@@ -39,14 +44,16 @@ export default function BuildsPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="Build"
-        description={
-          builds === null
-            ? 'Riwayat build produksi semua proyek.'
-            : `Riwayat build produksi semua proyek — ${fmtNum(builds.length)} build terakhir`
-        }
-      />
+      {!embedded ? (
+        <PageHeader
+          title="Build"
+          description={
+            builds === null
+              ? 'Riwayat build produksi semua proyek.'
+              : `Riwayat build produksi semua proyek — ${fmtNum(builds.length)} build terakhir`
+          }
+        />
+      ) : null}
       {builds === null ? (
         <Spinner />
       ) : (

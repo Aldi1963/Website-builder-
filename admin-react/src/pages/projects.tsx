@@ -24,7 +24,12 @@ interface AdminProject {
   last_build_ok: boolean | null
 }
 
-export default function ProjectsPage() {
+interface ProjectsPageProps {
+  /** Disematkan di halaman gabungan: PageHeader induk disembunyikan. */
+  embedded?: boolean
+}
+
+export default function ProjectsPage({ embedded = false }: ProjectsPageProps) {
   const toast = useToast()
   const [rows, setRows] = useState<AdminProject[] | null>(null)
   const [pending, setPending] = useState<AdminProject | null>(null)
@@ -60,14 +65,16 @@ export default function ProjectsPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="Proyek"
-        description={
-          rows === null
-            ? 'Proyek dari semua pengguna.'
-            : `Proyek dari semua pengguna — ${fmtNum(rows.length)} proyek`
-        }
-      />
+      {!embedded ? (
+        <PageHeader
+          title="Proyek"
+          description={
+            rows === null
+              ? 'Proyek dari semua pengguna.'
+              : `Proyek dari semua pengguna — ${fmtNum(rows.length)} proyek`
+          }
+        />
+      ) : null}
       {rows === null ? (
         <Spinner />
       ) : (

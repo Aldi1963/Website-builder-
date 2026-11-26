@@ -38,7 +38,12 @@ interface BillingData {
 const ENV_WARNING =
   'Key aktif saat ini berasal dari environment server (env menang atas panel). Mengisi key di halaman ini belum berpengaruh sampai entri VB_CLIPKUPAY_API_KEY di env VPS dihapus/diubah.'
 
-export default function BillingPage() {
+interface BillingPageProps {
+  /** Disematkan di halaman gabungan: PageHeader induk disembunyikan. */
+  embedded?: boolean
+}
+
+export default function BillingPage({ embedded = false }: BillingPageProps) {
   const toast = useToast()
   const [data, setData] = useState<BillingData | null>(null)
   const [apiKey, setApiKey] = useState('')
@@ -102,11 +107,12 @@ export default function BillingPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="Pembayaran"
-        description="Kredensial Clipku Pay untuk top-up credit (QRIS). Nilai key/secret tidak pernah ditampilkan."
-      />
-
+      {!embedded ? (
+        <PageHeader
+          title="Pembayaran"
+          description="Kredensial Clipku Pay untuk top-up credit (QRIS). Nilai key/secret tidak pernah ditampilkan."
+        />
+      ) : null}
       {data === null ? (
         <Spinner />
       ) : (

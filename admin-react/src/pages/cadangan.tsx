@@ -32,7 +32,12 @@ interface RestoreResponse {
   autoBackup: string
 }
 
-export default function CadanganPage() {
+interface CadanganPageProps {
+  /** Disematkan di halaman gabungan: PageHeader induk disembunyikan. */
+  embedded?: boolean
+}
+
+export default function CadanganPage({ embedded = false }: CadanganPageProps) {
   const toast = useToast()
   const [data, setData] = useState<BackupList | null>(null)
   const [busy, setBusy] = useState(false)
@@ -121,15 +126,17 @@ export default function CadanganPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="Cadangan & Pulihkan"
-        description="Unduh salinan database, atau pulihkan dari file cadangan. Setiap pemulihan otomatis menyimpan cadangan database aktif terlebih dahulu."
-        actions={
-          <a href="/api/admin/backup" className={btnPrimary}>
-            <Download size={16} /> Unduh cadangan
-          </a>
-        }
-      />
+      {!embedded ? (
+        <PageHeader
+          title="Cadangan & Pulihkan"
+          description="Unduh salinan database, atau pulihkan dari file cadangan. Setiap pemulihan otomatis menyimpan cadangan database aktif terlebih dahulu."
+          actions={
+            <a href="/api/admin/backup" className={btnPrimary}>
+              <Download size={16} /> Unduh cadangan
+            </a>
+          }
+        />
+      ) : null}
       {data === null ? (
         <Spinner />
       ) : (

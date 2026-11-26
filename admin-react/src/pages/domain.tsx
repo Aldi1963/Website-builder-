@@ -41,7 +41,12 @@ interface VerifyResult {
   ssl: string
 }
 
-export default function DomainPage() {
+interface DomainPageProps {
+  /** Disematkan di halaman gabungan: PageHeader induk disembunyikan. */
+  embedded?: boolean
+}
+
+export default function DomainPage({ embedded = false }: DomainPageProps) {
   const toast = useToast()
   const [domains, setDomains] = useState<DomainRow[] | null>(null)
   const [subtitle, setSubtitle] = useState('Domain kustom proyek.')
@@ -146,8 +151,9 @@ export default function DomainPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Domain" description={subtitle} />
-
+      {!embedded ? (
+        <PageHeader title="Domain" description={subtitle} />
+      ) : null}
       <Alert tone="warning">
         Routing dan SSL otomatis <strong>belum dipasang</strong> — halaman ini hanya mencatat domain dan memeriksa
         DNS. Target CNAME yang diharapkan: <code>clidi.net</code>.

@@ -34,7 +34,12 @@ function SrcBadge({ src }: { src: Source }) {
   return <Badge tone="default">default</Badge>
 }
 
-export default function AiSettingsPage() {
+interface AiSettingsPageProps {
+  /** Disematkan di halaman gabungan: PageHeader induk disembunyikan. */
+  embedded?: boolean
+}
+
+export default function AiSettingsPage({ embedded = false }: AiSettingsPageProps) {
   const toast = useToast()
   const [settings, setSettings] = useState<AiSettings | null>(null)
   const [busy, setBusy] = useState(false)
@@ -104,9 +109,11 @@ export default function AiSettingsPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        description="Model dan provider LLM yang dipakai server. Perubahan berlaku langsung tanpa restart."
-      />
+      {!embedded ? (
+        <PageHeader
+          description="Model dan provider LLM yang dipakai server. Perubahan berlaku langsung tanpa restart."
+        />
+      ) : null}
       {settings === null ? (
         <Spinner />
       ) : (

@@ -21,7 +21,12 @@ interface SettingsData {
   admin: { email: string; via: 'env' | 'first-account' } | null
 }
 
-export default function SettingsPage() {
+interface SettingsPageProps {
+  /** Disematkan di halaman gabungan: PageHeader induk disembunyikan. */
+  embedded?: boolean
+}
+
+export default function SettingsPage({ embedded = false }: SettingsPageProps) {
   const toast = useToast()
   const [data, setData] = useState<SettingsData | null>(null)
 
@@ -55,11 +60,12 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="Pengaturan"
-        description="Konfigurasi server saat ini (tampilan saja)."
-      />
-
+      {!embedded ? (
+        <PageHeader
+          title="Pengaturan"
+          description="Konfigurasi server saat ini (tampilan saja)."
+        />
+      ) : null}
       <div className="grid gap-4 lg:grid-cols-7">
         <div className="min-w-0 lg:col-span-4">
           <Card title="Konfigurasi">

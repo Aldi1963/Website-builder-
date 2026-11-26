@@ -23,7 +23,12 @@ interface CleanupData {
   lastRun: { at: number; builds: number; sessions: number; previews: number } | null
 }
 
-export default function PembersihanPage() {
+interface PembersihanPageProps {
+  /** Disematkan di halaman gabungan: PageHeader induk disembunyikan. */
+  embedded?: boolean
+}
+
+export default function PembersihanPage({ embedded = false }: PembersihanPageProps) {
   const toast = useToast()
   const [data, setData] = useState<CleanupData | null>(null)
   const [busy, setBusy] = useState(false)
@@ -89,15 +94,17 @@ export default function PembersihanPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="Pembersihan"
-        description="Hapus data lama yang sudah tidak dipakai: build lama dan sesi login kedaluwarsa. Preview yang sedang berjalan tidak pernah dihentikan dari sini."
-        actions={
-          <button type="button" className={btnPrimary} disabled={busy || data === null} onClick={() => setRunConfirm(true)}>
-            <Trash size={16} /> Jalankan pembersihan sekarang
-          </button>
-        }
-      />
+      {!embedded ? (
+        <PageHeader
+          title="Pembersihan"
+          description="Hapus data lama yang sudah tidak dipakai: build lama dan sesi login kedaluwarsa. Preview yang sedang berjalan tidak pernah dihentikan dari sini."
+          actions={
+            <button type="button" className={btnPrimary} disabled={busy || data === null} onClick={() => setRunConfirm(true)}>
+              <Trash size={16} /> Jalankan pembersihan sekarang
+            </button>
+          }
+        />
+      ) : null}
       {data === null ? (
         <Spinner />
       ) : (

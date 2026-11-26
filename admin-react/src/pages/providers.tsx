@@ -8,7 +8,12 @@ import { CProviderCard, type Provider } from '../components/CProviderCard'
 import { fmtNum } from '../components/BFormat'
 import { btnOutlineLg } from '../components/DFormat'
 
-export default function ProvidersPage() {
+interface ProvidersPageProps {
+  /** Disematkan di halaman gabungan: PageHeader induk disembunyikan. */
+  embedded?: boolean
+}
+
+export default function ProvidersPage({ embedded = false }: ProvidersPageProps) {
   const toast = useToast()
   const [providers, setProviders] = useState<Provider[] | null>(null)
   const [pricesResult, setPricesResult] = useState('')
@@ -43,29 +48,30 @@ export default function ProvidersPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        description="Provider + model + tarif yang dipakai builder. Hanya model yang aktif, di provider aktif, dan punya tarif yang bisa dipakai — model tanpa tarif tidak bisa dipakai (anti-rugi)."
-        actions={
-          <>
-            <button
-              type="button"
-              onClick={() => void syncPrices()}
-              disabled={syncingPrices}
-              className={`whitespace-nowrap ${btnOutlineLg}`}
-            >
-              {syncingPrices ? 'Menyinkronkan…' : 'Sinkronkan harga ke Biaya'}
-            </button>
-            <button
-              type="button"
-              onClick={() => void load()}
-              className={`whitespace-nowrap ${btnOutlineLg}`}
-            >
-              Muat ulang
-            </button>
-          </>
-        }
-      />
-
+      {!embedded ? (
+        <PageHeader
+          description="Provider + model + tarif yang dipakai builder. Hanya model yang aktif, di provider aktif, dan punya tarif yang bisa dipakai — model tanpa tarif tidak bisa dipakai (anti-rugi)."
+          actions={
+            <>
+              <button
+                type="button"
+                onClick={() => void syncPrices()}
+                disabled={syncingPrices}
+                className={`whitespace-nowrap ${btnOutlineLg}`}
+              >
+                {syncingPrices ? 'Menyinkronkan…' : 'Sinkronkan harga ke Biaya'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void load()}
+                className={`whitespace-nowrap ${btnOutlineLg}`}
+              >
+                Muat ulang
+              </button>
+            </>
+          }
+        />
+      ) : null}
       <Alert tone="info">
         Nilai API key <strong>tidak pernah ditampilkan</strong> di halaman ini — hanya status terpasang/belum. Isi
         field key untuk mengganti key; simpan dalam keadaan kosong (dengan konfirmasi) untuk menghapus key yang

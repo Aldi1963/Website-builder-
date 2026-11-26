@@ -60,7 +60,12 @@ interface CreditDetail {
   transactions: { kind: string; bucket: string | null; amount: number; balance_after: number; reason: string; order_id: string | null; created_at: number }[]
 }
 
-export default function CreditsPage() {
+interface CreditsPageProps {
+  /** Disematkan di halaman gabungan: PageHeader induk disembunyikan. */
+  embedded?: boolean
+}
+
+export default function CreditsPage({ embedded = false }: CreditsPageProps) {
   const toast = useToast()
   const [settingsForm, setSettingsForm] = useState<CreditSettings | null>(null)
   const [query, setQuery] = useState('')
@@ -172,11 +177,12 @@ export default function CreditsPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="Kelola Credit"
-        description="Saldo pengguna, penyesuaian manual, dan pengaturan angka credit. Jatah plan (Gratis 100/bln, Pro 2.000/bln) diperbarui tiap awal bulan — sisa bulan lalu hangus, tidak menumpuk."
-      />
-
+      {!embedded ? (
+        <PageHeader
+          title="Kelola Credit"
+          description="Saldo pengguna, penyesuaian manual, dan pengaturan angka credit. Jatah plan (Gratis 100/bln, Pro 2.000/bln) diperbarui tiap awal bulan — sisa bulan lalu hangus, tidak menumpuk."
+        />
+      ) : null}
       <Card title="Cari Pengguna">
         <form
           onSubmit={(e) => {

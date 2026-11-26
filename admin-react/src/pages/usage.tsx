@@ -17,7 +17,12 @@ interface UsageData {
   totals: { messages: number; projects: number; builds: number; tokens: number }
 }
 
-export default function UsagePage() {
+interface UsagePageProps {
+  /** Disematkan di halaman gabungan: PageHeader induk disembunyikan. */
+  embedded?: boolean
+}
+
+export default function UsagePage({ embedded = false }: UsagePageProps) {
   const toast = useToast()
   const [data, setData] = useState<UsageData | null>(null)
 
@@ -36,10 +41,11 @@ export default function UsagePage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        description="Token LLM sejak server start & aktivitas 14 hari terakhir."
-      />
-
+      {!embedded ? (
+        <PageHeader
+          description="Token LLM sejak server start & aktivitas 14 hari terakhir."
+        />
+      ) : null}
       {data === null ? (
         <Spinner />
       ) : (

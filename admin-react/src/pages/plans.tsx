@@ -48,7 +48,12 @@ const PLAN_FIELDS: CFormField[] = [
   { name: 'description', label: 'Keterangan', type: 'textarea' },
 ]
 
-export default function PlansPage() {
+interface PlansPageProps {
+  /** Disematkan di halaman gabungan: PageHeader induk disembunyikan. */
+  embedded?: boolean
+}
+
+export default function PlansPage({ embedded = false }: PlansPageProps) {
   const toast = useToast()
   const [plans, setPlans] = useState<Plan[] | null>(null)
   const [users, setUsers] = useState<PlanUser[] | null>(null)
@@ -139,20 +144,21 @@ export default function PlansPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="Plan"
-        description="Paket token untuk pengguna. Kuota dipakai untuk pemantauan — chat belum dibatasi kuota."
-        actions={
-          <button
-            type="button"
-            onClick={() => setAddOpen(true)}
-            className={btnPrimary}
-          >
-            Tambah Plan
-          </button>
-        }
-      />
-
+      {!embedded ? (
+        <PageHeader
+          title="Plan"
+          description="Paket token untuk pengguna. Kuota dipakai untuk pemantauan — chat belum dibatasi kuota."
+          actions={
+            <button
+              type="button"
+              onClick={() => setAddOpen(true)}
+              className={btnPrimary}
+            >
+              Tambah Plan
+            </button>
+          }
+        />
+      ) : null}
       {plans === null ? (
         <Spinner />
       ) : (

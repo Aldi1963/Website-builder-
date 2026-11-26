@@ -37,7 +37,12 @@ interface AlertsData {
   thresholds: { buildFailCount: number; buildFailPct: number; diskPct: number }
 }
 
-export default function HealthPage() {
+interface HealthPageProps {
+  /** Disematkan di halaman gabungan: PageHeader induk disembunyikan. */
+  embedded?: boolean
+}
+
+export default function HealthPage({ embedded = false }: HealthPageProps) {
   const toast = useToast()
   const [health, setHealth] = useState<HealthData | null>(null)
   const [alertsData, setAlertsData] = useState<AlertsData | null>(null)
@@ -69,8 +74,9 @@ export default function HealthPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Kesehatan Sistem" description="Status server, LLM, dan preview yang berjalan." />
-      {health === null ? (
+      {!embedded ? (
+        <PageHeader title="Kesehatan Sistem" description="Status server, LLM, dan preview yang berjalan." />
+      ) : null}      {health === null ? (
         <Spinner />
       ) : (
         <>

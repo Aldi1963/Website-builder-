@@ -40,7 +40,12 @@ type ConfirmKind = 'unflag' | 'suspend'
 
 /* Tone badge status proyek — lihat projectStatusTone di BFormat. */
 
-export default function ModerasiPage() {
+interface ModerasiPageProps {
+  /** Disematkan di halaman gabungan: PageHeader induk disembunyikan. */
+  embedded?: boolean
+}
+
+export default function ModerasiPage({ embedded = false }: ModerasiPageProps) {
   const toast = useToast()
   const [projects, setProjects] = useState<ModerationProject[] | null>(null)
   const [busy, setBusy] = useState(false)
@@ -124,14 +129,16 @@ export default function ModerasiPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="Moderasi"
-        description={
-          projects === null
-            ? 'Moderasi proyek.'
-            : `Moderasi proyek — ${fmtNum(projects.length)} proyek · ${fmtNum(flagged)} ditandai · ${fmtNum(suspended)} ditangguhkan`
-        }
-      />
+      {!embedded ? (
+        <PageHeader
+          title="Moderasi"
+          description={
+            projects === null
+              ? 'Moderasi proyek.'
+              : `Moderasi proyek — ${fmtNum(projects.length)} proyek · ${fmtNum(flagged)} ditandai · ${fmtNum(suspended)} ditangguhkan`
+          }
+        />
+      ) : null}
       <Alert tone="warning">
         Penangguhan di sini hanya menandai proyek di panel admin dan menghentikan preview yang sedang
         berjalan. Preview/publish di jalur publik <strong>belum diblokir otomatis</strong> — penegakan

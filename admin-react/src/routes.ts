@@ -148,7 +148,7 @@ const page = (slug: string) => {
 export const ROUTES: AdminRoute[] = [
   { slug: 'dashboard', path: '/admin', title: 'Dashboard', icon: Gauge, component: page('dashboard') },
   { slug: 'users', path: '/admin/users', title: 'Pengguna', icon: Users, component: page('users') },
-  /* URL lama yang tergabung: redirect ke tab halaman baru (hidden di sidebar & search). */
+  /* URL lama yang tergabung: redirect ke halaman induk (hidden di sidebar & search). */
   { slug: 'projects', path: '/admin/projects', title: 'Proyek', icon: Cube, component: page('projects'), hidden: true },
   { slug: 'moderasi', path: '/admin/moderasi', title: 'Moderasi', icon: Flag, component: page('moderasi'), hidden: true },
   { slug: 'domain', path: '/admin/domain', title: 'Domain', icon: LinkIcon, component: page('domain'), hidden: true },
@@ -157,7 +157,7 @@ export const ROUTES: AdminRoute[] = [
   { slug: 'credits', path: '/admin/credits', title: 'Kelola Credit', icon: Coins, component: page('credits'), hidden: true },
   { slug: 'monetisasi', path: '/admin/monetisasi', title: 'Monetisasi', icon: Coins, component: page('monetisasi') },
   { slug: 'ai', path: '/admin/ai', title: 'AI', icon: Robot, component: page('ai') },
-  /* URL lama halaman AI (redirect ke tab yang benar, tidak tampil di sidebar). */
+  /* URL lama halaman AI (redirect ke /admin/ai, tidak tampil di sidebar). */
   { slug: 'usage', path: '/admin/usage', title: 'Penggunaan', icon: ChartLine, component: page('usage'), hidden: true },
   { slug: 'biaya', path: '/admin/biaya', title: 'Biaya LLM', icon: CurrencyDollar, component: page('biaya'), hidden: true },
   { slug: 'providers', path: '/admin/providers', title: 'Provider LLM', icon: Plug, component: page('providers'), hidden: true },
