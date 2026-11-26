@@ -1,16 +1,21 @@
-/* One-view: dari file viewer kembali ke daftar proyek tidak boleh mengulang
-   dari Chat. State tab + file dibuka dipertahankan per proyek.
-   Jalankan: cd platform && node --test tests/one-view.test.mjs */
+/* Route adalah sumber kebenaran tampilan workspace; file yang dibuka tetap
+   dipertahankan per proyek lewat localStorage (vb-view-<id>).
+   Jalankan: cd platform && node --test tests/*.mjs */
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 const src = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
 
-test('tab & file viewer dipertahankan per proyek saat balik dari daftar proyek', () => {
-  assert.match(src, /VIEW_KEY\s*=\s*\(id:/, 'harus ada kunci state per proyek')
-  assert.match(src, /loadView\(projectId\)\.tab/, 'tab harus di-init dari state tersimpan')
-  assert.match(src, /loadView\(projectId\)\.file/, 'file harus di-init dari state tersimpan')
-  assert.match(src, /saveView\(projectId,\s*\{\s*tab,\s*file:\s*openFile\s*\}\)/, 'tab + file disimpan tiap berubah')
-  assert.match(src, /if \(saved\.tab === 'code' && saved\.file\) void openFileAt\(saved\.file\)/, 'file dibuka ulang saat masuk workspace')
+test('tab mengikuti route (/chat default, /file, /database)', () => {
+  assert.match(src, /matchPath\('\/proyek\/:id\/file', path\)/)
+  assert.match(src, /routeTab: Tab/)
+  assert.match(src, /useState<Tab>\(routeTab\)/)
+  assert.match(src, /setTab\(routeTab\)/)
+})
+
+test('file yang dibuka dipertahankan per proyek & dibuka ulang di route /file', () => {
+  assert.match(src, /VIEW_KEY\s*=\s*\(id:/, 'kunci state per proyek')
+  assert.match(src, /saveView\(projectId,\s*\{\s*tab,\s*file:\s*openFile\s*\}/)
+  assert.match(src, /if \(saved\.tab === 'code' && saved\.file && routeTab !== 'chat'\) void openFileAt\(saved\.file\)/)
 })

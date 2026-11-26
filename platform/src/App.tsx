@@ -611,7 +611,16 @@ export default function App() {
 
   // Routing: '/' home, '/proyek/:id' workspace, '/profil' account page,
   // '/penggunaan' credit usage page (fase 3).
-  const projectRoute = matchPath('/proyek/:id', path)
+  const projectRoute =
+    matchPath('/proyek/:id/chat', path) ??
+    matchPath('/proyek/:id/file', path) ??
+    matchPath('/proyek/:id/database', path) ??
+    matchPath('/proyek/:id', path)
+  const routeTab: Tab = matchPath('/proyek/:id/file', path)
+    ? 'code'
+    : matchPath('/proyek/:id/database', path)
+      ? 'database'
+      : 'chat'
   const profileRoute = matchPath('/profil', path)
   const usageRoute = matchPath('/penggunaan', path)
   const marketRoute = matchPath('/marketplace', path)
@@ -705,6 +714,7 @@ export default function App() {
         <Workspace
           key={activeId}
           projectId={activeId}
+          routeTab={routeTab}
           onMenu={() => setNavOpen(true)}
           onTitle={(name) => setProjects((p) => p.map((x) => (x.id === activeId ? { ...x, name } : x)))}
         />
@@ -1216,6 +1226,15 @@ function Sidebar({
           ))}
         </div>
 
+        <a
+          href="/admin/settings"
+          className="flex min-h-[38px] max-md:min-h-[44px] items-center gap-2 border-t border-edge px-3 py-2 text-[12.5px] text-body transition-colors hover:bg-ink"
+          title="Pengaturan admin — API key, model, pembayaran"
+        >
+          <Icon name="gear" size={13} className="text-quiet" />
+          Pengaturan admin
+        </a>
+
         <UserBar user={user} onLogout={onLogout} />
 
         <div className="border-t border-edge px-3 py-2">
@@ -1265,12 +1284,11 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
   )
 }
 
-type Tab = 'chat' | 'code'
+type Tab = 'chat' | 'code' | 'database'
 
-function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle: (n: string) => void; onMenu: () => void }) {
+function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string; routeTab: Tab; onTitle: (n: string) => void; onMenu: () => void }) {
   const { dark, toggle } = useTheme()
-  const [tab, setTab] = useState<Tab>(() => loadView(projectId).tab)
-  const [dbOpen, setDbOpen] = useState(false)
+  const [tab, setTab] = useState<Tab>(routeTab)
   const [messages, setMessages] = useState<{ role: string; content: string; id?: number }[]>([])
   const [pendingDiscovery, setPendingDiscovery] = useState<string | null>(null)
   const [streamText, setStreamText] = useState('')
@@ -1321,6 +1339,13 @@ function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle:
       alive = false
     }
   }, [])
+  /* Route adalah sumber kebenaran: /chat, /file, /database. Berpindah URL
+     (kembali, refresh, tautan langsung) selalu mengarahkan panel yang benar. */
+  useEffect(() => {
+    setTab(routeTab)
+    if (routeTab === 'code' && openFile) saveView(projectId, { tab: 'code', file: openFile })
+  }, [routeTab, projectId, openFile])
+
   const [planMode, setPlanMode] = useState(false)
   const [pendingPlan, setPendingPlan] = useState<{ prompt: string } | null>(null)
   const [awaitingConfirm, setAwaitingConfirm] = useState(false)
@@ -1352,8 +1377,10 @@ function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle:
 
   useEffect(() => {
     void load().then(() => {
+      /* File dibuka ulang hanya bila route memang /file, atau user nieuwe
+         masuk lewat /proyek/:id dengan state tersimpan (kompatibilitas). */
       const saved = loadView(projectId)
-      if (saved.tab === 'code' && saved.file) void openFileAt(saved.file)
+      if (saved.tab === 'code' && saved.file && routeTab !== 'chat') void openFileAt(saved.file)
     })
     void api.usage().then(setUsage).catch(() => {})
     return () => abortRef.current?.abort()
@@ -1362,7 +1389,7 @@ function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle:
   /* One-view: simpan tab + file yang dibuka tiap berubah supaya kembali dari
      daftar proyek langsung ke tampilan yang sama, bukan mulai dari Chat. */
   useEffect(() => {
-    saveView(projectId, { tab, file: openFile })
+    if (tab !== 'database') saveView(projectId, { tab, file: openFile })
   }, [projectId, tab, openFile])
 
   const autoPreview = async () => {
@@ -1435,7 +1462,7 @@ function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle:
         setBuildLog({ ok, log })
         pushActivity({ kind: 'terminal', title: 'npm run build', log, ok, at: Date.now() })
         setInlineEvents((prev) => [...prev, { kind: 'terminal', title: 'npm run build', log, ok }])
-        if (!ok) setTab('code')
+        if (!ok) navigate(`/proyek/${projectId}/file`)
       },
       onInstall: (ok, log) => {
         pushActivity({ kind: 'terminal', title: 'npm install', log, ok, at: Date.now() })
@@ -1535,7 +1562,7 @@ function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle:
       const b = await api.build(projectId)
       if (!b.ok) {
         setBuildLog({ ok: false, log: b.log })
-        setTab('code')
+        navigate(`/proyek/${projectId}/file`)
         return
       }
       const p = await api.preview(projectId)
@@ -1615,8 +1642,8 @@ function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle:
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <header className="flex h-12 shrink-0 items-center gap-2 border-b border-edge bg-ink px-3">
         <button
-          onClick={onMenu}
-          aria-label="Buka daftar proyek"
+          onClick={() => navigate(`/proyek/${projectId}/chat`)}
+          aria-label="Kembali ke chat"
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-edge text-body hover:bg-surface max-md:h-11 max-md:w-11"
         >
           <Icon name="back" size={15} />
@@ -1645,8 +1672,8 @@ function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle:
               lewat notifyBalanceChanged() di onDone/onError di bawah. */}
           <CreditChip />
           <SessionMenu
-            onShowFiles={() => setTab('code')}
-            onShowDatabase={() => setDbOpen(true)}
+            onShowFiles={() => navigate(`/proyek/${projectId}/file`)}
+            onShowDatabase={() => navigate(`/proyek/${projectId}/database`)}
             onRun={startPreview}
             runLabel={previewOn ? 'Build ulang' : 'Jalankan'}
             running={booting}
@@ -1686,7 +1713,7 @@ function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle:
             waitingForDiscovery={!!pendingDiscovery}
             inlineEvents={inlineEvents}
             onOpenFile={(path) => {
-              setTab('code')
+              navigate(`/proyek/${projectId}/file`)
               void openFileAt(path)
             }}
             previewOpen={previewOn && !sending}
@@ -1738,8 +1765,8 @@ function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle:
       />
 
       <DatabaseViewer
-        open={dbOpen}
-        onClose={() => setDbOpen(false)}
+        open={routeTab === 'database'}
+        onClose={() => navigate(`/proyek/${projectId}/chat`)}
         projectId={projectId}
         files={files}
       />
