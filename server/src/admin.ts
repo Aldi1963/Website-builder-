@@ -1934,6 +1934,7 @@ export function registerAdmin(app: Hono<AdminEnv>) {
     'builds',
     'biaya',
     'providers',
+    'ai',
     'billing',
     'domain',
     'messages',

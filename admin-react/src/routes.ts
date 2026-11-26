@@ -36,6 +36,8 @@ export interface AdminRoute {
   title: string
   icon: Icon
   component: LazyExoticComponent<ComponentType>
+  /** Route redirect/legacy: tidak tampil di sidebar & pencarian header. */
+  hidden?: boolean
 }
 
 /* Impor lazy eksplisit per halaman: Vite tidak bisa membundel
@@ -58,12 +60,24 @@ const page = (slug: string) => {
       return lazy(() => import('./pages/plans'))
     case 'credits':
       return lazy(() => import('./pages/credits'))
+    case 'ai':
+      return lazy(() => import('./pages/ai'))
     case 'usage':
-      return lazy(() => import('./pages/usage'))
+      return lazy(() =>
+        import('./pages/ai').then((m) => ({ default: m.UsageRedirect })),
+      )
     case 'biaya':
-      return lazy(() => import('./pages/biaya'))
+      return lazy(() =>
+        import('./pages/ai').then((m) => ({ default: m.BiayaRedirect })),
+      )
     case 'providers':
-      return lazy(() => import('./pages/providers'))
+      return lazy(() =>
+        import('./pages/ai').then((m) => ({ default: m.ProvidersRedirect })),
+      )
+    case 'ai-settings':
+      return lazy(() =>
+        import('./pages/ai').then((m) => ({ default: m.AiSettingsRedirect })),
+      )
     case 'billing':
       return lazy(() => import('./pages/billing'))
     case 'builds':
@@ -84,8 +98,6 @@ const page = (slug: string) => {
       return lazy(() => import('./pages/audit'))
     case 'pemeliharaan':
       return lazy(() => import('./pages/pemeliharaan'))
-    case 'ai-settings':
-      return lazy(() => import('./pages/ai-settings'))
     case 'settings':
       return lazy(() => import('./pages/settings'))
     default:
@@ -101,9 +113,12 @@ export const ROUTES: AdminRoute[] = [
   { slug: 'domain', path: '/admin/domain', title: 'Domain', icon: LinkIcon, component: page('domain') },
   { slug: 'plans', path: '/admin/plans', title: 'Plan', icon: Medal, component: page('plans') },
   { slug: 'credits', path: '/admin/credits', title: 'Kelola Credit', icon: Coins, component: page('credits') },
-  { slug: 'usage', path: '/admin/usage', title: 'Penggunaan', icon: ChartLine, component: page('usage') },
-  { slug: 'biaya', path: '/admin/biaya', title: 'Biaya LLM', icon: CurrencyDollar, component: page('biaya') },
-  { slug: 'providers', path: '/admin/providers', title: 'Provider LLM', icon: Plug, component: page('providers') },
+  { slug: 'ai', path: '/admin/ai', title: 'AI', icon: Robot, component: page('ai') },
+  /* URL lama halaman AI (redirect ke tab yang benar, tidak tampil di sidebar). */
+  { slug: 'usage', path: '/admin/usage', title: 'Penggunaan', icon: ChartLine, component: page('usage'), hidden: true },
+  { slug: 'biaya', path: '/admin/biaya', title: 'Biaya LLM', icon: CurrencyDollar, component: page('biaya'), hidden: true },
+  { slug: 'providers', path: '/admin/providers', title: 'Provider LLM', icon: Plug, component: page('providers'), hidden: true },
+  { slug: 'ai-settings', path: '/admin/ai-settings', title: 'Pengaturan AI', icon: Robot, component: page('ai-settings'), hidden: true },
   { slug: 'billing', path: '/admin/billing', title: 'Pembayaran', icon: CreditCard, component: page('billing') },
   { slug: 'builds', path: '/admin/builds', title: 'Build', icon: Hammer, component: page('builds') },
   { slug: 'messages', path: '/admin/messages', title: 'Pesan', icon: ChatText, component: page('messages') },
@@ -114,13 +129,12 @@ export const ROUTES: AdminRoute[] = [
   { slug: 'pembersihan', path: '/admin/pembersihan', title: 'Pembersihan', icon: Trash, component: page('pembersihan') },
   { slug: 'audit', path: '/admin/audit', title: 'Log Audit', icon: ClockCounterClockwise, component: page('audit') },
   { slug: 'pemeliharaan', path: '/admin/pemeliharaan', title: 'Pemeliharaan', icon: Wrench, component: page('pemeliharaan') },
-  { slug: 'ai-settings', path: '/admin/ai-settings', title: 'Pengaturan AI', icon: Robot, component: page('ai-settings') },
   { slug: 'settings', path: '/admin/settings', title: 'Pengaturan', icon: Gear, component: page('settings') },
 ]
 
 /** Slug yang masuk kelompok "Admin" di sidebar (ada pemisah + label
     "Admin" sebelum Log Audit, seperti shell.html). */
-export const ADMIN_SECTION_SLUGS = ['audit', 'pemeliharaan', 'ai-settings', 'settings']
+export const ADMIN_SECTION_SLUGS = ['audit', 'pemeliharaan', 'settings']
 
 /** Tautan keluar sidebar (bukan route admin). */
 export const SITE_LINK = { title: 'Kembali ke Builder', href: '/', icon: ArrowSquareOut }

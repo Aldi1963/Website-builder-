@@ -89,7 +89,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
   const searchInputRef = useRef<HTMLInputElement>(null)
   const searchResults =
     searchQuery.length >= 2
-      ? ROUTES.filter((r) => r.title.toLowerCase().includes(searchQuery.toLowerCase())).slice(0, 6)
+      ? ROUTES.filter((r) => !r.hidden && r.title.toLowerCase().includes(searchQuery.toLowerCase())).slice(0, 6)
       : []
 
   /* Badge nav + notifikasi: sumber data SAMA seperti admin.js lama.
@@ -262,7 +262,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
       </div>
       <nav className="flex-1 overflow-y-auto px-3 py-3" aria-label="Menu admin">
         <ul className="space-y-0.5">
-          {ROUTES.map((route) => {
+          {ROUTES.filter((route) => !route.hidden).map((route) => {
             const Icon = route.icon
             const sectionStart = ADMIN_SECTION_SLUGS[0] === route.slug
             return (

@@ -14,7 +14,7 @@ import { matchRoute, type AdminRoute } from '../routes'
 
 export const BASENAME = '/admin'
 
-const NAVIGATE_EVENT = 'vb:navigate'
+export const NAVIGATE_EVENT = 'vb:navigate'
 
 export function navigate(path: string): void {
   window.history.pushState(null, '', path)

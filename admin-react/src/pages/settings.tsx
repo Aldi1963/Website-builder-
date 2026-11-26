@@ -48,11 +48,6 @@ export default function SettingsPage() {
 
   const rows: Array<[string, string]> = data
     ? [
-        ['Model utama', data.model],
-        ['Model kuat', data.modelStrong],
-        ['Model audit', data.modelAudit],
-        ['LLM host', data.llmHost],
-        ['API key LLM', data.keyConfigured ? 'Terpasang' : 'Tidak ada'],
         ['Domain publik', `${data.publicSuffix} (${data.publicOrigin})`],
         ['Database', `${data.dbPath} (${fmtBytes(data.dbSize)})`],
         [
@@ -124,7 +119,7 @@ export default function SettingsPage() {
           <Card title="Catatan">
             <p className="mb-0 text-sm text-muted">
               Model dan provider LLM bisa diubah dari halaman{' '}
-              <strong>Pengaturan AI</strong> (tersimpan di database, berlaku
+              <strong>AI</strong> (tab Pengaturan, tersimpan di database, berlaku
               tanpa restart). Akun admin adalah akun pertama yang dibuat,
               kecuali <code className="font-mono text-xs">VB_ADMIN_EMAIL</code>{' '}
               diset.
