@@ -39,6 +39,8 @@ export interface AdminRoute {
   /** Halaman induk gabungan; entri dengan parent dirender sebagai sub-menu
       di sidebar (tetap punya URL & halaman aslinya sendiri). */
   parent?: string
+  /** Sembunyikan dari sidebar; URL & halaman aslinya tetap aktif. */
+  hidden?: boolean
 }
 
 /* Impor lazy eksplisit per halaman: Vite tidak bisa membundel
@@ -110,12 +112,12 @@ export const ROUTES: AdminRoute[] = [
   { slug: 'dashboard', path: '/admin', title: 'Dashboard', icon: Gauge, component: page('dashboard') },
   { slug: 'users', path: '/admin/users', title: 'Pengguna', icon: Users, component: page('users') },
   /* Induk Konten + sub-halaman aslinya. */
-  { slug: 'projects', path: '/admin/projects', title: 'Proyek', icon: Cube, component: page('projects'), parent: 'konten' },
-  { slug: 'moderasi', path: '/admin/moderasi', title: 'Moderasi', icon: Flag, component: page('moderasi'), parent: 'konten' },
-  { slug: 'domain', path: '/admin/domain', title: 'Domain', icon: LinkIcon, component: page('domain'), parent: 'konten' },
+  { slug: 'projects', path: '/admin/projects', title: 'Proyek', icon: Cube, component: page('projects'), parent: 'konten', hidden: true },
+  { slug: 'moderasi', path: '/admin/moderasi', title: 'Moderasi', icon: Flag, component: page('moderasi'), parent: 'konten', hidden: true },
+  { slug: 'domain', path: '/admin/domain', title: 'Domain', icon: LinkIcon, component: page('domain'), parent: 'konten', hidden: true },
   { slug: 'konten', path: '/admin/konten', title: 'Konten', icon: Cube, component: page('konten') },
   /* Induk Layanan + sub-halaman aslinya. */
-  { slug: 'plans', path: '/admin/plans', title: 'Plan', icon: Medal, component: page('plans'), parent: 'monetisasi' },
+  { slug: 'plans', path: '/admin/plans', title: 'Plan', icon: Medal, component: page('plans'), parent: 'monetisasi', hidden: true },
   { slug: 'credits', path: '/admin/credits', title: 'Kelola Credit', icon: Coins, component: page('credits'), parent: 'monetisasi' },
   { slug: 'monetisasi', path: '/admin/monetisasi', title: 'Monetisasi', icon: Coins, component: page('monetisasi') },
   { slug: 'ai', path: '/admin/ai', title: 'AI', icon: Robot, component: page('ai') },
@@ -123,16 +125,16 @@ export const ROUTES: AdminRoute[] = [
   { slug: 'biaya', path: '/admin/biaya', title: 'Biaya LLM', icon: CurrencyDollar, component: page('biaya'), parent: 'ai' },
   { slug: 'providers', path: '/admin/providers', title: 'Provider LLM', icon: Plug, component: page('providers'), parent: 'ai' },
   { slug: 'ai-settings', path: '/admin/ai-settings', title: 'Pengaturan AI', icon: Robot, component: page('ai-settings'), parent: 'ai' },
-  { slug: 'billing', path: '/admin/billing', title: 'Pembayaran', icon: CreditCard, component: page('billing'), parent: 'monetisasi' },
-  { slug: 'builds', path: '/admin/builds', title: 'Build', icon: Hammer, component: page('builds'), parent: 'sistem' },
-  { slug: 'messages', path: '/admin/messages', title: 'Pesan', icon: ChatText, component: page('messages'), parent: 'komunikasi' },
-  { slug: 'pengumuman', path: '/admin/pengumuman', title: 'Pengumuman', icon: Megaphone, component: page('pengumuman'), parent: 'komunikasi' },
-  { slug: 'sessions', path: '/admin/sessions', title: 'Sesi', icon: Key, component: page('sessions'), parent: 'sistem' },
+  { slug: 'billing', path: '/admin/billing', title: 'Pembayaran', icon: CreditCard, component: page('billing'), parent: 'monetisasi', hidden: true },
+  { slug: 'builds', path: '/admin/builds', title: 'Build', icon: Hammer, component: page('builds'), parent: 'sistem', hidden: true },
+  { slug: 'messages', path: '/admin/messages', title: 'Pesan', icon: ChatText, component: page('messages'), parent: 'komunikasi', hidden: true },
+  { slug: 'pengumuman', path: '/admin/pengumuman', title: 'Pengumuman', icon: Megaphone, component: page('pengumuman'), parent: 'komunikasi', hidden: true },
+  { slug: 'sessions', path: '/admin/sessions', title: 'Sesi', icon: Key, component: page('sessions'), parent: 'sistem', hidden: true },
   { slug: 'health', path: '/admin/health', title: 'Kesehatan', icon: Heartbeat, component: page('health'), parent: 'sistem' },
   { slug: 'cadangan', path: '/admin/cadangan', title: 'Cadangan', icon: Archive, component: page('cadangan'), parent: 'sistem' },
-  { slug: 'pembersihan', path: '/admin/pembersihan', title: 'Pembersihan', icon: Trash, component: page('pembersihan'), parent: 'sistem' },
-  { slug: 'audit', path: '/admin/audit', title: 'Log Audit', icon: ClockCounterClockwise, component: page('audit'), parent: 'komunikasi' },
-  { slug: 'pemeliharaan', path: '/admin/pemeliharaan', title: 'Pemeliharaan', icon: Wrench, component: page('pemeliharaan'), parent: 'sistem' },
+  { slug: 'pembersihan', path: '/admin/pembersihan', title: 'Pembersihan', icon: Trash, component: page('pembersihan'), parent: 'sistem', hidden: true },
+  { slug: 'audit', path: '/admin/audit', title: 'Log Audit', icon: ClockCounterClockwise, component: page('audit'), parent: 'komunikasi', hidden: true },
+  { slug: 'pemeliharaan', path: '/admin/pemeliharaan', title: 'Pemeliharaan', icon: Wrench, component: page('pemeliharaan'), parent: 'sistem', hidden: true },
   { slug: 'settings', path: '/admin/settings', title: 'Pengaturan', icon: Gear, component: page('settings'), parent: 'sistem' },
   { slug: 'komunikasi', path: '/admin/komunikasi', title: 'Komunikasi', icon: ChatText, component: page('komunikasi') },
   { slug: 'sistem', path: '/admin/sistem', title: 'Sistem', icon: Wrench, component: page('sistem') },
@@ -142,9 +144,9 @@ export const ROUTES: AdminRoute[] = [
     hirarki bisa dibaca sekilas. */
 export const ADMIN_SECTIONS: { label: string; slugs: string[] }[] = [
   { label: 'Utama', slugs: ['dashboard', 'users'] },
-  { label: 'Konten', slugs: ['konten', 'projects', 'moderasi', 'domain'] },
-  { label: 'Layanan', slugs: ['monetisasi', 'plans', 'credits', 'billing', 'ai', 'providers', 'ai-settings', 'biaya', 'usage'] },
-  { label: 'Sistem', slugs: ['komunikasi', 'messages', 'pengumuman', 'audit', 'sistem', 'health', 'cadangan', 'pembersihan', 'pemeliharaan', 'settings', 'sessions', 'builds'] },
+  { label: 'Konten', slugs: ['konten'] },
+  { label: 'Layanan', slugs: ['monetisasi', 'credits', 'ai', 'providers', 'ai-settings', 'biaya', 'usage'] },
+  { label: 'Sistem', slugs: ['komunikasi', 'sistem', 'health', 'cadangan', 'settings'] },
 ]
 
 /** Tautan keluar sidebar (bukan route admin). */

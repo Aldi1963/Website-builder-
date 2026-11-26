@@ -180,7 +180,7 @@ export default function CreditsPage({ embedded = false }: CreditsPageProps) {
       {!embedded ? (
         <PageHeader
           title="Kelola Credit"
-          description="Saldo pengguna, penyesuaian manual, dan pengaturan angka credit. Jatah plan (Gratis 100/bln, Pro 2.000/bln) diperbarui tiap awal bulan — sisa bulan lalu hangus, tidak menumpuk."
+          description="Saldo credit, penyesuaian manual, dan pengaturan credit. Credit gratis diberikan saat daftar; top-up kapan saja lewat paket."
         />
       ) : null}
       <Card title="Cari Pengguna">

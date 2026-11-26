@@ -110,7 +110,7 @@ export default function BillingPage({ embedded = false }: BillingPageProps) {
       {!embedded ? (
         <PageHeader
           title="Pembayaran"
-          description="Kredensial Clipku Pay untuk top-up credit (QRIS). Nilai key/secret tidak pernah ditampilkan."
+          description="Top-up credit lewat QRIS — pilih paket, bayar sekali, credit langsung masuk. Tanpa langganan bulanan."
         />
       ) : null}
       {data === null ? (
