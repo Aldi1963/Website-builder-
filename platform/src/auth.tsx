@@ -235,6 +235,7 @@ function Field({
   value,
   onChange,
   hint,
+  type,
   ...rest
 }: {
   label: string
@@ -242,15 +243,32 @@ function Field({
   onChange: (v: string) => void
   hint?: string
 } & Omit<React.InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'>) {
+  /* Password fields get an eye toggle — a standard expectation that was missing. */
+  const [showPw, setShowPw] = useState(false)
+  const isPw = type === 'password'
+  const resolvedType = isPw && showPw ? 'text' : type
   return (
     <label className="block">
       <span className="mb-1.5 block text-[12px] text-quiet">{label}</span>
-      <input
-        {...rest}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="h-9 w-full border border-edge bg-ink px-2.5 text-[13px] text-body outline-none transition-colors placeholder:text-quiet focus:border-accent"
-      />
+      <span className="relative block">
+        <input
+          {...rest}
+          type={resolvedType}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="h-9 w-full border border-edge bg-ink px-2.5 text-[13px] text-body outline-none transition-colors placeholder:text-quiet focus:border-accent"
+        />
+        {isPw && (
+          <button
+            type="button"
+            onClick={() => setShowPw((v) => !v)}
+            aria-label={showPw ? 'Sembunyikan password' : 'Tampilkan password'}
+            className="absolute right-1.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center text-quiet transition-colors hover:text-body"
+          >
+            <Icon name={showPw ? 'eye-off' : 'eye'} size={14} />
+          </button>
+        )}
+      </span>
       {hint && <span className="mt-1 block text-[11.5px] text-quiet">{hint}</span>}
     </label>
   )
