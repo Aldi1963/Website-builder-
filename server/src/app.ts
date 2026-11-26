@@ -80,6 +80,21 @@ export const app = new Hono<Env>()
 
 app.use('*', cors({ origin: (o) => o ?? '*', credentials: true }))
 
+/* Header keamanan dasar untuk semua respons.
+   - HSTS hanya aman bila di balik HTTPS; di lingkungan dev lokal (http)
+     tidak mengubah apa pun karena browser mengabaikannya tanpa TLS. */
+app.use('*', async (c, next) => {
+  await next()
+  c.header('X-Content-Type-Options', 'nosniff')
+  c.header('X-Frame-Options', 'DENY')
+  c.header('Referrer-Policy', 'strict-origin-when-cross-origin')
+  c.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+  const proto = c.req.header('x-forwarded-proto') ?? ''
+  if (proto === 'https' || new URL(c.req.url).protocol === 'https:') {
+    c.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
+  }
+})
+
 /*
  * Published apps answer on their own hostname: <slug>.vibe.clipku.com.
  * The subdomain is resolved to a project, its preview is started if needed,
