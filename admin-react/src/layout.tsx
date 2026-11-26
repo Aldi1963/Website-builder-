@@ -490,7 +490,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                   ) : null}
                 </button>
                 {notifOpen ? (
-                  <div className="absolute right-0 z-50 mt-2 w-[calc(100vw-24px)] max-w-[360px] overflow-hidden rounded-xl border border-border bg-surface shadow-lg">
+                  <div className="absolute right-0 z-50 mt-2 w-[calc(100vw-24px)] max-w-[360px] overflow-hidden rounded-xl border border-border bg-surface shadow-lg max-sm:fixed max-sm:top-[64px] max-sm:right-3 max-sm:mt-0">
                     <p className="border-b border-border px-4 py-2.5 text-sm font-semibold">Notifikasi</p>
                     <div className="max-h-[60vh] overflow-y-auto">
                       {notifs.length === 0 ? (
