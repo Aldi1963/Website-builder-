@@ -1946,6 +1946,10 @@ export function registerAdmin(app: Hono<AdminEnv>) {
     'ai-settings',
     'audit',
     'settings',
+    'konten',
+    'monetisasi',
+    'komunikasi',
+    'sistem',
   ]
   const ADMIN_ASSET_TYPES: Record<string, string> = {
     '.css': 'text/css; charset=utf-8',
