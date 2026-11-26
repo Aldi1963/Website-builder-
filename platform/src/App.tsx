@@ -17,37 +17,7 @@ import { MarketplacePage } from './marketplace-ui'
    header that opens a small dropdown with the actions that used to clutter the
    header row. Setelan sengaja TIDAK ada di sini — buka lewat tombol setelan
    di kolom input chat (onOpenSettings di composer). */
-function SessionMenu({
-  onShowFiles,
-  onShowDatabase,
-  onRun,
-  runLabel,
-  running,
-  onExport,
-  canExport,
-  onToggleTheme,
-  dark,
-  usage,
-  onPublish,
-  publishing,
-  published,
-  onUnpublish,
-}: {
-  onShowFiles: () => void
-  onShowDatabase: () => void
-  onRun: () => void
-  runLabel: string
-  running: boolean
-  onExport: () => void
-  canExport: boolean
-  onToggleTheme: () => void
-  dark: boolean
-  usage: { requests: number; promptTokens: number; completionTokens: number } | null
-  onPublish: () => void
-  publishing: boolean
-  published: boolean
-  onUnpublish: () => void
-}) {
+function SessionMenu({ projectId, usage }: { projectId: string; usage: { requests: number; promptTokens: number; completionTokens: number } | null }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -67,8 +37,8 @@ function SessionMenu({
     }
   }, [open])
 
-  const item =
-    'flex w-full items-center gap-2.5 px-3 py-2 text-left text-[12.5px] text-body transition-colors hover:bg-surface disabled:opacity-50'
+  const item = 'flex w-full items-center gap-2.5 px-3 py-2 text-left text-[12.5px] text-body transition-colors hover:bg-surface'
+  const go = (slug: string) => () => { setOpen(false); navigate(`/proyek/${projectId}/${slug}`) }
 
   return (
     <div ref={ref} className="relative">
@@ -79,16 +49,11 @@ function SessionMenu({
         className="flex h-9 w-9 items-center justify-center rounded-full border border-edge text-body transition-colors hover:border-quiet max-md:h-11 max-md:w-11"
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <circle cx="5" cy="12" r="1.8" />
-          <circle cx="12" cy="12" r="1.8" />
-          <circle cx="19" cy="12" r="1.8" />
+          <circle cx="5" cy="12" r="1.8" /><circle cx="12" cy="12" r="1.8" /><circle cx="19" cy="12" r="1.8" />
         </svg>
       </button>
       {open && (
-        <div
-          role="menu"
-          className="vb-enter absolute right-0 top-[calc(100%+6px)] z-30 w-56 overflow-hidden rounded-xl border border-edge bg-ink shadow-lg"
-        >
+        <div role="menu" className="vb-enter absolute right-0 top-[calc(100%+6px)] z-30 w-56 overflow-hidden rounded-xl border border-edge bg-ink shadow-lg">
           {usage && (
             <div className="border-b border-edge px-3 py-2">
               <p className="text-[10.5px] uppercase tracking-wide text-quiet">Pemakaian LLM</p>
@@ -97,30 +62,15 @@ function SessionMenu({
               </p>
             </div>
           )}
-          <button className={item} onClick={() => { setOpen(false); onShowFiles() }} role="menuitem">
-            <Icon name="file" size={13} /> Lihat file
-          </button>
-          <button className={item} onClick={() => { setOpen(false); onShowDatabase() }} role="menuitem">
+          <button className={item} onClick={go('chat')} role="menuitem"><Icon name="back" size={13} /> Chat</button>
+          <button className={item} onClick={go('file')} role="menuitem"><Icon name="file" size={13} /> Lihat file</button>
+          <button className={item} onClick={go('database')} role="menuitem">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3" stroke="currentColor" strokeWidth="1.7" /><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" stroke="currentColor" strokeWidth="1.7" /></svg> Lihat database
           </button>
-          <button className={item} onClick={() => { setOpen(false); onRun() }} disabled={running} role="menuitem">
-            <Icon name="run" size={13} /> {running ? 'Sedang build…' : runLabel}
-          </button>
-          {published ? (
-            <button className={item} onClick={() => { setOpen(false); onUnpublish() }} role="menuitem">
-              <Icon name="close" size={13} /> Tarik publikasi
-            </button>
-          ) : (
-            <button className={item} onClick={() => { setOpen(false); onPublish() }} disabled={publishing || !canExport} role="menuitem">
-              <Icon name="check" size={13} /> {publishing ? 'Menerbitkan…' : 'Terbitkan'}
-            </button>
-          )}
-          <button className={item} onClick={() => { setOpen(false); onExport() }} disabled={!canExport} role="menuitem">
-            <Icon name="download" size={13} /> Export ZIP
-          </button>
-          <button className={item} onClick={() => { setOpen(false); onToggleTheme() }} role="menuitem">
-            <Icon name={dark ? 'sun' : 'moon'} size={13} /> {dark ? 'Mode terang' : 'Mode gelap'}
-          </button>
+          <button className={item} onClick={go('jalankan')} role="menuitem"><Icon name="run" size={13} /> Jalankan</button>
+          <button className={item} onClick={go('terbitkan')} role="menuitem"><Icon name="check" size={13} /> Terbitkan</button>
+          <button className={item} onClick={go('export')} role="menuitem"><Icon name="download" size={13} /> Export ZIP</button>
+          <button className={item} onClick={go('tampilan')} role="menuitem"><Icon name="moon" size={13} /> Mode tampilan</button>
         </div>
       )}
     </div>
@@ -611,16 +561,12 @@ export default function App() {
 
   // Routing: '/' home, '/proyek/:id' workspace, '/profil' account page,
   // '/penggunaan' credit usage page (fase 3).
+  const sessionSlugs = ['chat', 'file', 'database', 'jalankan', 'terbitkan', 'export', 'tampilan'] as const
+  const sessionSlug = sessionSlugs.find((slug) => matchPath(`/proyek/:id/${slug}`, path))
   const projectRoute =
-    matchPath('/proyek/:id/chat', path) ??
-    matchPath('/proyek/:id/file', path) ??
-    matchPath('/proyek/:id/database', path) ??
+    (sessionSlug ? matchPath(`/proyek/:id/${sessionSlug}`, path) : null) ??
     matchPath('/proyek/:id', path)
-  const routeTab: Tab = matchPath('/proyek/:id/file', path)
-    ? 'code'
-    : matchPath('/proyek/:id/database', path)
-      ? 'database'
-      : 'chat'
+  const routeTab: Route = sessionSlug ?? 'chat'
   const profileRoute = matchPath('/profil', path)
   const usageRoute = matchPath('/penggunaan', path)
   const marketRoute = matchPath('/marketplace', path)
@@ -1284,11 +1230,11 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
   )
 }
 
-type Tab = 'chat' | 'code' | 'database'
+type Route = 'chat' | 'file' | 'database' | 'jalankan' | 'terbitkan' | 'export' | 'tampilan'
 
-function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string; routeTab: Tab; onTitle: (n: string) => void; onMenu: () => void }) {
+function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string; routeTab: Route; onTitle: (n: string) => void; onMenu: () => void }) {
   const { dark, toggle } = useTheme()
-  const [tab, setTab] = useState<Tab>(routeTab)
+  const [tab, setTab] = useState<'chat' | 'code'>(routeTab === 'file' ? 'code' : 'chat')
   const [messages, setMessages] = useState<{ role: string; content: string; id?: number }[]>([])
   const [pendingDiscovery, setPendingDiscovery] = useState<string | null>(null)
   const [streamText, setStreamText] = useState('')
@@ -1342,8 +1288,8 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
   /* Route adalah sumber kebenaran: /chat, /file, /database. Berpindah URL
      (kembali, refresh, tautan langsung) selalu mengarahkan panel yang benar. */
   useEffect(() => {
-    setTab(routeTab)
-    if (routeTab === 'code' && openFile) saveView(projectId, { tab: 'code', file: openFile })
+    setTab(routeTab === 'file' ? 'code' : 'chat')
+    if (routeTab === 'file' && openFile) saveView(projectId, { tab: 'code', file: openFile })
   }, [routeTab, projectId, openFile])
 
   const [planMode, setPlanMode] = useState(false)
@@ -1380,7 +1326,7 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
       /* File dibuka ulang hanya bila route memang /file, atau user nieuwe
          masuk lewat /proyek/:id dengan state tersimpan (kompatibilitas). */
       const saved = loadView(projectId)
-      if (saved.tab === 'code' && saved.file && routeTab !== 'chat') void openFileAt(saved.file)
+      if (saved.tab === 'code' && saved.file && routeTab === 'file') void openFileAt(saved.file)
     })
     void api.usage().then(setUsage).catch(() => {})
     return () => abortRef.current?.abort()
@@ -1389,8 +1335,8 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
   /* One-view: simpan tab + file yang dibuka tiap berubah supaya kembali dari
      daftar proyek langsung ke tampilan yang sama, bukan mulai dari Chat. */
   useEffect(() => {
-    if (tab !== 'database') saveView(projectId, { tab, file: openFile })
-  }, [projectId, tab, openFile])
+    if (routeTab === 'file' || routeTab === 'chat') saveView(projectId, { tab, file: openFile })
+  }, [projectId, tab, openFile, routeTab])
 
   const autoPreview = async () => {
     try {
@@ -1671,22 +1617,7 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
               Klik -> halaman Penggunaan. Saldo dimuat ulang sesudah tiap run
               lewat notifyBalanceChanged() di onDone/onError di bawah. */}
           <CreditChip />
-          <SessionMenu
-            onShowFiles={() => navigate(`/proyek/${projectId}/file`)}
-            onShowDatabase={() => navigate(`/proyek/${projectId}/database`)}
-            onRun={startPreview}
-            runLabel={previewOn ? 'Build ulang' : 'Jalankan'}
-            running={booting}
-            onExport={() => void exportProjectZip(projectId).catch(() => {})}
-            canExport={!!files.length}
-            onToggleTheme={toggle}
-            dark={dark}
-            usage={usage}
-            onPublish={() => void publish()}
-            publishing={publishing}
-            published={!!slug}
-            onUnpublish={() => void unpublish()}
-          />
+          <SessionMenu projectId={projectId} usage={usage} />
         </div>
       </header>
 
@@ -1721,8 +1652,8 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
           />
         </section>
 
-        <section className={`flex min-w-0 flex-1 flex-col ${tab === 'chat' ? 'max-md:hidden' : ''}`}>
-          {tab === 'chat' ? (
+        <section className={`flex min-w-0 flex-1 flex-col ${routeTab === 'chat' ? 'max-md:hidden' : ''}`}>
+          {routeTab === 'chat' ? (
             <PreviewPane
               previewOn={previewOn}
               previewPort={previewPort}
@@ -1732,7 +1663,7 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
               booting={booting}
               hasFiles={files.length > 0}
             />
-          ) : (
+          ) : routeTab === 'file' ? (
             <CodePane
               files={files}
               openFile={openFile}
@@ -1746,7 +1677,15 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
               onBuild={startPreview}
               onFilesRefresh={() => void api.files(projectId).then(({ files }) => setFiles(files.map((f) => ({ path: f.path }))))}
             />
-          )}
+          ) : routeTab === 'jalankan' ? (
+            <RunPane running={booting} buildLog={buildLog} hasFiles={files.length > 0} dirty={dirty} onRun={() => void startPreview()} onBack={() => navigate(`/proyek/${projectId}/chat`)} />
+          ) : routeTab === 'terbitkan' ? (
+            <PublishPane slug={slug} pubUrl={pubUrl} publishing={publishing} publishMsg={publishMsg} canPublish={files.length > 0} onPublish={publish} onUnpublish={() => void unpublish()} onBack={() => navigate(`/proyek/${projectId}/chat`)} />
+          ) : routeTab === 'export' ? (
+            <ExportPane canExport={files.length > 0} onExport={() => void exportProjectZip(projectId).catch(() => {})} onBack={() => navigate(`/proyek/${projectId}/chat`)} />
+          ) : routeTab === 'tampilan' ? (
+            <AppearancePane dark={dark} onToggle={toggle} onBack={() => navigate(`/proyek/${projectId}/chat`)} />
+          ) : null}
         </section>
       </div>
 
@@ -1789,6 +1728,90 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
         </p>
       )}
     </div>
+  )
+}
+
+/* Panel aksi: route hanya menampilkan halaman; efek samping terjadi saat
+   tombol eksplisit ditekan, tidak saat URL dibuka atau di-refresh. */
+function PanelShell({ title, note, children }: { title: string; note: string; children: React.ReactNode }) {
+  return (
+    <div className="vb-scroll h-full overflow-y-auto bg-surface px-4 py-5 max-md:px-3">
+      <h2 className="font-display text-[17px] text-body">{title}</h2>
+      <p className="mt-1 max-w-[640px] text-[12px] leading-relaxed text-quiet">{note}</p>
+      <div className="mt-4 max-w-[640px]">{children}</div>
+    </div>
+  )
+}
+
+function RunPane({ running, buildLog, hasFiles, dirty, onRun, onBack }: {
+  running: boolean; buildLog: { ok: boolean; log: string } | null; hasFiles: boolean; dirty: boolean
+  onRun: () => void; onBack: () => void
+}) {
+  return (
+    <PanelShell title="Jalankan proyek" note="Build kode lalu nyalakan preview. Perubahan yang belum disimpan akan ikut dibangun bila sudah ada di server.">
+      <button onClick={onRun} disabled={running || !hasFiles} className="flex h-10 items-center gap-2 bg-accent px-4 text-[12.5px] font-medium text-ink transition-opacity hover:opacity-90 disabled:opacity-50">
+        <Icon name="run" size={13} /> {running ? 'Sedang build…' : 'Build & jalankan preview'}
+      </button>
+      {dirty && <p className="mt-3 border-l-2 border-accent pl-2 text-[11.5px] text-body">Ada file yang belum disimpan — simpan dulu di menu Lihat file agar hasil build sesuai editor.</p>}
+      {buildLog && (
+        <pre className="vb-scroll mt-4 max-h-[320px] overflow-auto border border-edge bg-ink p-3 font-mono text-[11px] leading-relaxed text-body">{buildLog.log}</pre>
+      )}
+      <button onClick={onBack} className="mt-4 text-[12px] text-quiet underline hover:text-body">Kembali ke chat</button>
+    </PanelShell>
+  )
+}
+
+function PublishPane({ slug, pubUrl, publishing, publishMsg, canPublish, onPublish, onUnpublish, onBack }: {
+  slug: string | null; pubUrl: string | null; publishing: boolean; publishMsg: string; canPublish: boolean
+  onPublish: () => void; onUnpublish: () => void; onBack: () => void
+}) {
+  return (
+    <PanelShell title="Terbitkan website" note="Website dipublikasikan ke subdomain clidi.net. Publikasi ulang hanya berjalan saat tombol ditekan.">
+      {slug ? (
+        <>
+          <p className="text-[12.5px] text-body">Sudah tayang di <a href={pubUrl ?? '#'} target="_blank" rel="noreferrer" className="text-accent underline">{slug}.clidi.net</a></p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button onClick={() => void onPublish()} disabled={publishing || !canPublish} className="flex h-10 items-center gap-2 bg-accent px-4 text-[12.5px] font-medium text-ink disabled:opacity-50">Perbarui publikasi</button>
+            <button onClick={onUnpublish} disabled={publishing} className="flex h-10 items-center gap-2 border border-edge px-4 text-[12.5px] text-body disabled:opacity-50">Tarik publikasi</button>
+          </div>
+        </>
+      ) : (
+        <button onClick={() => void onPublish()} disabled={publishing || !canPublish} className="flex h-10 items-center gap-2 bg-accent px-4 text-[12.5px] font-medium text-ink disabled:opacity-50">
+          <Icon name="check" size={13} /> {publishing ? 'Menerbitkan…' : 'Terbitkan sekarang'}
+        </button>
+      )}
+      {!canPublish && <p className="mt-3 text-[11.5px] text-quiet">Build proyek dulu sebelum menerbitkan.</p>}
+      {publishMsg && <p className="mt-3 border-l-2 border-accent pl-2 text-[12px] text-body">{publishMsg}</p>}
+      <button onClick={onBack} className="mt-4 text-[12px] text-quiet underline hover:text-body">Kembali ke chat</button>
+    </PanelShell>
+  )
+}
+
+function ExportPane({ canExport, onExport, onBack }: { canExport: boolean; onExport: () => void; onBack: () => void }) {
+  return (
+    <PanelShell title="Export ZIP" note="Unduh seluruh file proyek sebagai arsip ZIP. Proyek lain tidak ikut terunduh.">
+      <button onClick={onExport} disabled={!canExport} className="flex h-10 items-center gap-2 bg-accent px-4 text-[12.5px] font-medium text-ink disabled:opacity-50">
+        <Icon name="download" size={13} /> Unduh ZIP proyek
+      </button>
+      {!canExport && <p className="mt-3 text-[11.5px] text-quiet">Belum ada file untuk diexport.</p>}
+      <button onClick={onBack} className="mt-4 text-[12px] text-quiet underline hover:text-body">Kembali ke chat</button>
+    </PanelShell>
+  )
+}
+
+function AppearancePane({ dark, onToggle, onBack }: { dark: boolean; onToggle: () => void; onBack: () => void }) {
+  return (
+    <PanelShell title="Mode tampilan" note="Pilih tema editor. Pengaturan ini tersimpan di perangkat ini dan tidak mengubah website yang kamu bangun.">
+      <div className="grid gap-2 sm:grid-cols-2">
+        <button onClick={() => { if (dark) onToggle() }} aria-pressed={!dark} className={`border px-4 py-3 text-left text-[12.5px] ${!dark ? 'border-accent bg-ink text-body' : 'border-edge text-quiet'}`}>
+          Terang {!dark && '· aktif'}
+        </button>
+        <button onClick={() => { if (!dark) onToggle() }} aria-pressed={dark} className={`border px-4 py-3 text-left text-[12.5px] ${dark ? 'border-accent bg-ink text-body' : 'border-edge text-quiet'}`}>
+          Gelap {dark && '· aktif'}
+        </button>
+      </div>
+      <button onClick={onBack} className="mt-4 text-[12px] text-quiet underline hover:text-body">Kembali ke chat</button>
+    </PanelShell>
   )
 }
 
