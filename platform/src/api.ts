@@ -213,6 +213,7 @@ export type ChatHandlers = {
   onScreenshot?: (url: string, name: string) => void
   onAwaitingConfirmation?: (ringkasan: string) => void
   onError?: (text: string) => void
+  onPublished?: (slug: string, url: string) => void
   onDone?: () => void
 }
 
@@ -286,6 +287,7 @@ export async function chatStream(
       else if (event === 'assistant') h.onAssistant?.(payload.text)
       else if (event === 'screenshot') h.onScreenshot?.(payload.url, payload.name)
       else if (event === 'awaiting_confirmation') h.onAwaitingConfirmation?.(payload.ringkasan)
+      else if (event === 'published') h.onPublished?.(payload.slug, payload.url)
       else if (event === 'error') h.onError?.(payload.text)
       else if (event === 'done') h.onDone?.()
     }

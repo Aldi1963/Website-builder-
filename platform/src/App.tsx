@@ -1434,6 +1434,12 @@ function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle:
       onScreenshot: () => {
         void load()
       },
+      onPublished: (newSlug, url) => {
+        setSlug(newSlug)
+        setPubUrl(url)
+        setDirty(false)
+        pushActivity({ kind: 'status', text: `Web publik diperbarui: ${newSlug}`, at: Date.now() })
+      },
       onError: (t) => {
         setStreamText('')
         setMessages((m) => [...m, { role: 'error', content: t }])

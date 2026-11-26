@@ -575,6 +575,43 @@ app.delete('/api/projects/:id/publish', (c) => {
   return c.json({ ok: true })
 })
 
+/* Auto-publish: setelah run chat sukses yang mengubah UI, web publik
+   <slug>.domain selalu segar — user tidak perlu klik Deploy tiap kali AI
+   mengubah file. Dipanggil sekali per run (di onDone), bukan tiap event
+   file/build. Project tanpa slug diberi slug dari nama project. */
+async function autoPublishAfterRun(
+  projectId: string,
+  opts: { uiChanged: boolean; buildOk: boolean },
+  emit?: (event: string, data: unknown) => Promise<void>,
+): Promise<{ slug?: string; url?: string; skipped?: string }> {
+  if (!opts.uiChanged) return { skipped: 'tidak ada perubahan UI' }
+  if (!opts.buildOk) return { skipped: 'build belum sukses' }
+  if (PUBLIC_SUFFIX === 'none' || PUBLIC_ORIGIN === 'none') return { skipped: 'domain publik belum dikonfigurasi' }
+
+  const project = getProject(projectId)
+  if (!project) return { skipped: 'proyek tidak ditemukan' }
+  const slug = slugify(project.slug || project.name || projectId)
+  if (!slug) return { skipped: 'slug tidak valid' }
+
+  const taken = projectBySlug(slug)
+  if (taken && taken.id !== projectId) return { skipped: `slug "${slug}" sudah dipakai` }
+
+  const build = await buildProject(projectId)
+  if (build.code !== 0) return { skipped: 'build gagal saat auto-publish' }
+  recordBuild(projectId, true, build.output)
+
+  let port: number
+  try {
+    port = await startPreview(projectId)
+  } catch {
+    return { skipped: 'preview gagal dinyalakan' }
+  }
+  publishProject(projectId, slug)
+  const url = `${PUBLIC_ORIGIN.replace('://', `://${slug}.`)}/`
+  await emit?.('published', { slug, url, port })
+  return { slug, url }
+}
+
 /* Published apps are public by design — no session required. */
 app.get('/p/:slug', async (c) => {
   const slug = c.req.param('slug')
@@ -663,8 +700,15 @@ app.post('/api/projects/:id/chat', async (c) => {
       }
     }
 
+    /* Lacak apakah run ini benar-benar mengubah file UI dan build sukses —
+       dipakai untuk auto-publish sekali setelah agent selesai. */
+    let uiChanged = false
+    let buildOk = false
+
     const onEvent = async (e: AgentEvent) => {
       dbg(`event ${e.type} at ${(Date.now() - t0) / 1000}s`)
+      if (e.type === 'file' && (e.action === 'write' || e.action === 'delete')) uiChanged = true
+      if (e.type === 'build' && e.ok) buildOk = true
       if (e.type === 'file') await send('file', e)
       else if (e.type === 'build') await send('build', e)
       else if (e.type === 'install') await send('install', e)
@@ -678,14 +722,27 @@ app.post('/api/projects/:id/chat', async (c) => {
       else await send('error', e)
     }
 
+    let agentFailed = false
     try {
       await runAgent(id, message, onEvent, body.model, body.planMode, { userId: c.get('user').id, confirmPlan: body.confirmPlan === true, confirmed: body.confirmed === true })
       dbg(`agent resolved at ${(Date.now() - t0) / 1000}s`)
       setStatus(id, 'idle')
     } catch (err) {
+      agentFailed = true
       dbg(`agent THREW at ${(Date.now() - t0) / 1000}s: ${(err as Error).message}`)
       setStatus(id, 'error')
       await send('error', { type: 'error', text: (err as Error).message })
+    }
+    if (!agentFailed) {
+      await send('status', { type: 'status', text: 'Memastikan web publik terbaru…' })
+      try {
+        const res = await autoPublishAfterRun(id, { uiChanged, buildOk }, send)
+        if (res.skipped) dbg(`auto-publish dilewati: ${res.skipped}`)
+        else dbg(`auto-publish sukses: ${res.slug}`)
+      } catch (err) {
+        /* Auto-publish adalah bonus — jangan gagalkan chat yang sudah sukses. */
+        dbg(`auto-publish gagal: ${(err as Error).message}`)
+      }
     }
     await send('done', { ok: true })
     dbg(`done sent at ${(Date.now() - t0) / 1000}s`)
