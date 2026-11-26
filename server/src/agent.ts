@@ -414,6 +414,16 @@ export async function runAgent(
         messages.push({ role: 'user', content: 'Panggil tool audit satu kali sekarang untuk meninjau keamanan, data, UI, dan aksesibilitas.' })
         continue
       }
+      /* Guard visual: model boleh saja menjawab pakai teks, tetapi kalau
+         perubahan UI/build sukses/audit selesai dan preview belum pernah
+         dicek, jawaban itu belum sah sebagai ringkasan akhir. Paksa satu
+         putaran lagi supaya tool check_preview benar-benar dipanggil dan
+         gambar runtime masuk ke konteks model. */
+      if (!quickEdit && touchedUi && buildSucceeded && auditCompleted && previewRounds < 1 && !pendingPreviewImage) {
+        messages.push({ role: 'assistant', content: msg.content })
+        messages.push({ role: 'user', content: 'Jangan selesaikan run sebelum check_preview. Panggil tool check_preview SEKALI sekarang untuk melihat render nyata, lalu beri ringkasan akhir setelah hasilnya.' })
+        continue
+      }
       const clean = msg.content.trim()
       addMessage(projectId, 'assistant', clean)
       await emit({ type: 'assistant', text: clean })

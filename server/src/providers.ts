@@ -291,23 +291,31 @@ export function resetRegistryCache() {
 
 /* ---- Key + endpoint per provider (key TIDAK PERNAH dikembalikan) ---- */
 
+function firstNonBlank(...candidates: Array<string | undefined>): string {
+  for (const c of candidates) {
+    const v = (c ?? '').trim()
+    if (v) return v
+  }
+  return ''
+}
+
 export function providerKey(provider: Provider): string {
   if (provider.id === '9router') {
-    /* Kompatibilitas legacy: override admin llm.key mengalahkan env.
-       llm.key.9router (ditulis endpoint admin PUT …/key) dibaca juga —
-       tanpa ini key 9router yang disimpan lewat panel Provider LLM
-       tidak pernah terbaca (sebelumnya hanya llm.key/env yang dicek). */
-    return (
-      setting('llm.key') ??
-      setting('llm.key.9router') ??
-      process.env.VB_LLM_KEY ??
-      process.env.HERMES_9ROUTER_API_KEY ??
-      ''
-    ).trim()
+    /* Kompatibilitas legacy: override admin mengalahkan env. Kandidat
+       BLANK (string kosong) harus dilompati — kalau tidak, sebuah
+       setting llm.key kosong menyumbat seluruh rantai dan key dari env
+       (VB_LLM_KEY / HERMES_9ROUTER_API_KEY) tidak pernah terbaca,
+       padahal server memilikinya. */
+    return firstNonBlank(
+      setting('llm.key'),
+      setting('llm.key.9router'),
+      process.env.VB_LLM_KEY,
+      process.env.HERMES_9ROUTER_API_KEY,
+    )
   }
   const stored = setting(`llm.key.${provider.id}`)
-  if (stored !== undefined) return stored.trim()
-  return (provider.keyEnv ? (process.env[provider.keyEnv] ?? '') : '').trim()
+  if (stored !== undefined) return firstNonBlank(stored)
+  return firstNonBlank(provider.keyEnv ? process.env[provider.keyEnv] : undefined)
 }
 
 export function providerKeyConfigured(provider: Provider): boolean {
