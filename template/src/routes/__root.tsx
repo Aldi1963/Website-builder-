@@ -8,7 +8,16 @@ export const Route = createRootRoute({
       { charSet: 'utf-8' },
       { name: 'viewport', content: 'width=device-width, initial-scale=1' },
     ],
-    links: [{ rel: 'stylesheet', href: styles }],
+    links: [
+      { rel: 'stylesheet', href: styles },
+      // Font Inter untuk tipografi yang rapi & konsisten.
+      { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
+      { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossOrigin: 'anonymous' },
+      {
+        rel: 'stylesheet',
+        href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap',
+      },
+    ],
   }),
   component: RootComponent,
 })
@@ -24,7 +33,9 @@ function RootComponent() {
 function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
   return (
     <html lang="id">
-      <head><HeadContent /></head>
+      <head>
+        <HeadContent />
+      </head>
       <body className="min-h-dvh bg-slate-950 text-slate-100 antialiased">
         {children}
         <Scripts />

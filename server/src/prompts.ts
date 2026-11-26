@@ -40,7 +40,14 @@ const STACK = `Stack wajib (jangan diganti):
 - TypeScript
 - Server logic via createServerFn dari @tanstack/react-start
 - Database: Postgres terkelola (per-proyek, permanen). Buat tabel lewat TOOL db_schema (jangan menulis migrasi manual), lalu query/mutasi dari server function via helper query di src/lib/db.ts (import { query } dari '~/lib/db', file server-only). Helper membaca koneksi dari env VB_APP_DATABASE_URL yang sudah disuntikkan server. JANGAN pakai node:sqlite / localStorage / ':memory:' untuk data aplikasi.
-- Root layout di src/routes/__root.tsx, halaman di src/routes/index.tsx`
+- Root layout di src/routes/__root.tsx, halaman di src/routes/index.tsx
+
+Desain & kualitas visual (WAJIB, ini yang membedakan hasil rapi vs berantakan):
+- styles.css sudah berisi design system (token @theme + kelas komponen: .card, .btn, .btn-primary, .btn-ghost, .input, .label, .badge, .container-page, .gradient-text). PAKAI kelas ini — jangan menulis Tailwind mentah berulang untuk kartu/tombol/input.
+- Tipografi: font Inter sudah dimuat di __root.tsx. Judul pakai font-bold/font-extrabold + tracking-tight; teks sekunder pakai warna slate-400.
+- Setiap halaman punya: kontainer .container-page, heading jelas, dan konten di dalam .card. Beri empty state yang ramah saat data kosong.
+- Responsive sejak awal: grid fleksibel (grid-cols-1 sm:grid-cols-2 lg:grid-cols-3), padding nyaman, tidak ada overflow horizontal di layar sempit.
+- Halaman terlihat jadi PRODUK, bukan debug: hindari dump JSON mentah ke layar; tampilkan data dalam kartu/tabel/daftar yang ditata.`
 
 const RULES = `Aturan teknis:
 1. Jangan pernah menulis ke node_modules, dist, .output, atau file konfigurasi build (vite.config.ts, package.json, tsconfig.json) kecuali diminta eksplisit.

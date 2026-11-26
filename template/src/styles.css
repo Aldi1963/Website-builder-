@@ -1,1 +1,71 @@
 @import "tailwindcss";
+
+/* ==== Design tokens (Tailwind v4 @theme) ====
+   Tema dasar yang konsisten untuk seluruh aplikasi. Agent boleh menimpa
+   warna aksen per proyek, tapi tetap pakai token di bawah agar rapi. */
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --color-brand-50: oklch(0.97 0.02 250);
+  --color-brand-100: oklch(0.93 0.05 250);
+  --color-brand-500: oklch(0.62 0.19 257);
+  --color-brand-600: oklch(0.54 0.2 257);
+  --color-brand-700: oklch(0.46 0.19 257);
+  --radius-card: 0.9rem;
+}
+
+/* ==== Base ==== */
+html {
+  font-family: var(--font-sans);
+  scroll-behavior: smooth;
+  -webkit-tap-highlight-color: transparent;
+}
+body {
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+/* ==== Komponen dasar (dipakai ulang via @apply) ====
+   Kelas utilitas tingkat aplikasi supaya kartu, tombol, dan input seragam
+   di semua halaman. */
+@layer components {
+  .card {
+    @apply rounded-[var(--radius-card)] border border-white/10 bg-white/[0.04] shadow-sm backdrop-blur;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition
+      focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600
+      disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition
+      bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-700
+      focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600
+      disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition
+      border border-white/10 bg-white/5 text-current hover:bg-white/10
+      focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600
+      disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .input {
+    @apply w-full rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5 text-sm outline-none
+      placeholder:text-white/40 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30;
+  }
+  .label {
+    @apply mb-1.5 block text-sm font-medium text-white/70;
+  }
+  .badge {
+    @apply inline-flex items-center rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-xs font-medium text-white/70;
+  }
+  .container-page {
+    @apply mx-auto w-full max-w-6xl px-5 sm:px-8;
+  }
+}
+
+/* ==== Utilitas kecil ==== */
+.gradient-text {
+  background-image: linear-gradient(120deg, var(--color-brand-500), oklch(0.72 0.16 200));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
