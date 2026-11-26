@@ -552,6 +552,25 @@ function DatabaseViewer({
    keep a light-mode phone stuck in dark mode. */
 const THEME_KEY = 'vb-theme-v2'
 
+/* Tampilan workspace (Chat / Code + file yang dibuka) dipertahankan per
+   proyek. Tanpa ini, tombol "daftar proyek" terasa memisah halaman karena
+   Workspace di-mount ulang (key=activeId) dan selalu mulai di Chat. */
+const VIEW_KEY = (id: string) => `vb-view-${id}`
+type SavedView = { tab: 'chat' | 'code'; file: string | null }
+function loadView(id: string): SavedView {
+  try {
+    const raw = localStorage.getItem(VIEW_KEY(id))
+    if (raw) {
+      const v = JSON.parse(raw) as SavedView
+      if (v.tab === 'chat' || v.tab === 'code') return { tab: v.tab, file: typeof v.file === 'string' ? v.file : null }
+    }
+  } catch { /* abaikan data rusak */ }
+  return { tab: 'chat', file: null }
+}
+function saveView(id: string, view: SavedView) {
+  try { localStorage.setItem(VIEW_KEY(id), JSON.stringify(view)) } catch { /* abaikan */ }
+}
+
 function useTheme() {
   const [dark, setDark] = useState(() => localStorage.getItem(THEME_KEY) === 'dark')
 
@@ -1250,7 +1269,7 @@ type Tab = 'chat' | 'code'
 
 function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle: (n: string) => void; onMenu: () => void }) {
   const { dark, toggle } = useTheme()
-  const [tab, setTab] = useState<Tab>('chat')
+  const [tab, setTab] = useState<Tab>(() => loadView(projectId).tab)
   const [dbOpen, setDbOpen] = useState(false)
   const [messages, setMessages] = useState<{ role: string; content: string; id?: number }[]>([])
   const [pendingDiscovery, setPendingDiscovery] = useState<string | null>(null)
@@ -1265,7 +1284,7 @@ function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle:
   const [plan, setPlan] = useState<ChatPlan | null>(null)
   const [audit, setAudit] = useState<ChatAudit | null>(null)
   const [buildLog, setBuildLog] = useState<{ ok: boolean; log: string } | null>(null)
-  const [openFile, setOpenFile] = useState<string | null>(null)
+  const [openFile, setOpenFile] = useState<string | null>(() => loadView(projectId).file)
   const [fileContent, setFileContent] = useState('')
   const [savedContent, setSavedContent] = useState('')
   const [name, setName] = useState('')
@@ -1332,10 +1351,19 @@ function Workspace({ projectId, onTitle, onMenu }: { projectId: string; onTitle:
   }
 
   useEffect(() => {
-    void load()
+    void load().then(() => {
+      const saved = loadView(projectId)
+      if (saved.tab === 'code' && saved.file) void openFileAt(saved.file)
+    })
     void api.usage().then(setUsage).catch(() => {})
     return () => abortRef.current?.abort()
   }, [projectId])
+
+  /* One-view: simpan tab + file yang dibuka tiap berubah supaya kembali dari
+     daftar proyek langsung ke tampilan yang sama, bukan mulai dari Chat. */
+  useEffect(() => {
+    saveView(projectId, { tab, file: openFile })
+  }, [projectId, tab, openFile])
 
   const autoPreview = async () => {
     try {
