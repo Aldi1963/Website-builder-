@@ -452,26 +452,30 @@ function topupPage(): string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Top-up Credit — VibeBuilder</title>
 <style>
-  *{box-sizing:border-box} body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:#0f172a;color:#e2e8f0}
-  a{color:#93c5fd} .wrap{max-width:720px;margin:0 auto;padding:24px 16px 64px}
-  h1{font-size:22px;margin:4px 0 4px} p.sub{color:#94a3b8;margin:0 0 20px}
-  .card{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:16px;margin-bottom:16px}
-  .bal{font-size:28px;font-weight:700} .muted{color:#94a3b8;font-size:13px}
+  *{box-sizing:border-box}
+  :root{--bg:#f5f6f8;--surface:#fff;--muted-surface:#f0f1f4;--edge:#e4e4e7;--quiet:#6b7280;--body:#18181b;--accent:#243370;--accent-hover:#1c2a5c;--danger:#dc2626;--danger-soft:#fef2f2;--success:#16a34a;--success-soft:#f0fdf4;--warning:#d97706;--warning-soft:#fffbeb}
+  @media (prefers-color-scheme:dark){:root{--bg:#0b0b11;--surface:#17171f;--muted-surface:#1f1f28;--edge:#2e2e38;--quiet:#a1a1aa;--body:#f4f4f5;--accent:#8fa1e0;--accent-hover:#a8b6e8;--danger:#f87171;--danger-soft:#2a1518;--success:#4ade80;--success-soft:#12261a;--warning:#fbbf24;--warning-soft:#2a2210}}
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--body)}
+  a{color:var(--accent)} .wrap{max-width:720px;margin:0 auto;padding:24px 16px 64px}
+  h1{font-size:22px;margin:4px 0 4px} p.sub{color:var(--quiet);margin:0 0 20px}
+  .card{background:var(--surface);border:1px solid var(--edge);border-radius:12px;padding:16px;margin-bottom:16px}
+  .bal{font-size:28px;font-weight:700} .muted{color:var(--quiet);font-size:13px}
   .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
   @media(max-width:520px){.grid{grid-template-columns:1fr}}
-  .pkg{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:16px;cursor:pointer;text-align:left;color:#e2e8f0;width:100%}
-  .pkg:hover{border-color:#60a5fa} .pkg b{font-size:18px;display:block}
-  .pkg .cr{font-size:22px;font-weight:700;color:#93c5fd} .pkg .per{font-size:12px;color:#94a3b8}
-  button.primary{background:#2563eb;border:0;color:#fff;border-radius:8px;padding:10px 16px;cursor:pointer;font-size:15px}
+  .pkg{background:var(--surface);border:1px solid var(--edge);border-radius:12px;padding:16px;cursor:pointer;text-align:left;color:var(--body);width:100%}
+  .pkg:hover{border-color:var(--accent)} .pkg b{font-size:18px;display:block}
+  .pkg .cr{font-size:22px;font-weight:700;color:var(--accent)} .pkg .per{font-size:12px;color:var(--quiet)}
+  button.primary{background:var(--accent);border:0;color:#fff;border-radius:8px;padding:10px 16px;cursor:pointer;font-size:15px}
+  @media (prefers-color-scheme:dark){button.primary{color:#0b0b11}}
   button.primary:disabled{opacity:.5;cursor:default}
-  button.ghost{background:transparent;border:1px solid #475569;color:#e2e8f0;border-radius:8px;padding:8px 12px;cursor:pointer}
+  button.ghost{background:transparent;border:1px solid var(--edge);color:var(--body);border-radius:8px;padding:8px 12px;cursor:pointer}
   .qr{text-align:center} .qr img{background:#fff;padding:8px;border-radius:8px;max-width:240px;width:100%}
-  code.payload{display:block;word-break:break-all;background:#0f172a;border:1px solid #334155;border-radius:8px;padding:10px;font-size:12px;margin:10px 0}
+  code.payload{display:block;word-break:break-all;background:var(--muted-surface);border:1px solid var(--edge);border-radius:8px;padding:10px;font-size:12px;margin:10px 0;color:var(--body)}
   .pill{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600}
-  .pill.pending{background:#713f12;color:#fde68a} .pill.paid{background:#14532d;color:#bbf7d0}
-  .pill.expired{background:#7f1d1d;color:#fecaca} .pill.cancelled{background:#334155;color:#cbd5e1}
-  table{width:100%;border-collapse:collapse;font-size:14px} td,th{padding:8px 4px;border-bottom:1px solid #334155;text-align:left}
-  .err{color:#fca5a5} .ok{color:#86efac}
+  .pill.pending{background:var(--warning-soft,#fffbeb);color:var(--warning)} .pill.paid{background:var(--success-soft,#f0fdf4);color:var(--success)}
+  .pill.expired{background:var(--danger-soft,#fef2f2);color:var(--danger)} .pill.cancelled{background:var(--muted-surface);color:var(--quiet)}
+  table{width:100%;border-collapse:collapse;font-size:14px} td,th{padding:8px 4px;border-bottom:1px solid var(--edge);text-align:left}
+  .err{color:var(--danger)} .ok{color:var(--success)}
 </style>
 </head>
 <body>

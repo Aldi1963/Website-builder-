@@ -2,6 +2,10 @@
 @source "../node_modules/@cloudflare/kumo/dist/**/*.{js,jsx,ts,tsx}";
 @import "@cloudflare/kumo/styles/tailwind";
 
+/* Tema halaman user disatukan dengan panel admin: aksen navy #243370 di
+   light, #8fa1e0 di dark, permukaan solid, tanpa gradien. Token --vb-*
+   dipertahankan sebagai alias supaya komponen lama tetap bekerja. */
+
 @theme {
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-display: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -16,23 +20,36 @@
 }
 
 :root {
-  /* Cloudflare-style light: white canvas, cool gray seams, orange accent. */
-  --vb-ink: #ffffff;
-  --vb-surface: #f8fafc;
-  --vb-edge: #e2e8f0;
-  --vb-quiet: #64748b;
-  --vb-body: #1d1f20;
-  --vb-accent: #f36747;
+  /* Sama dengan admin-react/src/index.css (light): navy #243370. */
+  --vb-ink: #f5f6f8;
+  --vb-surface: #ffffff;
+  --vb-surface-muted: #f0f1f4;
+  --vb-edge: #e4e4e7;
+  --vb-quiet: #6b7280;
+  --vb-body: #18181b;
+  --vb-accent: #243370;
+  --vb-accent-hover: #1c2a5c;
+  --vb-accent-soft: #e8ebf5;
+  --vb-danger: #dc2626;
+  --vb-success: #16a34a;
+  --vb-warning: #d97706;
   color-scheme: light;
 }
 
 .dark {
-  --vb-ink: #16181a;
-  --vb-surface: #1d2023;
-  --vb-edge: #2d3237;
-  --vb-quiet: #8b959f;
-  --vb-body: #e8ecef;
-  --vb-accent: #f36747;
+  /* Sama dengan admin-react/src/index.css (dark). */
+  --vb-ink: #0b0b11;
+  --vb-surface: #17171f;
+  --vb-surface-muted: #1f1f28;
+  --vb-edge: #2e2e38;
+  --vb-quiet: #a1a1aa;
+  --vb-body: #f4f4f5;
+  --vb-accent: #8fa1e0;
+  --vb-accent-hover: #a8b6e8;
+  --vb-accent-soft: #232c4d;
+  --vb-danger: #f87171;
+  --vb-success: #4ade80;
+  --vb-warning: #fbbf24;
   color-scheme: dark;
 }
 
