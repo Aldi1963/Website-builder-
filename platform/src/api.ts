@@ -3,6 +3,7 @@ export type Project = {
   name: string
   prompt: string
   status: string
+  starter?: string
   slug: string | null
   created_at: number
   updated_at: number
@@ -90,8 +91,8 @@ export const auth = {
 export const api = {
   health: () => req<{ ok: boolean; model: string; uptime: number }>('/api/health'),
   listProjects: () => req<{ projects: Project[] }>('/api/projects'),
-  createProject: (name: string, prompt = '') =>
-    req<{ project: Project }>('/api/projects', { method: 'POST', body: JSON.stringify({ name, prompt }) }),
+  createProject: (name: string, prompt = '', starter: 'blank' | 'lms' = 'blank') =>
+    req<{ project: Project }>('/api/projects', { method: 'POST', body: JSON.stringify({ name, prompt, starter }) }),
   getProject: (id: string) =>
     req<{ project: Project; messages: Message[]; files: FileEntry[]; previewPort: number; pendingPlan: PendingPlan | null }>(`/api/projects/${id}`),
   renameProject: (id: string, name: string) =>

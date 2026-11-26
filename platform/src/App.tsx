@@ -557,6 +557,7 @@ export default function App() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [navOpen, setNavOpen] = useState(false)
+  const [showStarters, setShowStarters] = useState(false)
   const { dark, toggle } = useTheme()
 
   // Routing: '/' home, '/proyek/:id' workspace, '/profil' account page,
@@ -612,9 +613,10 @@ export default function App() {
     navigate('/', { replace: true })
   }
 
-  const createProject = async () => {
-    const { project } = await api.createProject('Proyek tanpa nama')
+  const createProject = async (starter: 'blank' | 'lms' = 'blank') => {
+    const { project } = await api.createProject(starter === 'lms' ? 'LMS baru' : 'Proyek tanpa nama', '', starter)
     setProjects((p) => [project, ...p])
+    setShowStarters(false)
     navigate(`/proyek/${project.id}`)
   }
 
@@ -762,6 +764,8 @@ export default function App() {
         onMenu={() => setNavOpen(true)}
         navOpen={navOpen}
         onCloseNav={() => setNavOpen(false)}
+        showStarters={showStarters}
+        setShowStarters={setShowStarters}
       />
     </div>
   )
@@ -780,10 +784,12 @@ function HomePage({
   onMenu,
   navOpen,
   onCloseNav,
+  showStarters,
+  setShowStarters,
 }: {
   projects: Project[]
   loading: boolean
-  onCreate: () => void
+  onCreate: (starter?: 'blank' | 'lms') => void
   onSelect: (id: string) => void
   user: User
   dark: boolean
@@ -792,6 +798,8 @@ function HomePage({
   onMenu: () => void
   navOpen: boolean
   onCloseNav: () => void
+  showStarters: boolean
+  setShowStarters: (show: boolean) => void
 }) {
   const working = projects.filter((p) => p.status === 'working').length
   return (
@@ -829,12 +837,24 @@ function HomePage({
           </h2>
           <div className="mt-5 flex flex-wrap gap-2">
             <button
-              onClick={onCreate}
+              onClick={() => setShowStarters(!showStarters)}
               className="flex h-9 max-md:h-11 items-center gap-2 bg-accent px-3 text-[12.5px] font-medium text-ink transition-opacity hover:opacity-90"
             >
               <Icon name="plus" size={12} />
               Proyek baru
             </button>
+            {showStarters && (
+              <div className="mt-3 grid max-w-xl gap-3 sm:grid-cols-2" role="group" aria-label="Pilih starter proyek">
+                <button onClick={() => { setShowStarters(false); onCreate(); }} className="border border-edge bg-panel p-4 text-left hover:border-accent">
+                  <span className="block text-sm font-semibold text-body">Proyek kosong</span>
+                  <span className="mt-1 block text-xs text-quiet">Template standar untuk mulai dari awal</span>
+                </button>
+                <button onClick={() => { setShowStarters(false); onCreate('lms'); }} className="border border-accent/50 bg-accent/5 p-4 text-left hover:bg-accent/10">
+                  <span className="block text-sm font-semibold text-body">Starter LMS</span>
+                  <span className="mt-1 block text-xs text-quiet">Kursus, materi, enrollment, tugas, dan penilaian</span>
+                </button>
+              </div>
+            )}
             <a
               href="/profil"
               className="flex h-9 max-md:h-11 items-center border border-edge px-3 text-[12.5px] text-body hover:bg-surface"
@@ -993,7 +1013,7 @@ function ProfilePage({
           <div className="mt-6">
             <div className="flex items-center justify-between">
               <p className="text-[10.5px] uppercase tracking-wide text-quiet">Proyek ({projects.length})</p>
-              <button onClick={onCreate} className="flex h-7 items-center gap-1 text-[11.5px] text-accent">
+              <button onClick={() => { onCreate(); }} className="flex h-7 items-center gap-1 text-[11.5px] text-accent">
                 <Icon name="plus" size={11} />
                 Baru
               </button>
@@ -1207,7 +1227,7 @@ function StatusMark({ status }: { status: string }) {
   return <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 ${color}`} />
 }
 
-function EmptyState({ onCreate }: { onCreate: () => void }) {
+function EmptyState({ onCreate, showStarters, setShowStarters }: { onCreate: (starter?: 'blank' | 'lms') => void; showStarters: boolean; setShowStarters: (show: boolean) => void }) {
   return (
     <div className="flex flex-1 items-center justify-center px-6">
       <div className="max-w-[44ch]">
@@ -1215,16 +1235,28 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
           Satu ruang kerja untuk menulis dan menjalankan aplikasi
         </h1>
         <p className="mt-3 text-[13px] leading-relaxed text-quiet">
-          Setiap proyek punya workspace sendiri: file ditulis agent, di-build dengan Vite,
-          lalu disajikan di port lokal supaya bisa dicoba langsung.
+          Pilih proyek kosong atau mulai dari starter LMS yang sudah memiliki alur kursus, siswa, guru, materi, tugas, dan penilaian.
         </p>
-        <button
-          onClick={onCreate}
-          className="mt-6 flex h-9 max-md:h-11 items-center gap-2 bg-accent px-3 text-[12.5px] font-medium text-ink transition-opacity hover:opacity-90"
-        >
-          <Icon name="plus" size={12} />
-          Buat proyek pertama
-        </button>
+        {!showStarters ? (
+          <button
+            onClick={() => setShowStarters(true)}
+            className="mt-6 flex h-9 max-md:h-11 items-center gap-2 bg-accent px-3 text-[12.5px] font-medium text-ink transition-opacity hover:opacity-90"
+          >
+            <Icon name="plus" size={12} />
+            Buat proyek pertama
+          </button>
+        ) : (
+          <div className="mt-6 grid gap-3 sm:grid-cols-2">
+            <button onClick={() => onCreate('blank')} className="border border-edge bg-panel p-4 text-left transition hover:border-accent">
+              <span className="block text-sm font-semibold text-body">Proyek kosong</span>
+              <span className="mt-1 block text-xs text-quiet">Mulai dari template standar</span>
+            </button>
+            <button onClick={() => onCreate('lms')} className="border border-accent/50 bg-accent/5 p-4 text-left transition hover:bg-accent/10">
+              <span className="block text-sm font-semibold text-body">Starter LMS</span>
+              <span className="mt-1 block text-xs text-quiet">Kursus, materi, enrollment, tugas & grading</span>
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )

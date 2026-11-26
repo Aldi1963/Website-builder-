@@ -420,11 +420,13 @@ app.get('/api/health', (c) =>
 app.get('/api/projects', (c) => c.json({ projects: listProjects(c.get('user').id) }))
 
 app.post('/api/projects', async (c) => {
-  const body = (await c.req.json().catch(() => ({}))) as { name?: string; prompt?: string }
+  const body = (await c.req.json().catch(() => ({}))) as { name?: string; prompt?: string; starter?: string }
+  const starter = body.starter === 'lms' ? 'lms' : 'blank'
   const id = randomBytes(5).toString('hex')
-  const name = (body.name ?? body.prompt ?? 'Untitled app').slice(0, 60)
-  const project = createProject(id, name, body.prompt ?? '', c.get('user').id)
-  ensureWorkspace(id)
+  const defaultName = starter === 'lms' ? 'LMS baru' : 'Proyek tanpa nama'
+  const name = (body.name ?? body.prompt ?? defaultName).slice(0, 60)
+  const project = createProject(id, name, body.prompt ?? '', c.get('user').id, starter)
+  ensureWorkspace(id, starter)
   return c.json({ project }, 201)
 })
 

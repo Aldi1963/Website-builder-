@@ -1,7 +1,7 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { spawn, type ChildProcess } from 'node:child_process'
-import { PROJECTS_DIR, TEMPLATE_DIR, PREVIEW_PORT_BASE, MAX_PREVIEWS } from './paths.ts'
+import { PROJECTS_DIR, TEMPLATE_DIR, STARTERS_DIR, PREVIEW_PORT_BASE, MAX_PREVIEWS } from './paths.ts'
 import { listSettings } from './db.ts'
 import { projectDbUrl } from './managed-db.ts'
 
@@ -11,14 +11,16 @@ export function projectDir(projectId: string) {
   return join(PROJECTS_DIR, projectId)
 }
 
-export function ensureWorkspace(projectId: string): string {
+export function ensureWorkspace(projectId: string, starter = 'blank'): string {
   const dir = projectDir(projectId)
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true })
-    cpSync(TEMPLATE_DIR, dir, {
+    const candidate = starter === 'lms' ? join(STARTERS_DIR, 'lms') : TEMPLATE_DIR
+    const source = existsSync(candidate) ? candidate : TEMPLATE_DIR
+    cpSync(source, dir, {
       recursive: true,
       filter: (src) => {
-        const rel = src.slice(TEMPLATE_DIR.length + 1)
+        const rel = src.slice(source.length + 1)
         if (!rel) return true
         return !rel.split('/').some((seg) => SKIP.has(seg))
       },

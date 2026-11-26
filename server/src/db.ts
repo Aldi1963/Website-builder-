@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS projects (
   name TEXT NOT NULL,
   prompt TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL DEFAULT 'idle',
+  starter TEXT NOT NULL DEFAULT 'blank',
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
@@ -48,6 +49,12 @@ CREATE TABLE IF NOT EXISTS builds (
 
 CREATE INDEX IF NOT EXISTS idx_messages_project ON messages(project_id, id);
 `)
+
+try {
+  db.exec(`ALTER TABLE projects ADD COLUMN starter TEXT NOT NULL DEFAULT 'blank'`)
+} catch {
+  /* kolom sudah tersedia */
+}
 
 /* ---- Admin: pengaturan override, plan, dan pencatatan token per user ---- */
 /* Pengaturan AI: override database mengalahkan environment, environment
@@ -214,17 +221,18 @@ export type Project = {
   name: string
   prompt: string
   status: string
+  starter: string
   slug: string | null
   owner_id: string | null
   created_at: number
   updated_at: number
 }
 
-export function createProject(id: string, name: string, prompt: string, ownerId: string): Project {
+export function createProject(id: string, name: string, prompt: string, ownerId: string, starter = 'blank'): Project {
   const now = Date.now()
   db.prepare(
-    `INSERT INTO projects (id, name, prompt, status, owner_id, created_at, updated_at) VALUES (?, ?, ?, 'idle', ?, ?, ?)`,
-  ).run(id, name, prompt, ownerId, now, now)
+    `INSERT INTO projects (id, name, prompt, status, owner_id, created_at, updated_at, starter) VALUES (?, ?, ?, 'idle', ?, ?, ?, ?)`,
+  ).run(id, name, prompt, ownerId, now, now, starter)
   return getProject(id)!
 }
 
