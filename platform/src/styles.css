@@ -150,7 +150,7 @@ button:disabled, [aria-disabled="true"] {
    satu bahasa visual: solid, radius 12px, border 1px, shadow tipis. */
 @layer components {
   .vb-card {
-    @apply min-w-0 rounded-xl border border-edge bg-surface shadow-sm;
+    @apply min-w-0 rounded-xl border border-edge bg-surface;
   }
   .vb-card-head {
     @apply flex flex-wrap items-start justify-between gap-3 border-b border-edge px-5 py-4;
@@ -165,10 +165,16 @@ button:disabled, [aria-disabled="true"] {
     @apply inline-flex h-9 items-center justify-center gap-2 rounded-lg px-3 text-[12.5px] font-medium transition-colors;
   }
   .vb-btn-primary {
-    @apply inline-flex h-9 items-center justify-center gap-2 rounded-lg px-3 text-[12.5px] font-medium transition-colors bg-accent text-on-accent hover:bg-accent-hover;
+    @apply inline-flex h-9 items-center justify-center gap-2 rounded-full px-4 text-[12.5px] font-medium transition-colors bg-accent text-on-accent hover:bg-accent-hover;
   }
   .vb-btn-ghost {
     @apply inline-flex h-9 items-center justify-center gap-2 rounded-lg px-3 text-[12.5px] font-medium transition-colors border border-edge bg-surface text-body hover:bg-surface-muted;
+  }
+  /* Target sentuh >=44px di layar kecil. */
+  @media (max-width: 767px) {
+    .vb-btn, .vb-btn-primary, .vb-btn-ghost {
+      min-height: 44px;
+    }
   }
   .vb-chip {
     @apply inline-flex items-center gap-1.5 rounded-md border border-edge bg-surface-muted px-2 py-1 text-[11px] text-quiet;
@@ -180,10 +186,93 @@ button:disabled, [aria-disabled="true"] {
     @apply grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2;
   }
   .vb-grid-3 {
-    @apply grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-3;
+    @apply grid min-w-0 grid-cols-2 gap-3 sm:grid-cols-3;
   }
   .vb-eyebrow {
     @apply text-[11px] font-semibold uppercase tracking-wide text-quiet;
+  }
+}
+
+/* === Design system redesain 27 Nov 2026 (pola Lovable, token navy) ===
+   Halaman: max-width 1200px, padding 16px mobile / 24px desktop,
+   gap antar-seksi 24px mobile / 32px desktop, spacing unit 8px.
+   Kartu: border 1px, radius 12px (kontainer besar 16px), tanpa shadow.
+   Tipografi: judul halaman 24px/600, seksi 18px/600, angka stat 28-32px/600. */
+@layer components {
+  .vb-page {
+    @apply mx-auto w-full max-w-[1200px] px-4 py-6 md:px-6 md:py-8;
+  }
+  .vb-page-title {
+    @apply text-[24px] font-semibold leading-tight tracking-[-0.5px] text-body;
+  }
+  .vb-section-title {
+    @apply text-[18px] font-semibold leading-tight text-body;
+  }
+  .vb-stat-grid {
+    @apply grid grid-cols-2 gap-3 lg:grid-cols-3;
+  }
+  .vb-stat-value {
+    @apply mt-1 font-display text-[28px] font-semibold leading-tight text-body md:text-[32px];
+  }
+  .vb-stat-delta {
+    @apply mt-0.5 text-[12px] leading-relaxed text-quiet;
+  }
+  .vb-toolbar {
+    @apply flex flex-wrap items-center gap-2;
+  }
+  .vb-input {
+    @apply w-full rounded-lg border border-edge bg-surface px-3 py-2 text-[14px] text-body outline-none transition-colors placeholder:text-quiet focus:border-accent;
+  }
+  .vb-tabs {
+    @apply flex gap-1 overflow-x-auto border-b border-edge;
+  }
+  .vb-tab {
+    @apply shrink-0 border-b-2 border-transparent px-3 py-2 text-[13px] font-medium text-quiet transition-colors hover:text-body;
+  }
+  .vb-tab-active {
+    @apply border-accent text-accent;
+  }
+  /* Badge status pill: nama proyek tidak pernah menempel ke badge
+     (perbaikan bug "Marketingidle": badge selalu flex-shrink:0 dan
+     margin-left:auto di dalam baris proyek). */
+  .vb-badge {
+    @apply inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-semibold leading-5;
+  }
+  .vb-badge-idle {
+    color: var(--vb-warning);
+    background: color-mix(in srgb, var(--vb-warning) 14%, transparent);
+  }
+  .vb-badge-published {
+    color: var(--vb-success);
+    background: color-mix(in srgb, var(--vb-success) 14%, transparent);
+  }
+  .vb-badge-building {
+    color: var(--vb-accent);
+    background: var(--vb-accent-soft);
+  }
+  .vb-badge-error {
+    color: var(--vb-danger);
+    background: color-mix(in srgb, var(--vb-danger) 12%, transparent);
+  }
+  /* Baris proyek: thumb 48x48 + nama ellipsis + badge di ujung kanan. */
+  .vb-project-row {
+    @apply flex min-h-[64px] w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-surface-muted;
+  }
+  .vb-thumb {
+    @apply flex h-12 w-12 shrink-0 items-center justify-center rounded-lg text-[18px] font-semibold;
+    color: var(--vb-accent);
+    background: var(--vb-accent-soft);
+  }
+  /* Tile kosong "Buat proyek baru" di awal grid (border putus-putus). */
+  .vb-create-tile {
+    @apply flex min-h-[64px] w-full items-center justify-center gap-2 rounded-xl border border-dashed border-quiet/50 px-4 py-3 text-[13px] font-medium text-accent transition-colors hover:border-accent hover:bg-accent-soft/50;
+  }
+  /* Meter kredit tipis 4px di header/sidebar. */
+  .vb-meter {
+    @apply h-1 w-full overflow-hidden rounded-full bg-edge;
+  }
+  .vb-meter > i {
+    @apply block h-full rounded-full bg-accent;
   }
 }
 

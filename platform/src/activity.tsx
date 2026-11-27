@@ -21,8 +21,8 @@ export function useActivity() {
   return { entries, push, reset }
 }
 
-export function TerminalBlock({ title, log, ok }: { title: string; log: string; ok: boolean }) {
-  const [open, setOpen] = useState(true)
+export function TerminalBlock({ title, log, ok, defaultOpen = true }: { title: string; log: string; ok: boolean; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen)
   const clean = stripAnsi(log).trimEnd()
   const lines = clean ? clean.split('\n') : []
   const shown = open ? lines : lines.slice(-4)

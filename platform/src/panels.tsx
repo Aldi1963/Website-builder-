@@ -7,7 +7,7 @@ import { Tabs } from '@cloudflare/kumo/components/tabs'
 import { Dialog } from '@cloudflare/kumo/components/dialog'
 import { Icon, Activity, Spinner, useAutoScroll, useCopy } from './ui'
 import { ActivityFeed, TerminalBlock, type ActivityEntry } from './activity'
-import { api, type AuditFinding, type PlanStep, type ProjectSettings } from './api'
+import { api, type ActivityEvent, type AuditFinding, type PlanStep, type ProjectSettings } from './api'
 import {
   FALLBACK_MODEL_CATALOG,
   MODEL_AUTO,
@@ -18,7 +18,35 @@ import {
   type ModelOption,
 } from './models'
 
-export type ChatItem = { role: string; content: string; id?: number }
+export type ChatItem = { role: string; content: string; id?: number; created_at?: number }
+
+/* Satu baris transcript: bubble pesan atau kartu aktivitas persisten.
+   Event diurutkan kronologis terhadap pesan (created_at); saat timestamp
+   sama, pesan user dulu, lalu event, lalu jawaban asisten — sesuai urutan
+   run yang sebenarnya. */
+export type TranscriptItem =
+  | { type: 'message'; at: number; order: number; message: ChatItem }
+  | { type: 'event'; at: number; order: number; event: ActivityEvent }
+
+export function mergeTranscript(messages: ChatItem[], events: ActivityEvent[]): TranscriptItem[] {
+  const items: TranscriptItem[] = [
+    ...messages.map((m, i) => ({
+      type: 'message' as const,
+      at: m.created_at ?? 0,
+      order: i,
+      message: m,
+    })),
+    ...events.map((e, i) => ({
+      type: 'event' as const,
+      at: e.created_at,
+      order: messages.length + i,
+      event: e,
+    })),
+  ]
+  const rank = (it: TranscriptItem) =>
+    it.type === 'message' ? (it.message.role === 'user' ? 0 : 2) : 1
+  return items.sort((a, b) => a.at - b.at || rank(a) - rank(b) || a.order - b.order)
+}
 
 /* Blok terminal & chip file yang muncul DI DALAM thread chat (ala Emergent:
    output perintah agent terlihat sebagai bagian percakapan, klik chip file
@@ -27,13 +55,13 @@ export type InlineEvent =
   | { kind: 'terminal'; title: string; log: string; ok: boolean }
   | { kind: 'file'; path: string; action: 'write' | 'delete' | 'mkdir' }
 
-export function InlineEvents({ events, onOpenFile }: { events: InlineEvent[]; onOpenFile?: (path: string) => void }) {
+export function InlineEvents({ events, onOpenFile, terminalDefaultOpen = true }: { events: InlineEvent[]; onOpenFile?: (path: string) => void; terminalDefaultOpen?: boolean }) {
   if (!events.length) return null
   return (
     <div className="flex flex-col gap-2">
       {events.map((e, i) =>
         e.kind === 'terminal' ? (
-          <TerminalBlock key={i} title={e.title} log={e.log} ok={e.ok} />
+          <TerminalBlock key={i} title={e.title} log={e.log} ok={e.ok} defaultOpen={terminalDefaultOpen} />
         ) : (
           <button
             key={i}
@@ -537,6 +565,7 @@ export function ChatPanel({
   onOpenSettings,
   waitingForDiscovery,
   inlineEvents,
+  events,
   onOpenFile,
   previewOpen,
   previewUrl,
@@ -556,6 +585,9 @@ export function ChatPanel({
   onOpenSettings: () => void
   waitingForDiscovery: boolean
   inlineEvents?: InlineEvent[]
+  /* Kartu aktivitas PERSISTEN dari server (bukan feed live): dirender di
+     dalam transcript, kronologis terhadap bubble pesan. */
+  events?: ActivityEvent[]
   onOpenFile?: (path: string) => void
   previewOpen?: boolean
   previewUrl?: string
@@ -564,7 +596,8 @@ export function ChatPanel({
   const [attached, setAttached] = useState<{ name: string; content: string }[]>([])
   const [expanded, setExpanded] = useState(false)
   const [recording, setRecording] = useState(false)
-  const scrollRef = useAutoScroll(messages.length + (streamText?.length ?? 0) + (activity?.length ?? 0))
+  const scrollRef = useAutoScroll(messages.length + (streamText?.length ?? 0) + (activity?.length ?? 0) + (events?.length ?? 0))
+  const transcript = mergeTranscript(messages, events ?? [])
   const taRef = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const speechRef = useRef<{ stop: () => void } | null>(null)
@@ -630,17 +663,31 @@ export function ChatPanel({
           <Welcome onPick={(s) => setInput(s)} />
         ) : (
           <div className="mx-auto flex max-w-[640px] flex-col gap-5">
-            {messages.map((m, i) => (
-              <Bubble
-                key={m.id ?? i}
-                role={m.role}
-                content={m.content}
-                isLast={i === messages.length - 1}
-                previewOpen={previewOpen}
-                previewUrl={previewUrl}
-                onOpenSettings={onOpenSettings}
-              />
-            ))}
+            {transcript.map((it, i) =>
+              it.type === 'message' ? (
+                <Bubble
+                  key={it.message.id ?? `m-${i}`}
+                  role={it.message.role}
+                  content={it.message.content}
+                  isLast={i === transcript.length - 1}
+                  previewOpen={previewOpen}
+                  previewUrl={previewUrl}
+                  onOpenSettings={onOpenSettings}
+                />
+              ) : it.event.kind === 'terminal' ? (
+                <InlineEvents
+                  key={`e-${it.event.id}`}
+                  events={[{ kind: 'terminal', title: it.event.label, log: it.event.detail, ok: it.event.ok === 1 }]}
+                  terminalDefaultOpen={false}
+                />
+              ) : (
+                <InlineEvents
+                  key={`e-${it.event.id}`}
+                  events={[{ kind: 'file', path: it.event.label, action: (it.event.action ?? 'write') as 'write' | 'delete' | 'mkdir' }]}
+                  onOpenFile={onOpenFile}
+                />
+              ),
+            )}
             {sending && (
               <div className="vb-enter flex flex-col gap-2.5 text-[12px] text-quiet">
                 <ActivityFeed entries={activity ?? []} />
@@ -668,14 +715,14 @@ export function ChatPanel({
                   <button
                     type="button"
                     onClick={onConfirmPlan}
-                    className="rounded-md bg-accent px-3 py-1.5 text-[12px] font-medium text-white transition-opacity hover:opacity-90"
+                    className="rounded-full bg-accent px-4 py-2 text-[12px] font-medium text-white transition-opacity hover:opacity-90"
                   >
                     Setujui &amp; bangun
                   </button>
                   <button
                     type="button"
                     onClick={onCancelPlan}
-                    className="rounded-md border border-edge px-3 py-1.5 text-[12px] font-medium text-body transition-colors hover:bg-surface-muted"
+                    className="rounded-lg border border-edge px-3 py-2 text-[12px] font-medium text-body transition-colors hover:bg-surface-muted"
                   >
                     Batalkan
                   </button>

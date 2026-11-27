@@ -16,6 +16,20 @@ export type Message = {
   created_at: number
 }
 
+/* Satu aksi agent yang tersimpan persisten dan tampil di transcript chat.
+   Cerminan server/src/db.ts ActivityEvent. kind 'file': label = path,
+   action = write/delete/mkdir. kind 'terminal': label = judul perintah,
+   detail = log, ok = 1/0. */
+export type ActivityEvent = {
+  id: number
+  kind: string
+  label: string
+  action: string | null
+  detail: string
+  ok: number | null
+  created_at: number
+}
+
 export type FileEntry = { path: string; updated_at: number }
 
 export type PendingPlan = {
@@ -94,7 +108,11 @@ export const api = {
   createProject: (name: string, prompt = '', starter: 'blank' | 'lms' | 'tiket' = 'blank') =>
     req<{ project: Project }>('/api/projects', { method: 'POST', body: JSON.stringify({ name, prompt, starter }) }),
   getProject: (id: string) =>
-    req<{ project: Project; messages: Message[]; files: FileEntry[]; previewPort: number; pendingPlan: PendingPlan | null }>(`/api/projects/${id}`),
+    req<{ project: Project; messages: Message[]; events: ActivityEvent[]; files: FileEntry[]; previewPort: number; pendingPlan: PendingPlan | null }>(`/api/projects/${id}`),
+  /* Riwayat aktivitas persisten proyek (dipakai segarkan kartu transcript
+     sesudah run selesai, tanpa memuat ulang seluruh proyek). */
+  events: (id: string) =>
+    req<{ messages: Message[]; events: ActivityEvent[] }>(`/api/projects/${id}/messages`),
   renameProject: (id: string, name: string) =>
     req<{ project: Project }>(`/api/projects/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
   deleteProject: (id: string) => req<{ ok: boolean }>(`/api/projects/${id}`, { method: 'DELETE' }),

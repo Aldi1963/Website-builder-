@@ -13,6 +13,8 @@ import {
   setStatus,
   listMessages,
   addMessage,
+  addActivityEvent,
+  listActivityEvents,
   listFiles,
   getFile,
   putFile,
@@ -570,6 +572,7 @@ app.get('/api/projects/:id', (c) => {
   return c.json({
     project: p,
     messages: listMessages(p.id),
+    events: listActivityEvents(p.id),
     files: listFiles(p.id),
     build: lastBuild(p.id) ?? null,
     previewPort: previewPort(p.id),
@@ -854,6 +857,17 @@ app.post('/api/projects/:id/chat', async (c) => {
       dbg(`event ${e.type} at ${(Date.now() - t0) / 1000}s`)
       if (e.type === 'file' && (e.action === 'write' || e.action === 'delete')) uiChanged = true
       if (e.type === 'build' && e.ok) buildOk = true
+      /* Riwayat aktivitas persisten (transcript chat): tulis ke tabel
+         activity_events. Kegagalan tulis tidak boleh menggagalkan chat. */
+      try {
+        if (e.type === 'file') addActivityEvent(id, { kind: 'file', label: e.path, action: e.action })
+        else if (e.type === 'build')
+          addActivityEvent(id, { kind: 'terminal', label: 'npm run build', detail: (e.log ?? '').slice(-4000), ok: e.ok })
+        else if (e.type === 'install')
+          addActivityEvent(id, { kind: 'terminal', label: 'npm install', detail: (e.log ?? '').slice(-4000), ok: e.ok })
+      } catch {
+        /* persistensi event bersifat best-effort */
+      }
       if (e.type === 'file') await send('file', e)
       else if (e.type === 'build') await send('build', e)
       else if (e.type === 'install') await send('install', e)
@@ -897,7 +911,7 @@ app.post('/api/projects/:id/chat', async (c) => {
 app.get('/api/projects/:id/messages', (c) => {
   const r = owned(c)
   if ('error' in r) return c.json({ error: r.error }, r.status)
-  return c.json({ messages: listMessages(r.project.id) })
+  return c.json({ messages: listMessages(r.project.id), events: listActivityEvents(r.project.id) })
 })
 
 /* ---------- version history ---------- */

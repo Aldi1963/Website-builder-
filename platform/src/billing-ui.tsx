@@ -114,8 +114,8 @@ export function CreditChip() {
       onClick={() => navigate('/penggunaan')}
       aria-label="Saldo credit — buka halaman Penggunaan"
       title={error || 'Saldo credit — klik untuk melihat Penggunaan'}
-      className={`flex h-8 items-center gap-1.5 rounded-full px-3 text-[11.5px] font-semibold transition-opacity hover:opacity-85 max-md:h-10 ${
-        low ? 'bg-red-400 text-red-950' : 'bg-amber-300 text-amber-950'
+      className={`flex h-8 items-center gap-1.5 rounded-full border px-3 text-[11.5px] font-semibold transition-opacity hover:opacity-85 max-md:h-10 ${
+        low ? 'border-danger/50 bg-danger/10 text-danger' : 'border-edge bg-accent-soft text-accent'
       }`}
     >
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -129,6 +129,43 @@ export function CreditChip() {
       </svg>
       {balance === null ? '…' : `${fmtCredit(balance.total)} credit`}
     </button>
+  )
+}
+
+/* Meter kredit ringkas (angka + progress bar 4px + Top-up) — selalu
+   terlihat di sidebar supaya saldo rendah (4,7 < gate 10) tidak luput.
+   Skala bar: 100 credit (jatah gratis bulanan). */
+export function CreditMeter() {
+  const { balance, error } = useBalance()
+  const total = balance?.total ?? 0
+  const pct = Math.max(0, Math.min(100, (total / 100) * 100))
+  const low = balance !== null && total < 10
+  return (
+    <div className="border-t border-edge px-3 py-3">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-quiet">Kredit</span>
+        <span className="text-[12.5px] font-semibold text-body">
+          {balance === null ? '…' : `${fmtCredit(total)} credit`}
+        </span>
+      </div>
+      <div className="vb-meter mt-2" role="progressbar" aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}>
+        <i style={{ width: `${pct}%` }} />
+      </div>
+      {low && balance !== null && (
+        <p className="mt-1.5 text-[11px] leading-relaxed text-danger">
+          Di bawah batas minimal 10 untuk memakai AI.
+        </p>
+      )}
+      {error && <p className="mt-1.5 text-[11px] text-quiet">{error}</p>}
+      <div className="mt-2 flex gap-2">
+        <a href="/topup" className="vb-btn-primary h-8 flex-1 text-[11.5px]">
+          Top-up
+        </a>
+        <a href="/penggunaan" className="vb-btn-ghost h-8 flex-1 text-[11.5px]">
+          Penggunaan
+        </a>
+      </div>
+    </div>
   )
 }
 
@@ -196,8 +233,8 @@ export function UsagePage({
           </button>
         </div>
       </header>
-      <div className="flex-1 overflow-y-auto px-5 py-8 max-md:px-4 max-md:py-6">
-        <div className="mx-auto max-w-2xl">
+      <div className="flex-1 overflow-y-auto">
+        <div className="vb-page">
           {loading ? (
             <p className="text-[12.5px] text-quiet">Memuat…</p>
           ) : error ? (

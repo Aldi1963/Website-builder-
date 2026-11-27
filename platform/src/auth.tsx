@@ -91,7 +91,7 @@ export function AuthGate({ onUser }: { onUser: (u: User) => void }) {
           <Wordmark size={20} />
         </div>
 
-        <div className="vb-card p-6 shadow-md">
+        <div className="vb-card p-6">
           <h1 className="font-display text-[24px] leading-tight tracking-tight text-body">{title}</h1>
           <p className="mt-1.5 text-[12.5px] leading-relaxed text-quiet">{subtitle}</p>
 

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '@cloudflare/kumo/components/button'
-import { Icon, Spinner, Wordmark } from './ui'
-import { api, auth, ChatHandlers, chatStream, Project, exportProjectZip, type User } from './api'
+import { Icon, ProjectThumb, Spinner, StatusBadge, Wordmark } from './ui'
+import { api, auth, ChatHandlers, chatStream, Project, exportProjectZip, type ActivityEvent, type User } from './api'
 import { AuthGate, UserBar } from './auth'
 import { matchPath, navigate, usePath } from './router'
 import { ChatPanel, CodePane, PreviewPane, SettingsSheet, type ChatAudit, type ChatPlan, type InlineEvent, type VisualTarget } from './panels'
@@ -10,7 +10,7 @@ import { MODEL_AUTO, getPickerModels, isSelectionAvailable, modelIdForServer } f
 /* Fase 3 (UI credit): chip saldo + halaman Penggunaan. File ini milik Hermes
    (kotor, belum commit) — perubahan di bawah ini MINIMAL + aditif dan TIDAK
    di-commit oleh trek ini; komponennya sendiri ada di billing-ui.tsx. */
-import { CreditChip, UsagePage, notifyBalanceChanged } from './billing-ui'
+import { CreditChip, CreditMeter, UsagePage, notifyBalanceChanged } from './billing-ui'
 import { MarketplacePage } from './marketplace-ui'
 
 /* Right-side session menu (Emergent-style): a single 3-dot button in the chat
@@ -874,9 +874,15 @@ export default function App() {
     navigate('/', { replace: true })
   }
 
-  const createProject = async (starter: 'blank' | 'lms' | 'tiket' = 'blank') => {
-    const name = starter === 'lms' ? 'LMS baru' : starter === 'tiket' ? 'Event & Tiket baru' : 'Proyek tanpa nama'
-    const { project } = await api.createProject(name, '', starter)
+  const createProject = async (starter: 'blank' | 'lms' | 'tiket' = 'blank', prompt = '') => {
+    const name = prompt.trim()
+      ? prompt.trim().slice(0, 48)
+      : starter === 'lms'
+        ? 'LMS baru'
+        : starter === 'tiket'
+          ? 'Event & Tiket baru'
+          : 'Proyek tanpa nama'
+    const { project } = await api.createProject(name, prompt.trim(), starter)
     setProjects((p) => [project, ...p])
     setShowStarters(false)
     navigate(`/proyek/${project.id}`)
@@ -1018,6 +1024,7 @@ export default function App() {
         projects={projects}
         loading={loading}
         onCreate={createProject}
+        onCreatePrompt={(text) => void createProject('blank', text)}
         onSelect={onSelect}
         user={user}
         dark={dark}
@@ -1033,11 +1040,16 @@ export default function App() {
   )
 }
 
-/* Home: overview of all projects with quick actions. */
+/* Home: overview of all projects with quick actions.
+   Redesain 27 Nov 2026 (pola Lovable di atas token navy): prompt-first hero,
+   toolbar satu baris, statistik kartu 2 kolom di mobile, tab filter +
+   search/sort, dan baris proyek flex (thumb 48 + nama ellipsis + badge pill
+   di ujung kanan — perbaikan bug "Marketingidle"). */
 function HomePage({
   projects,
   loading,
   onCreate,
+  onCreatePrompt,
   onSelect,
   user,
   dark,
@@ -1052,6 +1064,7 @@ function HomePage({
   projects: Project[]
   loading: boolean
   onCreate: (starter?: 'blank' | 'lms' | 'tiket') => void
+  onCreatePrompt: (prompt: string) => void
   onSelect: (id: string) => void
   user: User
   dark: boolean
@@ -1064,6 +1077,41 @@ function HomePage({
   setShowStarters: (show: boolean) => void
 }) {
   const working = projects.filter((p) => p.status === 'working').length
+  const published = projects.filter((p) => p.slug).length
+  const idle = projects.filter((p) => p.status === 'idle').length
+  const [tab, setTab] = useState<'semua' | 'saya' | 'published' | 'template'>('semua')
+  const [query, setQuery] = useState('')
+  const [sort, setSort] = useState<'terbaru' | 'nama'>('terbaru')
+  const [prompt, setPrompt] = useState('')
+
+  const visible = projects
+    .filter((p) => {
+      if (tab === 'published' && !p.slug) return false
+      if (tab === 'template' && (!p.starter || p.starter === 'blank')) return false
+      if (query.trim() && !p.name.toLowerCase().includes(query.trim().toLowerCase())) return false
+      return true
+    })
+    .sort((a, b) =>
+      sort === 'nama' ? a.name.localeCompare(b.name, 'id') : b.updated_at - a.updated_at,
+    )
+
+  const submitPrompt = (e: React.FormEvent) => {
+    e.preventDefault()
+    const text = prompt.trim()
+    if (!text) {
+      setShowStarters(true)
+      return
+    }
+    onCreatePrompt(text)
+  }
+
+  const tabs: { id: typeof tab; label: string }[] = [
+    { id: 'semua', label: 'Semua' },
+    { id: 'saya', label: 'Milik saya' },
+    { id: 'published', label: 'Published' },
+    { id: 'template', label: 'Template' },
+  ]
+
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <header className="flex h-14 shrink-0 items-center gap-2 border-b border-edge bg-surface px-4 max-md:h-12">
@@ -1076,6 +1124,7 @@ function HomePage({
         </button>
         <h1 className="text-[13px] font-medium text-body">Beranda</h1>
         <div className="ml-auto flex items-center gap-2">
+          <CreditChip />
           <button
             onClick={onToggleTheme}
             aria-label={dark ? 'Mode terang' : 'Mode gelap'}
@@ -1091,76 +1140,145 @@ function HomePage({
           </button>
         </div>
       </header>
-      <div className="flex-1 overflow-y-auto px-5 py-8 max-md:px-4 max-md:py-6">
-        <div className="mx-auto max-w-3xl">
+      <div className="flex-1 overflow-y-auto">
+        <div className="vb-page">
           <p className="text-[11.5px] uppercase tracking-wide text-quiet">Halo, {user.name || user.email}</p>
-          <h2 className="mt-1 font-display text-[26px] leading-tight text-body max-md:text-[22px]">
+          <h2 className="vb-page-title mt-1">
             Ruang kerja untuk membangun aplikasi
           </h2>
-          <div className="mt-5 flex flex-wrap gap-2">
+
+          <form onSubmit={submitPrompt} className="mt-6">
+            <div className="overflow-hidden rounded-xl border border-edge bg-surface transition-colors focus-within:border-accent">
+              <label htmlFor="vb-hero-prompt" className="sr-only">
+                Jelaskan website yang mau dibuat
+              </label>
+              <textarea
+                id="vb-hero-prompt"
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    submitPrompt(e as unknown as React.FormEvent)
+                  }
+                }}
+                rows={2}
+                placeholder="Jelaskan website yang mau dibuat…"
+                className="w-full resize-none bg-transparent px-4 py-3 text-[14px] leading-relaxed text-body outline-none placeholder:text-quiet"
+              />
+              <div className="flex items-center justify-between gap-2 border-t border-edge px-3 py-2">
+                <span className="min-w-0 truncate text-[11.5px] text-quiet">
+                  Enter untuk membuat · Shift+Enter baris baru
+                </span>
+                <button type="submit" className="vb-btn-primary h-9 shrink-0 max-md:h-11">
+                  Buat
+                  <Icon name="arrow" size={13} />
+                </button>
+              </div>
+            </div>
+          </form>
+
+          <div className="vb-toolbar mt-4">
             <button
               onClick={() => setShowStarters(!showStarters)}
-              className="vb-btn-primary h-9 max-md:h-11"
+              className="vb-btn-primary max-md:w-full"
             >
               <Icon name="plus" size={12} />
               Proyek baru
             </button>
-            {showStarters && (
-              <div className="mt-3 grid max-w-xl gap-3 sm:grid-cols-2" role="group" aria-label="Pilih starter proyek">
-                <button onClick={() => { setShowStarters(false); onCreate(); }} className="vb-card p-4 text-left transition-colors hover:border-accent">
-                  <span className="block text-sm font-semibold text-body">Proyek kosong</span>
-                  <span className="mt-1 block text-xs text-quiet">Template standar untuk mulai dari awal</span>
-                </button>
-                <button onClick={() => { setShowStarters(false); onCreate('lms'); }} className="vb-card border-accent/40 bg-accent-soft/60 p-4 text-left transition-colors hover:border-accent">
-                  <span className="block text-sm font-semibold text-body">Starter LMS</span>
-                  <span className="mt-1 block text-xs text-quiet">Kursus, materi, enrollment, tugas, dan penilaian</span>
-                </button>
-                <button onClick={() => { setShowStarters(false); onCreate('tiket'); }} className="vb-card p-4 text-left transition-colors hover:border-accent">
-                  <span className="block text-sm font-semibold text-body">Starter Event & Tiket</span>
-                  <span className="mt-1 block text-xs text-quiet">Event, tiket, pesanan, promo, dan check-in</span>
-                </button>
-              </div>
-            )}
             <a
               href="/profil"
-              className="vb-btn-ghost h-9 max-md:h-11"
+              className="vb-btn-ghost max-md:flex-1"
             >
               Profil akun
             </a>
             <a
               href="/marketplace"
-              className="vb-btn-ghost h-9 max-md:h-11"
+              className="vb-btn-ghost max-md:flex-1"
             >
               Marketplace
             </a>
           </div>
+          {showStarters && (
+            <div className="mt-3 grid gap-3 sm:grid-cols-3" role="group" aria-label="Pilih starter proyek">
+              <button onClick={() => { setShowStarters(false); onCreate(); }} className="vb-card p-4 text-left transition-colors hover:border-accent">
+                <span className="block text-sm font-semibold text-body">Proyek kosong</span>
+                <span className="mt-1 block text-xs text-quiet">Template standar untuk mulai dari awal</span>
+              </button>
+              <button onClick={() => { setShowStarters(false); onCreate('lms'); }} className="vb-card border-accent/40 bg-accent-soft/60 p-4 text-left transition-colors hover:border-accent">
+                <span className="block text-sm font-semibold text-body">Starter LMS</span>
+                <span className="mt-1 block text-xs text-quiet">Kursus, materi, enrollment, tugas, dan penilaian</span>
+              </button>
+              <button onClick={() => { setShowStarters(false); onCreate('tiket'); }} className="vb-card p-4 text-left transition-colors hover:border-accent">
+                <span className="block text-sm font-semibold text-body">Starter Event &amp; Tiket</span>
+                <span className="mt-1 block text-xs text-quiet">Event, tiket, pesanan, promo, dan check-in</span>
+              </button>
+            </div>
+          )}
 
-          <div className="vb-grid-3 mt-8 max-sm:grid-cols-1">
-            <StatCard label="Total proyek" value={String(projects.length)} />
-            <StatCard label="Sedang jalan" value={String(working)} />
-            <StatCard label="Selesai" value={String(projects.filter((p) => p.status === 'idle').length)} />
+          <div className="vb-stat-grid mt-8">
+            <StatCard label="Total proyek" value={String(projects.length)} delta={`${published} sudah published`} />
+            <StatCard label="Sedang jalan" value={String(working)} delta={working ? `${working} proyek sedang dibangun` : 'Tidak ada yang berjalan'} />
+            <StatCard label="Selesai" value={String(idle)} delta={`${idle} proyek idle`} className="col-span-2 lg:col-span-1" />
           </div>
 
-          <h3 className="mt-9 text-[12.5px] font-medium text-body">Proyek kamu</h3>
+          <div className="mt-8 flex items-center justify-between gap-3">
+            <h3 className="vb-section-title">Proyek kamu</h3>
+            <span className="shrink-0 text-[12px] text-quiet">{visible.length} proyek</span>
+          </div>
+          <div className="vb-tabs mt-4" role="tablist" aria-label="Filter proyek">
+            {tabs.map((t) => (
+              <button
+                key={t.id}
+                role="tab"
+                aria-selected={tab === t.id}
+                onClick={() => setTab(t.id)}
+                className={`vb-tab ${tab === t.id ? 'vb-tab-active' : ''}`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Cari proyek…"
+              aria-label="Cari proyek"
+              className="vb-input flex-1"
+            />
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as 'terbaru' | 'nama')}
+              aria-label="Urutkan proyek"
+              className="vb-input sm:w-44"
+            >
+              <option value="terbaru">Terbaru</option>
+              <option value="nama">Nama A–Z</option>
+            </select>
+          </div>
+
           {loading ? (
-            <p className="mt-3 text-[12.5px] text-quiet">Memuat…</p>
+            <p className="mt-4 text-[12.5px] text-quiet">Memuat…</p>
           ) : !projects.length ? (
-            <p className="mt-3 text-[12.5px] leading-relaxed text-quiet">
-              Belum ada proyek. Tekan Proyek baru untuk memulai yang pertama.
+            <>
+              <button onClick={() => setShowStarters(true)} className="vb-create-tile mt-4">
+                <Icon name="plus" size={13} />
+                Buat proyek baru
+              </button>
+              <p className="mt-3 text-[12.5px] leading-relaxed text-quiet">
+                Belum ada proyek. Tulis ide di atas atau tekan Proyek baru untuk memulai yang pertama.
+              </p>
+            </>
+          ) : !visible.length ? (
+            <p className="mt-4 text-[12.5px] leading-relaxed text-quiet">
+              Tidak ada proyek yang cocok. Coba ubah filter atau pencarian.
             </p>
           ) : (
-            <ul className="vb-card mt-3 divide-y divide-edge overflow-hidden">
-              {projects.map((p) => (
+            <ul className="vb-card mt-4 divide-y divide-edge overflow-hidden">
+              {visible.map((p) => (
                 <li key={p.id}>
-                  <button
-                    onClick={() => onSelect(p.id)}
-                    className="vb-link-row"
-                  >
-                    <StatusMark status={p.status} />
-                    <span className="min-w-0 flex-1 truncate text-[13px] text-body">{p.name}</span>
-                    <span className="shrink-0 text-[11px] text-quiet">{p.status}</span>
-                    <Icon name="back" size={12} />
-                  </button>
+                  <ProjectRow project={p} onSelect={onSelect} />
                 </li>
               ))}
             </ul>
@@ -1172,11 +1290,43 @@ function HomePage({
   )
 }
 
-function StatCard({ label, value }: { label: string; value: string }) {
+/* Baris proyek (dipakai Beranda + Profil): thumb 48 + nama ellipsis +
+   timestamp + badge pill di ujung kanan. Nama tidak pernah menempel ke
+   badge karena nama flex-1 truncate dan badge shrink-0. */
+export function ProjectRow({ project, onSelect }: { project: Project; onSelect: (id: string) => void }) {
   return (
-    <div className="vb-card px-4 py-3.5">
+    <button onClick={() => onSelect(project.id)} className="vb-project-row">
+      <ProjectThumb name={project.name} />
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-2">
+          <span className="min-w-0 flex-1 truncate text-[16px] font-semibold leading-snug text-body">
+            {project.name}
+          </span>
+          <StatusBadge status={project.status} published={!!project.slug} />
+        </span>
+        <span className="mt-0.5 block text-[12px] text-quiet">{formatProjectDate(project.updated_at)}</span>
+      </span>
+      <Icon name="arrow" size={14} className="hidden shrink-0 text-quiet sm:block" />
+    </button>
+  )
+}
+
+function formatProjectDate(ts: number) {
+  return new Date(ts).toLocaleString('id-ID', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function StatCard({ label, value, delta, className = '' }: { label: string; value: string; delta?: string; className?: string }) {
+  return (
+    <div className={`vb-card px-4 py-4 ${className}`}>
       <p className="vb-eyebrow">{label}</p>
-      <p className="mt-1 font-display text-[22px] leading-tight text-body">{value}</p>
+      <p className="vb-stat-value">{value}</p>
+      {delta && <p className="vb-stat-delta">{delta}</p>}
     </div>
   )
 }
@@ -1236,6 +1386,7 @@ function ProfilePage({
         </button>
         <h1 className="text-[13px] font-medium text-body">Profil</h1>
         <div className="ml-auto flex items-center gap-2">
+          <CreditChip />
           <button
             onClick={onToggleTheme}
             aria-label={dark ? 'Mode terang' : 'Mode gelap'}
@@ -1251,8 +1402,8 @@ function ProfilePage({
           </button>
         </div>
       </header>
-      <div className="flex-1 overflow-y-auto px-5 py-8 max-md:px-4 max-md:py-6">
-        <div className="mx-auto max-w-2xl">
+      <div className="flex-1 overflow-y-auto">
+        <div className="vb-page">
           <div className="vb-card p-5">
             <p className="vb-eyebrow">Akun</p>
             <p className="mt-1 text-[17px] font-semibold text-body">{user.name || 'Tanpa nama'}</p>
@@ -1284,14 +1435,7 @@ function ProfilePage({
               <ul className="vb-card mt-3 divide-y divide-edge overflow-hidden">
                 {projects.map((p) => (
                   <li key={p.id}>
-                    <button
-                      onClick={() => onSelect(p.id)}
-                      className="vb-link-row min-h-[48px] py-2.5"
-                    >
-                      <StatusMark status={p.status} />
-                      <span className="min-w-0 flex-1 truncate text-[12.5px] text-body">{p.name}</span>
-                      <span className="shrink-0 text-[11px] text-quiet">{p.status}</span>
-                    </button>
+                    <ProjectRow project={p} onSelect={onSelect} />
                   </li>
                 ))}
               </ul>
@@ -1390,7 +1534,7 @@ function Sidebar({
         <div className="px-3 py-3">
           <button
             onClick={onCreate}
-            className="flex h-8 max-md:h-11 w-full items-center justify-center gap-1.5 bg-accent text-[12px] font-medium text-ink transition-opacity hover:opacity-90"
+            className="flex h-8 max-md:h-11 w-full items-center justify-center gap-1.5 rounded-full bg-accent text-[12px] font-medium text-ink transition-opacity hover:opacity-90"
           >
             <Icon name="plus" size={11} />
             Proyek baru
@@ -1451,6 +1595,8 @@ function Sidebar({
             </div>
           ))}
         </div>
+
+        <CreditMeter />
 
         <a
           href="/admin/settings"
@@ -1531,7 +1677,12 @@ type Route = 'chat' | 'file' | 'database' | 'jalankan' | 'terbitkan' | 'export' 
 function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string; routeTab: Route; onTitle: (n: string) => void; onMenu: () => void }) {
   const { dark, toggle } = useTheme()
   const [tab, setTab] = useState<'chat' | 'code'>(routeTab === 'file' ? 'code' : 'chat')
-  const [messages, setMessages] = useState<{ role: string; content: string; id?: number }[]>([])
+  const [messages, setMessages] = useState<{ role: string; content: string; id?: number; created_at?: number }[]>([])
+  /* Kartu aktivitas PERSISTEN dari server (tabel activity_events). Berbeda
+     dari feed live `activity` (reset tiap kirim pesan): state ini HANYA
+     dimuat dari server dan TIDAK pernah di-reset — jadi kartu file/terminal
+     tetap ada saat proyek dibuka ulang. */
+  const [events, setEvents] = useState<ActivityEvent[]>([])
   const [pendingDiscovery, setPendingDiscovery] = useState<string | null>(null)
   const [streamText, setStreamText] = useState('')
   const [changedFiles, setChangedFiles] = useState<string[]>([])
@@ -1601,7 +1752,8 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
   const [filesReady, setFilesReady] = useState(false)
   const load = async () => {
     const d = await api.getProject(projectId)
-    setMessages(d.messages.map((m) => ({ role: m.role, content: m.content, id: m.id })))
+    setMessages(d.messages.map((m) => ({ role: m.role, content: m.content, id: m.id, created_at: m.created_at })))
+    setEvents(d.events ?? [])
     setFiles(d.files.map((f) => ({ path: f.path })))
     setFilesReady(true)
     setName(d.project.name)
@@ -1621,14 +1773,19 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
     }
     const st = await api.previewStatus(projectId)
     setPreviewOn(st.running)
+    return d
   }
 
   useEffect(() => {
-    void load().then(() => {
+    void load().then((d) => {
       /* File dibuka ulang hanya bila route memang /file, atau user nieuwe
          masuk lewat /proyek/:id dengan state tersimpan (kompatibilitas). */
       const saved = loadView(projectId)
       if (saved.tab === 'code' && saved.file && routeTab === 'file') void openFileAt(saved.file)
+      /* Prompt-first (hero dashboard): proyek dibuat dengan prompt — kirim
+         otomatis sekali saat pertama dibuka (belum ada pesan). Sesudah run
+         pertama, messages sudah terisi sehingga tidak terulang. */
+      if (d && d.messages.length === 0 && d.project.prompt?.trim()) void send(d.project.prompt.trim())
     })
     void api.usage().then(setUsage).catch(() => {})
     return () => abortRef.current?.abort()
@@ -1639,6 +1796,45 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
   useEffect(() => {
     if (routeTab === 'file' || routeTab === 'chat') saveView(projectId, { tab, file: openFile })
   }, [projectId, tab, openFile, routeTab])
+
+  /* Ambil ulang kartu aktivitas persisten dari server sesudah run selesai:
+     event run ini sudah ditulis server selama streaming, jadi tampil di
+     transcript tanpa reload halaman. */
+  const refreshEvents = async () => {
+    try {
+      const r = await api.events(projectId)
+      setEvents(r.events ?? [])
+      /* Samakan bubble dengan server (stempel waktu server) supaya kartu
+         aktivitas tersusun kronologis dengan benar terhadap pesan; bubble
+         lokal yang tidak ada di server (tanya-jawab discovery, error)
+         dipertahankan, dan salinan lokal dari pesan yang sudah tersimpan
+         di server dibuang supaya tidak dobel. */
+      setMessages((prev) => {
+        const server = r.messages ?? []
+        const known = new Set(server.map((m) => `${m.role}\n${m.content}`))
+        const localOnly = prev.filter((m) => {
+          if (m.id !== undefined) return false
+          if (known.has(`${m.role}\n${m.content}`)) return false
+          /* Bubble visual-edit (🎯) adalah tampilan ringkas dari pesan user
+             yang sama yang tersimpan di server (prompt panjang) — buang
+             salinan lokalnya bila pesan servernya sudah ada. */
+          if (m.role === 'user' && m.content.startsWith('🎯 ')) {
+            return !server.some(
+              (sm) => sm.role === 'user' && (sm.created_at ?? 0) >= (m.created_at ?? 0) - 5000,
+            )
+          }
+          return true
+        })
+        const merged = [
+          ...server.map((m) => ({ role: m.role, content: m.content, id: m.id, created_at: m.created_at })),
+          ...localOnly,
+        ]
+        return merged.sort((a, b) => (a.created_at ?? 0) - (b.created_at ?? 0))
+      })
+    } catch {
+      /* kartu persisten gagal disegarkan: feed live sudah menampilkan run ini */
+    }
+  }
 
   const autoPreview = async () => {
     try {
@@ -1664,7 +1860,7 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
         const discovery = await api.discovery(text.trim())
         if (!discovery.ready && discovery.questions.length) {
           setPendingDiscovery(text.trim())
-          setMessages((m) => [...m, { role: 'user', content: text.trim() }, { role: 'assistant', content: discovery.questions.map((q, i) => `${i + 1}. ${q}`).join('\n') }])
+          setMessages((m) => [...m, { role: 'user', content: text.trim(), created_at: Date.now() }, { role: 'assistant', content: discovery.questions.map((q, i) => `${i + 1}. ${q}`).join('\n'), created_at: Date.now() }])
           return
         }
       } catch { /* Discovery is advisory; continue building if unavailable. */ }
@@ -1683,7 +1879,7 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
     else setPendingPlan(null)
     setAwaitingConfirm(false)
     // Run konfirmasi = lanjutan dari prompt yang sama; jangan tampilkan bubble user dua kali.
-    if (!optsConfirmed) setMessages((m) => [...m, { role: 'user', content: text }])
+    if (!optsConfirmed) setMessages((m) => [...m, { role: 'user', content: text, created_at: Date.now() }])
 
     const ctrl = new AbortController()
     abortRef.current = ctrl
@@ -1725,14 +1921,14 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
       },
       onAssistant: (t) => {
         setStreamText('')
-        setMessages((m) => [...m, { role: 'assistant', content: t }])
+        setMessages((m) => [...m, { role: 'assistant', content: t, created_at: Date.now() }])
       },
       onAwaitingConfirmation: () => {
         // Gerbang konfirmasi: rencana sudah tampil di chat; tunggu tombol "Setujui".
         didAwaitConfirm = true
         setStatus('')
         setAwaitingConfirm(true)
-        setMessages((m) => [...m, { role: 'assistant', content: 'Rencana sudah ditampilkan. Setujui untuk mulai dibangun, atau tulis perubahan yang diinginkan.' }])
+        setMessages((m) => [...m, { role: 'assistant', content: 'Rencana sudah ditampilkan. Setujui untuk mulai dibangun, atau tulis perubahan yang diinginkan.', created_at: Date.now() }])
       },
       onScreenshot: () => {
         void load()
@@ -1745,7 +1941,12 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
       },
       onError: (t) => {
         setStreamText('')
-        setMessages((m) => [...m, { role: 'error', content: t }])
+        setMessages((m) => [...m, { role: 'error', content: t, created_at: Date.now() }])
+        /* Run gagal di tengah jalan: file/terminal yang sempat terjadi sudah
+           tersimpan server — tampilkan sebagai kartu persisten, dan
+           singkirkan salinan live-nya supaya tidak dobel. */
+        setInlineEvents([])
+        void refreshEvents()
         /* Run yang gagal di tengah jalan bisa tetap memotong credit
            (deduct atas usage sebagian) — segarkan chip saldo. */
         notifyBalanceChanged()
@@ -1756,12 +1957,16 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
         // bubble chat hilang begitu run berakhir / halaman dimuat ulang.
         setStreamText((streamed) => {
           const clean = streamed.trim()
-          if (clean) setMessages((m) => [...m, { role: 'assistant', content: clean }])
+          if (clean) setMessages((m) => [...m, { role: 'assistant', content: clean, created_at: Date.now() }])
           return ''
         })
         setStatus('')
         /* Fase 3: saldo berkurang sesudah run — segarkan chip tanpa refresh. */
         notifyBalanceChanged()
+        /* Kartu persisten: ganti feed live run ini dengan kartu dari server
+           (sudah termasuk semua file/terminal run ini) supaya tidak dobel. */
+        setInlineEvents([])
+        void refreshEvents()
         void api.files(projectId).then(({ files }) => setFiles(files.map((f) => ({ path: f.path }))))
         // Saat gerbang konfirmasi aktif, jangan jalankan preview: belum ada
         // perubahan file dan dist bisa belum ada (menghindari 500 yang sia-sia).
@@ -1775,7 +1980,7 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
          belum punya format wire untuk provider (lihat models.ts). */
       await chatStream(projectId, text, handlers, ctrl.signal, { model: modelIdForServer(model), planMode, confirmPlan: true, confirmed: optsConfirmed })
     } catch (err) {
-      setMessages((m) => [...m, { role: 'error', content: (err as Error).message }])
+      setMessages((m) => [...m, { role: 'error', content: (err as Error).message, created_at: Date.now() }])
     } finally {
       setSending(false)
       setStatus('')
@@ -1795,7 +2000,7 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
       `Posisi: x=${t.x} y=${t.y} ukuran=${t.width}x${t.height}`,
       'Cari komponen/file yang menaungi elemen ini (cocokkan teks/selector), lalu ubah hanya bagian yang diminta. Jawab singkat file apa yang diubah.',
     ].join('\n')
-    setMessages((m) => [...m, { role: 'user', content: `🎯 ${t.label || t.tag} — ${t.selector}` }])
+    setMessages((m) => [...m, { role: 'user', content: `🎯 ${t.label || t.tag} — ${t.selector}`, created_at: Date.now() }])
     void send(prompt)
   }
 
@@ -1961,6 +2166,7 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
             onOpenSettings={() => setSettingsOpen(true)}
             waitingForDiscovery={!!pendingDiscovery}
             inlineEvents={inlineEvents}
+            events={events}
             onOpenFile={(path) => {
               navigate(`/proyek/${projectId}/file`)
               void openFileAt(path)

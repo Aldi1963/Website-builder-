@@ -48,6 +48,25 @@ CREATE TABLE IF NOT EXISTS builds (
 );
 
 CREATE INDEX IF NOT EXISTS idx_messages_project ON messages(project_id, id);
+
+/* Riwayat aktivitas agent (file write/delete/mkdir, terminal build/install)
+   yang tampil PERSISTEN di transcript chat ala Emergent. Sebelumnya event
+   ini hanya hidup di React state (useActivity, maks 40 entri, hilang saat
+   reload / reset tiap kirim pesan). Tabel ini sumber kebenarannya: server
+   menulis tiap event saat run berjalan (lihat onEvent di app.ts), klien
+   memuatnya bersama messages dan menggabungkannya kronologis. */
+CREATE TABLE IF NOT EXISTS activity_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  label TEXT NOT NULL,
+  action TEXT,
+  detail TEXT NOT NULL DEFAULT '',
+  ok INTEGER,
+  created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_activity_events_project ON activity_events(project_id, id);
 `)
 
 try {
@@ -328,6 +347,7 @@ export function deleteProject(id: string) {
      agar tidak ada data yatim. */
   const related = [
     `DELETE FROM messages WHERE project_id = ?`,
+    `DELETE FROM activity_events WHERE project_id = ?`,
     `DELETE FROM files WHERE project_id = ?`,
     `DELETE FROM builds WHERE project_id = ?`,
     `DELETE FROM project_settings WHERE project_id = ?`,
@@ -360,6 +380,51 @@ export function listMessages(projectId: string): Message[] {
   return db
     .prepare(`SELECT id, role, content, created_at FROM messages WHERE project_id = ? ORDER BY id ASC`)
     .all(projectId) as Message[]
+}
+
+export type ActivityEvent = {
+  id: number
+  kind: string
+  label: string
+  action: string | null
+  detail: string
+  ok: number | null
+  created_at: number
+}
+
+/* kind 'file': label = path file, action = write/delete/mkdir, detail kosong.
+   kind 'terminal': label = judul perintah (mis. 'npm run build'),
+   detail = log (dipotong pengirim), ok = 1/0. */
+export function addActivityEvent(
+  projectId: string,
+  ev: { kind: string; label: string; action?: string | null; detail?: string; ok?: boolean | null },
+): ActivityEvent {
+  const now = Date.now()
+  const ok = ev.ok === undefined || ev.ok === null ? null : ev.ok ? 1 : 0
+  const r = db
+    .prepare(
+      `INSERT INTO activity_events (project_id, kind, label, action, detail, ok, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(projectId, ev.kind, ev.label, ev.action ?? null, ev.detail ?? '', ok, now)
+  return {
+    id: Number(r.lastInsertRowid),
+    kind: ev.kind,
+    label: ev.label,
+    action: ev.action ?? null,
+    detail: ev.detail ?? '',
+    ok,
+    created_at: now,
+  }
+}
+
+export function listActivityEvents(projectId: string): ActivityEvent[] {
+  return db
+    .prepare(
+      `SELECT id, kind, label, action, detail, ok, created_at FROM activity_events
+       WHERE project_id = ? ORDER BY id ASC`,
+    )
+    .all(projectId) as ActivityEvent[]
 }
 
 export function putFile(projectId: string, path: string, content: string) {

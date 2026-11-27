@@ -20,6 +20,26 @@ export function Spinner({ className = '' }: { className?: string }) {
   )
 }
 
+/* Badge status proyek (pill, tidak pernah menempel ke nama — perbaikan bug
+   "Marketingidle"). Published dihitung dari slug, bukan dari status run. */
+export function StatusBadge({ status, published }: { status: string; published?: boolean }) {
+  if (published) return <span className="vb-badge vb-badge-published">Published</span>
+  if (status === 'working' || status === 'building')
+    return <span className="vb-badge vb-badge-building">{status === 'working' ? 'Berjalan' : 'Building'}</span>
+  if (status === 'error') return <span className="vb-badge vb-badge-error">Error</span>
+  return <span className="vb-badge vb-badge-idle">Idle</span>
+}
+
+/* Thumbnail proyek 48x48: huruf awal nama di atas accent-soft. */
+export function ProjectThumb({ name }: { name: string }) {
+  const letter = (name.trim().charAt(0) || 'P').toUpperCase()
+  return (
+    <span aria-hidden="true" className="vb-thumb">
+      {letter}
+    </span>
+  )
+}
+
 export function Activity() {
   return (
     <span className="vb-activity" role="status" aria-label="agent bekerja">
