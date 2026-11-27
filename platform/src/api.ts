@@ -102,9 +102,9 @@ export const api = {
   files: (id: string) => req<{ files: FileEntry[] }>(`/api/projects/${id}/files`),
   file: (id: string, path: string) =>
     req<{ path: string; content: string }>(`/api/projects/${id}/file?path=${encodeURIComponent(path)}`),
-  database: (id: string) =>
+  database: (id: string, offset = 0) =>
     req<{ managed: boolean; engine?: string; database?: string; tables: DbTable[]; error?: string; note?: string }>(
-      `/api/projects/${id}/database`,
+      `/api/projects/${id}/database${offset > 0 ? `?offset=${offset}` : ''}`,
     ),
   saveFile: (id: string, path: string, content: string) =>
     req<{ ok: boolean; path: string }>(`/api/projects/${id}/file`, {
@@ -187,7 +187,9 @@ export type ProjectSettings = {
 export type DbTable = {
   name: string
   columns: string[]
+  columnTypes?: string[]
   rows: Record<string, string | number | boolean>[]
+  total?: number
   note?: string
 }
 

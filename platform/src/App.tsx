@@ -91,8 +91,25 @@ function SessionMenu({ projectId, usage }: { projectId: string; usage: { request
 type DbTableView = {
   name: string
   columns: string[]
+  columnTypes?: string[]
   rows: Record<string, string | number | boolean>[]
+  total?: number
   note?: string
+}
+
+/* Ringkas tipe Postgres dari information_schema jadi label pendek. */
+function shortType(t: string | undefined): string {
+  if (!t) return ''
+  const map: Record<string, string> = {
+    'character varying': 'varchar',
+    character: 'char',
+    'timestamp without time zone': 'timestamp',
+    'timestamp with time zone': 'timestamptz',
+    'time without time zone': 'time',
+    'double precision': 'double',
+    boolean: 'bool',
+  }
+  return map[t] ?? t
 }
 
 /* Pindai kurung berimbang dari posisi buka; hormati string ' " `. */
@@ -376,6 +393,30 @@ function DatabaseViewer({
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [tables, setTables] = useState<DbTableView[]>([])
   const [error, setError] = useState('')
+  const [loadingMore, setLoadingMore] = useState<string | null>(null)
+  const [moreErrors, setMoreErrors] = useState<Record<string, string>>({})
+
+  /* Muat 50 baris berikutnya untuk satu tabel, tempel ke baris yang sudah ada. */
+  const loadMore = async (tableName: string) => {
+    const t = tables.find((x) => x.name === tableName)
+    if (!t || loadingMore) return
+    setLoadingMore(tableName)
+    setMoreErrors((prev) => ({ ...prev, [tableName]: '' }))
+    try {
+      const r = await api.database(projectId, t.rows.length)
+      const next = r.tables.find((x) => x.name === tableName)
+      if (!next) throw new Error('Tabel tidak ditemukan di respons.')
+      setTables((prev) =>
+        prev.map((x) =>
+          x.name === tableName ? { ...x, rows: [...x.rows, ...next.rows], total: next.total ?? x.total } : x,
+        ),
+      )
+    } catch (e) {
+      setMoreErrors((prev) => ({ ...prev, [tableName]: (e as Error).message || 'Gagal memuat baris berikutnya.' }))
+    } finally {
+      setLoadingMore(null)
+    }
+  }
 
   useEffect(() => {
     if (!open) return
@@ -447,7 +488,10 @@ function DatabaseViewer({
                 <p className="text-[12.5px] font-medium text-body">
                   {t.name}{' '}
                   <span className="font-normal text-quiet">
-                    · {t.note ?? `${t.columns.length} kolom · ${t.rows.length} baris`}
+                    ·{' '}
+                    {t.total != null
+                      ? `${t.columns.length} kolom · ${t.total} baris${t.rows.length < t.total ? ` · menampilkan ${t.rows.length}` : ''}`
+                      : (t.note ?? `${t.columns.length} kolom · ${t.rows.length} baris`)}
                   </span>
                 </p>
                 {t.rows.length > 0 ? (
@@ -455,9 +499,12 @@ function DatabaseViewer({
                     <table className="w-full border-collapse text-[12px]">
                       <thead>
                         <tr>
-                          {t.columns.map((c) => (
+                          {t.columns.map((c, i) => (
                             <th key={c} className="whitespace-nowrap border border-edge bg-ink px-2 py-1.5 text-left font-medium text-body">
                               {c}
+                              {t.columnTypes?.[i] && (
+                                <span className="block text-[10px] font-normal text-quiet">{shortType(t.columnTypes[i])}</span>
+                              )}
                             </th>
                           ))}
                         </tr>
@@ -474,13 +521,28 @@ function DatabaseViewer({
                         ))}
                       </tbody>
                     </table>
+                    {t.total != null && t.total > t.rows.length && (
+                      <button
+                        onClick={() => void loadMore(t.name)}
+                        disabled={loadingMore === t.name}
+                        className="mt-2 border border-edge bg-ink px-3 py-1.5 text-[12px] text-body hover:text-accent disabled:opacity-50"
+                      >
+                        {loadingMore === t.name
+                          ? 'Memuat…'
+                          : `Tampilkan 50 baris berikutnya (${t.rows.length} dari ${t.total})`}
+                      </button>
+                    )}
+                    {moreErrors[t.name] && (
+                      <p className="mt-2 text-[11.5px] text-body">{moreErrors[t.name]}</p>
+                    )}
                   </div>
                 ) : (
                   <div className="mt-2">
                     <div className="flex flex-wrap gap-1.5">
-                      {t.columns.map((c) => (
+                      {t.columns.map((c, i) => (
                         <span key={c} className="border border-edge bg-ink px-2 py-1 font-mono text-[11px] text-body">
                           {c}
+                          {t.columnTypes?.[i] && <span className="text-quiet"> · {shortType(t.columnTypes[i])}</span>}
                         </span>
                       ))}
                     </div>

@@ -326,45 +326,56 @@ app.get('/api/projects/:id/database', async (c) => {
   if (!isManagedDbEnabled()) {
     return c.json({ managed: false, tables: [], note: 'Database terkelola belum aktif.' })
   }
-  let pool: import('pg').Pool | null = null
+  // Paginasi sederhana per tabel: LIMIT 50, OFFSET dari query (?offset=N).
+  // Offset yang sama dipakai untuk semua tabel; panel hanya memakai baris
+  // tabel yang diminta saat memuat halaman berikutnya.
+  const rawOffset = Number(c.req.query('offset') ?? 0)
+  const offset = Number.isFinite(rawOffset) ? Math.max(0, Math.min(100000, Math.floor(rawOffset))) : 0
+  const LIMIT = 50
   try {
     const opened = await projectDbPool(r.project.id)
-    pool = opened.pool
+    const pool = opened.pool
     const tablesRes = await pool.query<{ table_name: string }>(
       `SELECT table_name FROM information_schema.tables
        WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
        ORDER BY table_name`,
     )
-    const tables: Array<{ name: string; columns: string[]; rows: Record<string, unknown>[]; note: string }> = []
+    const tables: Array<{ name: string; columns: string[]; columnTypes: string[]; rows: Record<string, unknown>[]; total: number; note: string }> = []
     for (const t of tablesRes.rows) {
       const cols = await pool.query<{ column_name: string; data_type: string }>(
         `SELECT column_name, data_type FROM information_schema.columns
          WHERE table_schema = 'public' AND table_name = $1 ORDER BY ordinal_position`,
         [t.table_name],
       )
-      const q = `SELECT * FROM "${t.table_name.replace(/"/g, '""')}" LIMIT 20`
+      const q = `SELECT * FROM "${t.table_name.replace(/"/g, '""')}" LIMIT ${LIMIT} OFFSET ${offset}`
       const rowsRes = await pool.query<Record<string, unknown>>(q)
       const cnt = await pool.query<{ n: string }>(`SELECT COUNT(*)::text AS n FROM "${t.table_name.replace(/"/g, '""')}"`)
       const total = Number(cnt.rows[0]?.n ?? 0)
+      const shown = offset + rowsRes.rows.length
       tables.push({
         name: t.table_name,
         columns: cols.rows.map((c) => c.column_name),
-        rows: rowsRes.rows.slice(0, 20).map((row) => {
+        columnTypes: cols.rows.map((c) => c.data_type),
+        rows: rowsRes.rows.slice(0, LIMIT).map((row) => {
           const out: Record<string, unknown> = {}
           for (const [k, v] of Object.entries(row)) {
             out[k] = v === null ? '' : v instanceof Date ? v.toISOString() : typeof v === 'object' ? JSON.stringify(v) : (v as string | number | boolean)
           }
           return out
         }),
-        note: `${cols.rows.length} kolom · ${total} baris${rowsRes.rows.length > 20 ? ' · menampilkan 20' : ''}`,
+        total,
+        note: `${cols.rows.length} kolom · ${total} baris${shown < total ? ` · menampilkan ${shown} dari ${total}` : ''}`,
       })
     }
     return c.json({ managed: true, engine: 'postgres', database: opened.database, tables })
   } catch (err) {
     return c.json({ managed: true, engine: 'postgres', tables: [], error: (err as Error).message })
-  } finally {
-    void pool?.end()
   }
+  // JANGAN panggil pool.end() di sini: pool di-cache per proyek oleh
+  // projectDbPool (managed-db.ts) dan dipakai ulang antar request; mengakhiri
+  // pool di finally membuat request berikutnya gagal ("Cannot use a pool
+  // after calling end on the pool"). Pool hanya di-end di dropProjectDb
+  // saat proyek dihapus.
 })
 
 /* ---------- GitHub sync ---------- */
