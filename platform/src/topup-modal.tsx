@@ -273,7 +273,7 @@ export function TopupModal() {
         className="vb-enter flex max-h-[90dvh] w-full max-w-[520px] flex-col overflow-hidden rounded-t-2xl border border-edge bg-surface sm:rounded-2xl"
       >
         <div className="flex shrink-0 items-center justify-between px-4 pb-1 pt-4 sm:px-5">
-          <h2 className="font-display text-[16px] text-body">Top-up Credit</h2>
+          <h2 className="font-display text-[15px] font-semibold text-body">Top-up Credit</h2>
           <button
             ref={closeRef}
             onClick={doClose}
@@ -291,8 +291,8 @@ export function TopupModal() {
 
           <div className="vb-card mt-3 p-4">
             <p className="vb-eyebrow">Saldo credit kamu</p>
-            <p className="mt-1 font-display text-[28px] leading-tight text-body">
-              {balance ? fmtCredit(balance.total) : '…'} <span className="text-[15px]">credit</span>
+            <p className="mt-1 font-display text-[22px] leading-tight text-body">
+              {balance ? fmtCredit(balance.total) : '…'} <span className="text-[13px]">credit</span>
             </p>
             {balance && (
               <p className="mt-1 text-[12.5px] text-quiet">
@@ -321,8 +321,8 @@ export function TopupModal() {
                     onClick={() => void createOrder(p.id)}
                     className="vb-card px-4 py-3 text-left transition-colors hover:border-accent disabled:opacity-50"
                   >
-                    <span className="block text-[16px] font-semibold text-body">{fmtRp(p.amountIdr)}</span>
-                    <span className="mt-0.5 block text-[18px] font-semibold text-accent">
+                    <span className="block text-[14px] font-semibold text-body">{fmtRp(p.amountIdr)}</span>
+                    <span className="mt-0.5 block text-[15px] font-semibold text-accent">
                       {p.credits.toLocaleString('id-ID')} credit
                     </span>
                     <span className="text-[12px] text-quiet">
@@ -334,7 +334,7 @@ export function TopupModal() {
 
               {current && (
                 <div className="vb-card mt-4 p-4 text-center">
-                  <h3 className="text-left text-[15px] font-semibold text-body">Scan QRIS untuk membayar</h3>
+                  <h3 className="text-left text-[14px] font-semibold text-body">Scan QRIS untuk membayar</h3>
                   <p className="mt-2 text-left text-[12.5px] text-quiet">
                     Order <span className="font-mono text-body">{current.orderId}</span> · {fmtRp(current.amountIdr)} ·{' '}
                     {current.credits.toLocaleString('id-ID')} credit ·{' '}
