@@ -2,6 +2,7 @@ import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import type { Hono } from 'hono'
 import { db } from './db.ts'
 import { getBalance } from './credits.ts'
+import { redeemCodeForUser, redeemRateLimit, REDEEM_GENERIC_ERROR } from './redeem.ts'
 import { adminSetting } from './llm.ts'
 import { SESSION_COOKIE, readCookie, userByToken, type User } from './auth.ts'
 
@@ -456,6 +457,28 @@ export function registerBilling(app: Hono<BillingEnv>) {
     if (!user) return c.json({ error: 'Belum masuk.' }, 401)
     const cfg = clipkupayConfig()
     return c.json({ balance: getBalance(user.id), packages: PACKAGES, configured: cfg.apiKey.length > 0 })
+  })
+
+  /* Tukar kode redeem menjadi credit (28 Nov 2026). Pesan gagal SELALU
+     generik supaya tidak bisa ditebak kode mana yang ada; percobaan
+     dibatasi 5/menit/user. Gate minimal 10 credit TIDAK berlaku di sini
+     — gate itu untuk pemakaian AI, bukan untuk menerima credit. */
+  app.post('/api/redeem', async (c) => {
+    const user = currentUser(c)
+    if (!user) return c.json({ error: 'Belum masuk.' }, 401)
+    const rl = redeemRateLimit(user.id)
+    if (!rl.ok) {
+      return c.json({ error: 'Terlalu banyak percobaan. Coba lagi sebentar lagi.' }, 429)
+    }
+    const body = (await c.req.json().catch(() => ({}))) as { code?: string }
+    const code = String(body.code ?? '').trim()
+    if (!code) return c.json({ error: REDEEM_GENERIC_ERROR }, 400)
+    try {
+      const res = redeemCodeForUser(user.id, code)
+      return c.json({ ok: true, code: res.code, credits: res.credits, balance: res.balance })
+    } catch (e) {
+      return c.json({ error: (e as Error).message.slice(0, 300) }, 400)
+    }
   })
 
   /* Riwayat pemakaian + top-up pengguna (halaman Penggunaan, fase 3).

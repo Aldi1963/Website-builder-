@@ -34,6 +34,7 @@ import {
   updateCreditSettings,
   adjustCredit,
 } from './credits.ts'
+import { createRedeemCode, listRedeemCodes, deactivateRedeemCode, listRedemptions, getRedeemCode } from './redeem.ts'
 
 type AdminEnv = { Variables: { user: User } }
 
@@ -1227,6 +1228,87 @@ export function registerAdmin(app: Hono<AdminEnv>) {
     } catch (e) {
       return c.json({ error: (e as Error).message.slice(0, 300) }, 400)
     }
+  })
+
+  /* Penyesuaian manual terakhir (semua pengguna) — dipakai daftar ringkas
+     di halaman Kelola Credit, supaya admin tidak harus membuka detail
+     per pengguna untuk melihat isi coin manual yang baru dilakukan. */
+  app.get('/api/admin/credits/adjustments', (c) => {
+    const limit = Math.max(1, Math.min(20, Number(c.req.query('limit') ?? 10) || 10))
+    const rows = db
+      .prepare(
+        `SELECT t.user_id AS userId, u.email AS email, t.bucket, t.amount, t.balance_after AS balanceAfter,
+                t.reason, t.created_at AS createdAt
+         FROM credit_transactions t LEFT JOIN users u ON u.id = t.user_id
+         WHERE t.kind = 'adjust' ORDER BY t.created_at DESC, t.id DESC LIMIT ?`,
+      )
+      .all(limit) as {
+      userId: string
+      email: string | null
+      bucket: string | null
+      amount: number
+      balanceAfter: number
+      reason: string
+      createdAt: number
+    }[]
+    return c.json({ adjustments: rows })
+  })
+
+  /* ---------------------------------------------------------------- */
+  /* Redeem code (28 Nov 2026)                                         */
+  /* Kode dibuat admin, ditukar pengguna di halaman Penggunaan menjadi  */
+  /* credit bucket purchased. Kode tampil plaintext di admin (keputusan */
+  /* user); penukaran tercatat di credit_transactions (kind 'redeem').  */
+  /* ---------------------------------------------------------------- */
+
+  app.get('/api/admin/redeem/codes', (c) => {
+    return c.json({ codes: listRedeemCodes() })
+  })
+
+  app.post('/api/admin/redeem/codes', async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as {
+      code?: string
+      credits?: number
+      maxUses?: number
+      perUserLimit?: number
+      expiresAt?: number | null
+      allowedUserIds?: string[]
+      note?: string
+    }
+    try {
+      const me = c.get('user') as User | undefined
+      const created = createRedeemCode(
+        {
+          code: body.code,
+          credits: Number(body.credits),
+          maxUses: body.maxUses === undefined ? undefined : Number(body.maxUses),
+          perUserLimit: body.perUserLimit === undefined ? undefined : Number(body.perUserLimit),
+          expiresAt: body.expiresAt ?? null,
+          allowedUserIds: Array.isArray(body.allowedUserIds) ? body.allowedUserIds.map(String) : [],
+          note: body.note,
+        },
+        me?.email ?? '',
+      )
+      logAdmin(c, 'redeem.create', 'redeem_code', created.id, `${created.code}: +${created.credits} credit, maks ${created.maxUses}x`)
+      return c.json({ ok: true, code: created }, 201)
+    } catch (e) {
+      return c.json({ error: (e as Error).message.slice(0, 300) }, 400)
+    }
+  })
+
+  app.post('/api/admin/redeem/codes/:id/deactivate', (c) => {
+    const id = c.req.param('id')
+    const row = getRedeemCode(id)
+    if (!row) return c.json({ error: 'Kode tidak ditemukan.' }, 404)
+    const ok = deactivateRedeemCode(id)
+    if (ok) logAdmin(c, 'redeem.deactivate', 'redeem_code', id, `${row.code} dinonaktifkan`)
+    return c.json({ ok, code: getRedeemCode(id) })
+  })
+
+  app.get('/api/admin/redeem/redemptions', (c) => {
+    const codeId = (c.req.query('code_id') ?? '').trim() || undefined
+    const limit = Math.max(1, Math.min(200, Number(c.req.query('limit') ?? 50) || 50))
+    return c.json({ redemptions: listRedemptions(codeId, limit) })
   })
 
   /* ---------------------------------------------------------------- */

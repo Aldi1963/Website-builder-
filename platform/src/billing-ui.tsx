@@ -193,18 +193,56 @@ export function UsagePage({
   const [orders, setOrders] = useState<OrderRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [redeemCode, setRedeemCode] = useState('')
+  const [redeemBusy, setRedeemBusy] = useState(false)
+  const [redeemMsg, setRedeemMsg] = useState('')
+  const [redeemMsgKind, setRedeemMsgKind] = useState<'ok' | 'err' | ''>('')
+
+  const reloadUsage = async () => {
+    try {
+      const j = await getJson<{ balance: Balance; usage: UsageRow[]; orders: OrderRow[] }>('/api/billing/usage')
+      setBalance(j.balance)
+      setUsage(j.usage)
+      setOrders(j.orders)
+      setError('')
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }
 
   useEffect(() => {
-    getJson<{ balance: Balance; usage: UsageRow[]; orders: OrderRow[] }>('/api/billing/usage')
-      .then((j) => {
-        setBalance(j.balance)
-        setUsage(j.usage)
-        setOrders(j.orders)
-        setError('')
-      })
-      .catch((e) => setError((e as Error).message))
-      .finally(() => setLoading(false))
+    void reloadUsage().finally(() => setLoading(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  /* Tukar kode redeem (28 Nov 2026): POST /api/redeem. Pesan gagal dari
+     server sengaja generik supaya tidak bisa ditebak kode mana yang ada. */
+  const submitRedeem = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const code = redeemCode.trim()
+    if (!code) return
+    setRedeemBusy(true)
+    setRedeemMsg('')
+    try {
+      const res = await fetch('/api/redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      })
+      const j = (await res.json().catch(() => ({}))) as { error?: string; credits?: number; balance?: Balance }
+      if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`)
+      setRedeemMsg(`Berhasil! +${fmtCredit(j.credits ?? 0)} credit — saldo sekarang ${fmtCredit(j.balance?.total ?? 0)} credit.`)
+      setRedeemMsgKind('ok')
+      setRedeemCode('')
+      notifyBalanceChanged()
+      await reloadUsage()
+    } catch (err) {
+      setRedeemMsg((err as Error).message)
+      setRedeemMsgKind('err')
+    } finally {
+      setRedeemBusy(false)
+    }
+  }
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -266,6 +304,30 @@ export function UsagePage({
                 <button type="button" onClick={openTopupModal} className="vb-btn-primary mt-4 h-9">
                   Top-up credit
                 </button>
+              </div>
+
+              <div className="vb-card mt-4 p-5">
+                <p className="vb-eyebrow">Kode redeem</p>
+                <p className="mt-1 text-[12.5px] text-quiet">Punya kode redeem? Tukar jadi credit.</p>
+                <form onSubmit={submitRedeem} className="mt-3 flex gap-2">
+                  <input
+                    type="text"
+                    className="vb-input h-9 min-w-0 flex-1 font-mono uppercase"
+                    placeholder="CLIDI-XXXX-XXXX-XXXX"
+                    aria-label="Kode redeem"
+                    value={redeemCode}
+                    maxLength={40}
+                    onChange={(e) => setRedeemCode(e.target.value)}
+                  />
+                  <button type="submit" disabled={redeemBusy || !redeemCode.trim()} className="vb-btn-primary h-9 shrink-0">
+                    {redeemBusy ? 'Menukar…' : 'Tukar'}
+                  </button>
+                </form>
+                {redeemMsg && (
+                  <p className={`mt-2 text-[12.5px] ${redeemMsgKind === 'ok' ? 'text-success' : 'text-danger'}`}>
+                    {redeemMsg}
+                  </p>
+                )}
               </div>
 
               <h2 className="vb-eyebrow mt-8">Riwayat pemakaian</h2>

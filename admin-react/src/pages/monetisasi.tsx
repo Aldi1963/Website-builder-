@@ -1,11 +1,12 @@
 import { useEffect } from 'react'
-import { Coins, CreditCard } from '@phosphor-icons/react'
+import { Coins, CreditCard, Ticket } from '@phosphor-icons/react'
 import { NAVIGATE_EVENT } from '../lib/router'
 import { PageHeader } from '../components/PageHeader'
 import { Spinner } from '../components/Spinner'
 import { SectionNav, PageSection, type SectionNavItem } from '../components/SectionNav'
 import CreditsPage from './credits'
 import BillingPage from './billing'
+import RedeemPage from './redeem'
 
 /* Halaman "Monetisasi": saldo credit dan top-up paket credit dalam SATU
    halaman, tanpa tab / query parameter tab / model paket bulanan. */
@@ -13,6 +14,7 @@ import BillingPage from './billing'
 const sections: SectionNavItem[] = [
   { id: 'credits', label: 'Kelola Credit', description: 'Saldo & kelola kredit pengguna', icon: Coins },
   { id: 'billing', label: 'Paket Credit', description: 'Top-up paket credit lewat QRIS', icon: CreditCard },
+  { id: 'redeem', label: 'Kode Redeem', description: 'Kode penukaran credit untuk pengguna', icon: Ticket },
 ]
 
 export default function MonetisasiPage() {
@@ -25,6 +27,9 @@ export default function MonetisasiPage() {
       </PageSection>
       <PageSection id="billing" index={2} title="Paket Credit" description="Top-up paket credit lewat QRIS." icon={CreditCard}>
         <BillingPage embedded />
+      </PageSection>
+      <PageSection id="redeem" index={3} title="Kode Redeem" description="Kode penukaran credit untuk pengguna." icon={Ticket}>
+        <RedeemPage embedded />
       </PageSection>
     </div>
   )

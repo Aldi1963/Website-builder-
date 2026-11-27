@@ -10,6 +10,7 @@ import { Badge } from '../components/Badge'
 import { SearchInput } from '../components/SearchInput'
 import { Field, inputClass } from '../components/Field'
 import { Select } from '../components/Select'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 import { Spinner } from '../components/Spinner'
 import { errMessage, fmtDate, fmtDateShort, fmtNum, fmtRp } from '../components/BFormat'
 
@@ -65,6 +66,21 @@ interface CreditsPageProps {
   embedded?: boolean
 }
 
+interface RecentAdjustment {
+  userId: string
+  email: string | null
+  bucket: string | null
+  amount: number
+  balanceAfter: number
+  reason: string
+  createdAt: number
+}
+
+/* Preset isi coin samakan paket top-up (28 Nov 2026). */
+const ADJUST_PRESETS = [350, 1000, 4200, 10000]
+
+const BUCKET_LABEL: Record<string, string> = { free: 'Gratis', purchased: 'Dibeli', plan: 'Jatah Plan' }
+
 export default function CreditsPage({ embedded = false }: CreditsPageProps) {
   const toast = useToast()
   const [settingsForm, setSettingsForm] = useState<CreditSettings | null>(null)
@@ -74,10 +90,14 @@ export default function CreditsPage({ embedded = false }: CreditsPageProps) {
   const [rows, setRows] = useState<CreditUserRow[]>([])
   const [detail, setDetail] = useState<CreditDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
-  const [bucket, setBucket] = useState('free')
+  /* Default bucket 'purchased' untuk isi coin (kedaluwarsa 12 bulan, tidak
+     kena cap harian free) — sebelumnya 'free' (30 hari) rawan salah pilih. */
+  const [bucket, setBucket] = useState('purchased')
   const [amount, setAmount] = useState('')
   const [reason, setReason] = useState('')
   const [adjustBusy, setAdjustBusy] = useState(false)
+  const [confirmAdjust, setConfirmAdjust] = useState(false)
+  const [recentAdjusts, setRecentAdjusts] = useState<RecentAdjustment[]>([])
   const [settingsBusy, setSettingsBusy] = useState(false)
   const detailRef = useRef<HTMLDivElement>(null)
 
@@ -94,7 +114,17 @@ export default function CreditsPage({ embedded = false }: CreditsPageProps) {
 
   useEffect(() => {
     void loadSettings()
+    void loadRecentAdjusts()
   }, [loadSettings])
+
+  const loadRecentAdjusts = useCallback(async () => {
+    try {
+      const data = await api.get<{ adjustments: RecentAdjustment[] }>('/api/admin/credits/adjustments?limit=8')
+      setRecentAdjusts(data.adjustments)
+    } catch {
+      /* daftar ringkas tidak boleh menggagalkan halaman */
+    }
+  }, [])
 
   const search = async () => {
     setSearching(true)
@@ -129,7 +159,19 @@ export default function CreditsPage({ embedded = false }: CreditsPageProps) {
     [toast],
   )
 
-  const submitAdjust = async (e: React.FormEvent) => {
+  /* Isi coin manual: validasi → dialog konfirmasi → kirim. Ringkasan di
+     dialog dihitung dari saldo yang sedang tampil (server tetap sumber
+     kebenaran; pengurangan melebihi sisa bucket ditolak server). */
+  const adjustSummary = (): string => {
+    if (!detail) return ''
+    const amt = Number(amount)
+    const rsn = reason.trim()
+    const bucketAfter =
+      bucket === 'free' ? b?.free : bucket === 'purchased' ? b?.purchased : b?.plan
+    return `${amt > 0 ? 'Tambah' : 'Kurangi'} ${fmtNum(Math.abs(amt))} credit (${BUCKET_LABEL[bucket] ?? bucket}) ke ${detail.user.email} — alasan: ${rsn}. Saldo ${BUCKET_LABEL[bucket] ?? bucket} sesudah: ${fmtNum((bucketAfter ?? 0) + amt)} credit; total sesudah: ${fmtNum((b?.total ?? 0) + amt)} credit.`
+  }
+
+  const submitAdjust = (e: React.FormEvent) => {
     e.preventDefault()
     if (!detail) return
     const amt = Number(amount)
@@ -138,6 +180,14 @@ export default function CreditsPage({ embedded = false }: CreditsPageProps) {
       toast.error('Isi jumlah dan alasan.')
       return
     }
+    setConfirmAdjust(true)
+  }
+
+  const doAdjust = async () => {
+    if (!detail) return
+    const amt = Number(amount)
+    const rsn = reason.trim()
+    setConfirmAdjust(false)
     setAdjustBusy(true)
     try {
       const res = await api.post<{ ok: boolean; balance: { total: number }; applied: number }>(
@@ -148,6 +198,7 @@ export default function CreditsPage({ embedded = false }: CreditsPageProps) {
       setAmount('')
       setReason('')
       await loadDetail(detail.user.id)
+      await loadRecentAdjusts()
     } catch (err) {
       toast.error(errMessage(err))
     } finally {
@@ -246,6 +297,38 @@ export default function CreditsPage({ embedded = false }: CreditsPageProps) {
 
       {detailLoading && !detail ? <Spinner /> : null}
 
+      <Card title="Penyesuaian Manual Terakhir" description="8 isi/kurang coin manual terbaru di semua pengguna.">
+        <Table bare>
+          <thead>
+            <tr>
+              <Th>Waktu</Th>
+              <Th>Pengguna</Th>
+              <Th>Bucket</Th>
+              <Th className="text-right">Jumlah</Th>
+              <Th>Alasan</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {recentAdjusts.length ? (
+              recentAdjusts.map((a, i) => (
+                <tr key={`${a.createdAt}-${i}`}>
+                  <Td>{fmtDate(a.createdAt)}</Td>
+                  <Td>{a.email ?? a.userId}</Td>
+                  <Td>{BUCKET_LABEL[a.bucket ?? ''] ?? a.bucket ?? '–'}</Td>
+                  <Td className="text-right">
+                    {a.amount > 0 ? '+' : ''}
+                    {fmtNum(a.amount)}
+                  </Td>
+                  <Td>{a.reason || ''}</Td>
+                </tr>
+              ))
+            ) : (
+              <EmptyRow colSpan={5}>Belum ada penyesuaian manual.</EmptyRow>
+            )}
+          </tbody>
+        </Table>
+      </Card>
+
       {detail && b ? (
         <div ref={detailRef} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -320,6 +403,23 @@ export default function CreditsPage({ embedded = false }: CreditsPageProps) {
                 Terapkan
               </button>
             </form>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-muted">Cepat:</span>
+              {ADJUST_PRESETS.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setAmount(String(p))}
+                  className={`cursor-pointer rounded-full border px-2.5 py-1 text-xs font-medium ${
+                    amount === String(p)
+                      ? 'border-accent bg-accent-soft text-accent'
+                      : 'border-border bg-surface text-ink hover:border-accent hover:bg-accent-soft hover:text-accent'
+                  }`}
+                >
+                  +{fmtNum(p)}
+                </button>
+              ))}
+            </div>
             <p className="mt-2 text-sm text-muted">
               Penyesuaian tercatat di riwayat transaksi (kind <code>adjust</code>) dan log audit. Saldo tidak
               bisa negatif — pengurangan melebihi sisa bucket ditolak.
@@ -509,6 +609,17 @@ export default function CreditsPage({ embedded = false }: CreditsPageProps) {
           <Spinner />
         )}
       </Card>
+
+      <ConfirmDialog
+        open={confirmAdjust}
+        title="Terapkan penyesuaian?"
+        message={adjustSummary()}
+        confirmLabel="Ya, terapkan"
+        danger={false}
+        loading={adjustBusy}
+        onConfirm={() => void doAdjust()}
+        onCancel={() => setConfirmAdjust(false)}
+      />
     </div>
   )
 }

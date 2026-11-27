@@ -217,6 +217,42 @@ CREATE TABLE IF NOT EXISTS credit_webhook_events (
 CREATE INDEX IF NOT EXISTS idx_credit_webhook_events_order ON credit_webhook_events(order_id, created_at);
 `)
 
+/* ---- Redeem code (28 Nov 2026) ----
+   redeem_codes: satu baris per kode. code_norm = kode tanpa tanda hubung/
+   spasi, huruf besar (UNIQUE — pagar duplikat di level DB). allowed_user_ids
+   = JSON array user_id yang boleh memakai (kosong = siapa saja).
+   redeem_redemptions: satu baris per penukaran. TIDAK ada UNIQUE
+   (code_id, user_id): per_user_limit bisa > 1, jadi pagarnya adalah
+   hitungan di dalam transaksi (BEGIN IMMEDIATE) di redeem.ts. */
+db.exec(`
+CREATE TABLE IF NOT EXISTS redeem_codes (
+  id TEXT PRIMARY KEY,
+  code TEXT NOT NULL,
+  code_norm TEXT NOT NULL UNIQUE,
+  credits REAL NOT NULL,
+  max_uses INTEGER NOT NULL DEFAULT 1,
+  uses INTEGER NOT NULL DEFAULT 0,
+  per_user_limit INTEGER NOT NULL DEFAULT 1,
+  expires_at INTEGER,
+  active INTEGER NOT NULL DEFAULT 1,
+  allowed_user_ids TEXT NOT NULL DEFAULT '[]',
+  created_by TEXT NOT NULL DEFAULT '',
+  note TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_redeem_codes_active ON redeem_codes(active, created_at);
+
+CREATE TABLE IF NOT EXISTS redeem_redemptions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  code_id TEXT NOT NULL REFERENCES redeem_codes(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  credits REAL NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_redeem_redemptions_code ON redeem_redemptions(code_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_redeem_redemptions_user ON redeem_redemptions(code_id, user_id);
+`)
+
 /* Publish state lives on the project row. The column is added in place so an
    existing database keeps working without a migration tool. */
 try {
