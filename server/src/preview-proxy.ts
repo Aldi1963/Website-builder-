@@ -9,6 +9,10 @@ import type { Context } from 'hono'
  * server-function RPC), Set-Cookie responses and 3xx redirects all work without
  * exposing an internal port. Guests and other owners are rejected by the caller's
  * ownership check before this function runs.
+ *
+ * The preview is built with that prefix as Vite `base` and TanStack router
+ * `basepath` (see buildProject/startPreview in workspace.ts), so the app itself
+ * emits prefixed URLs and the prefix is forwarded untouched — no HTML rewriting.
  */
 export function previewPrefix(projectId: string): string {
   return `/api/projects/${projectId}/live`
@@ -19,8 +23,7 @@ const HOP_BY_HOP = ['connection', 'keep-alive', 'transfer-encoding', 'upgrade', 
 export async function proxyPreview(c: Context, projectId: string, port: number): Promise<Response> {
   const prefix = previewPrefix(projectId)
   const incoming = new URL(c.req.url)
-  const rest = incoming.pathname.slice(c.req.path.indexOf(prefix) + prefix.length) || '/'
-  const target = `http://127.0.0.1:${port}${rest}${incoming.search}`
+  const target = `http://127.0.0.1:${port}${incoming.pathname}${incoming.search}`
 
   const headers = new Headers(c.req.raw.headers)
   for (const name of [...HOP_BY_HOP, 'host', 'accept-encoding', 'content-length']) headers.delete(name)
@@ -54,54 +57,16 @@ export async function proxyPreview(c: Context, projectId: string, port: number):
     out.append('set-cookie', rewriteCookiePath(cookie, prefix))
   }
 
-  const type = upstream.headers.get('content-type') ?? ''
-  if (type.includes('text/html')) {
-    const html = await upstream.text()
-    out.set('cache-control', 'no-store')
-    return new Response(rewriteHtml(html, prefix), { status: upstream.status, headers: out })
-  }
   return new Response(upstream.body, { status: upstream.status, headers: out })
-}
-
-/**
- * Generated apps reference /assets/*, /wb-cloud.js and their own API with root
- * absolute URLs. Served from a path prefix those would resolve against the
- * platform, so markup references are prefixed and a small shim re-roots runtime
- * fetches. TanStack server functions post to /_serverFn/* from the client, which
- * only the shim can catch.
- */
-function rewriteHtml(html: string, prefix: string): string {
-  const rewritten = html.replace(/(\s(?:src|href|action)=")\/(?!\/)/g, `$1${prefix}/`)
-  const shim = `<script>(${rootShim.toString()})(${JSON.stringify(prefix)})</script>`
-  return rewritten.includes('</head>') ? rewritten.replace('</head>', `${shim}</head>`) : `${shim}${rewritten}`
-}
-
-/* Runs in the visitor's browser, not on the server. */
-function rootShim(prefix: string) {
-  const rebase = (input: string) => (input.startsWith('/') && !input.startsWith('//') && !input.startsWith(`${prefix}/`) ? `${prefix}${input}` : input)
-  const nativeFetch = window.fetch.bind(window)
-  window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
-    if (typeof input === 'string') return nativeFetch(rebase(input), init)
-    if (input instanceof URL) return nativeFetch(new URL(rebase(input.pathname + input.search), input.origin), init)
-    return nativeFetch(input, init)
-  }
-  const open = XMLHttpRequest.prototype.open
-  XMLHttpRequest.prototype.open = function (this: XMLHttpRequest, method: string, url: string | URL, async?: boolean, user?: string | null, password?: string | null) {
-    return open.call(this, method, typeof url === 'string' ? rebase(url) : url, async ?? true, user ?? null, password ?? null)
-  }
-  const wrap = (fn: History['pushState']) =>
-    function (this: History, state: unknown, title: string, url?: string | URL | null) {
-      return fn.call(this, state, title, typeof url === 'string' ? rebase(url) : url)
-    }
-  history.pushState = wrap(history.pushState)
-  history.replaceState = wrap(history.replaceState)
 }
 
 function rewriteLocation(value: string, prefix: string, port: number): string {
   try {
     const url = new URL(value, `http://127.0.0.1:${port}`)
     if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') {
-      return `${prefix}${url.pathname}${url.search}${url.hash}`
+      // App yang sudah sadar-basepath mengirim Location berprefix; jangan dobel.
+      const path = url.pathname.startsWith(`${prefix}/`) || url.pathname === prefix ? url.pathname : `${prefix}${url.pathname}`
+      return `${path}${url.search}${url.hash}`
     }
   } catch {
     /* relative Location */

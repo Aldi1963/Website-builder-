@@ -7,6 +7,19 @@ const port = Number(process.env.PORT ?? 3001)
 const hostname = process.env.HOST ?? '127.0.0.1'
 const CLIENT_DIR = new URL('./dist/client/', import.meta.url).pathname
 
+/* Preview platform menyajikan aplikasi di bawah prefix (VB_BASE, mis.
+   /api/projects/<id>/live/). URL yang sampai ke proses ini masih membawa
+   prefix itu, jadi aset statis dan route API lokal di bawah harus dikupas dulu
+   sebelum dicari di disk. SSR tidak lewat sini: TanStack membaca basepath
+   sendiri dari bundle hasil build. */
+const BASE = (process.env.VB_BASE ?? '/').replace(/\/+$/, '')
+
+function stripBase(pathname) {
+  if (!BASE) return pathname
+  if (pathname === BASE) return '/'
+  return pathname.startsWith(`${BASE}/`) ? pathname.slice(BASE.length) : pathname
+}
+
 const MIME = {
   '.js': 'text/javascript; charset=utf-8',
   '.mjs': 'text/javascript; charset=utf-8',
@@ -225,15 +238,16 @@ async function handleChat(request) {
 await serve({
   fetch: async (request) => {
     const url = new URL(request.url)
-    if (url.pathname === '/api/chat') {
+    const pathname = stripBase(url.pathname)
+    if (pathname === '/api/chat') {
       if (request.method !== 'POST') return jsonError(405, 'Gunakan POST.')
       return handleChat(request)
     }
-    if (url.pathname === '/api/embed') {
+    if (pathname === '/api/embed') {
       if (request.method !== 'POST') return jsonError(405, 'Gunakan POST.')
       return handleEmbed(request)
     }
-    const hit = await tryStatic(url.pathname)
+    const hit = await tryStatic(pathname)
     if (hit) return hit
     const res = await ssr(request)
     return res ?? new Response('Not found', { status: 404 })

@@ -4,6 +4,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { PROJECTS_DIR, TEMPLATE_DIR, STARTERS_DIR, PREVIEW_PORT_BASE, MAX_PREVIEWS } from './paths.ts'
 import { listSettings, getProject, putFile } from './db.ts'
 import { projectDbUrl } from './managed-db.ts'
+import { previewPrefix } from './preview-proxy.ts'
 
 const SKIP = new Set(['node_modules', 'dist', '.output', '.tanstack', '.git'])
 
@@ -98,9 +99,15 @@ function sanitize(p: string) {
 
 export type RunResult = { code: number; output: string }
 
-export function run(cmd: string, args: string[], cwd: string, timeoutMs = 180_000): Promise<RunResult> {
+export function run(
+  cmd: string,
+  args: string[],
+  cwd: string,
+  timeoutMs = 180_000,
+  extraEnv: Record<string, string> = {},
+): Promise<RunResult> {
   return new Promise((resolve) => {
-    const child = spawn(cmd, args, { cwd, env: { ...process.env, CI: '1' }, stdio: ['ignore', 'pipe', 'pipe'] })
+    const child = spawn(cmd, args, { cwd, env: { ...process.env, CI: '1', ...extraEnv }, stdio: ['ignore', 'pipe', 'pipe'] })
     let out = ''
     const push = (b: Buffer) => {
       out += b.toString('utf8')
@@ -126,9 +133,34 @@ export async function installDeps(projectId: string) {
   return run('npm', ['install', '--onnxruntime-node-install-cuda=skip', '--no-audit', '--no-fund'], dir, 300_000)
 }
 
+/**
+ * Build config milik platform: preview selalu disajikan di prefix
+ * /api/projects/<id>/live/, jadi vite.config.ts wajib memahami VB_BASE
+ * (base + basepath TanStack). Project lama dibuat sebelum dukungan ini ada,
+ * jadi config-nya disegarkan dari starter/template bila belum punya VB_BASE.
+ */
+function ensurePreviewBuildConfig(projectId: string, dir: string) {
+  const cfgPath = join(dir, 'vite.config.ts')
+  const current = existsSync(cfgPath) ? readFileSync(cfgPath, 'utf8') : ''
+  // Penanda versi config yang sadar-prefix: basepath TanStack ikut di-set.
+  if (current.includes('router: { basepath')) return
+  const starter = getProject(projectId)?.starter
+  const source = starter === 'lms' ? join(STARTERS_DIR, 'lms') : TEMPLATE_DIR
+  const canonical = join(source, 'vite.config.ts')
+  if (existsSync(canonical)) writeFileSync(cfgPath, readFileSync(canonical, 'utf8'))
+}
+
 export async function buildProject(projectId: string) {
   const dir = ensureWorkspace(projectId)
-  const r = await run('npm', ['run', 'build'], dir, 240_000)
+  ensurePreviewBuildConfig(projectId, dir)
+  // Preview disajikan publik di /api/projects/<id>/live/, jadi bundle harus
+  // dibangun dengan base + basepath itu. TanStack Start meng-inline basepath
+  // router ke bundle client saat build; tanpa ini hidrasi jatuh ke "Not Found".
+  const base = `${previewPrefix(projectId)}/`
+  const r = await run('npm', ['run', 'build'], dir, 240_000, {
+    VB_BASE: base,
+    TSS_ROUTER_BASEPATH: base.slice(0, -1),
+  })
   if (r.code === 0) {
     reconcileAssets(dir)
     // A fresh build emits new content-hashed assets. A running SSR preview still
@@ -231,6 +263,11 @@ export async function startPreview(projectId: string): Promise<number> {
   // proyek) — pola db.server.ts memakainya, fallback-nya path yang sama, supaya
   // data aplikasi persisten melewati restart preview/server.
   const env: Record<string, string> = { ...process.env, PORT: String(port), HOST: '127.0.0.1', VB_APP_DB_PATH: join(dir, 'data', 'app.db') }
+  // Preview hanya bisa diakses lewat proxy platform di prefix ini; server.mjs
+  // memakai VB_BASE untuk mengupas prefix dari aset statis & route /api lokal,
+  // sementara SSR TanStack mengetahui basepath dari bundle hasil build.
+  env.VB_BASE = `${previewPrefix(projectId)}/`
+  env.TSS_ROUTER_BASEPATH = previewPrefix(projectId)
   // Database terkelola (Postgres per-proyek): suntik koneksi ke env supaya app
   // hasil generate bisa memakai DB permanen tanpa mengelola kredensial sendiri.
   const pgUrl = await projectDbUrl(projectId)
@@ -248,7 +285,7 @@ export async function startPreview(projectId: string): Promise<number> {
   for (let i = 0; i < 40; i++) {
     await new Promise((r) => setTimeout(r, 250))
     try {
-      const res = await fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(1500) })
+      const res = await fetch(`http://127.0.0.1:${port}${previewPrefix(projectId)}/`, { signal: AbortSignal.timeout(1500) })
       if (res.status < 500) return port
     } catch {
       /* not ready yet */

@@ -1,4 +1,4 @@
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { streamSSE } from 'hono/streaming'
 import { cors } from 'hono/cors'
@@ -645,9 +645,10 @@ app.get('/p/:slug', async (c) => {
 
 /* Live preview over the platform origin. Ownership is checked on every request,
    including assets and RPC posts, so a preview URL cannot leak to guests or to a
-   different account. */
-app.all('/api/projects/:id/live/*', async (c) => {
-  const r = owned(c)
+   different account. Two routes: the bare prefix (root of the app, after Hono
+   trims a trailing slash) and everything below it. */
+const livePreview = async (c: Context) => {
+  const r = owned(c as Parameters<typeof owned>[0])
   if ('error' in r) return c.json({ error: r.error }, r.status)
   let port: number
   try {
@@ -656,7 +657,10 @@ app.all('/api/projects/:id/live/*', async (c) => {
     return c.json({ ok: false, error: (err as Error).message }, 503)
   }
   return proxyPreview(c, r.project.id, port)
-})
+}
+
+app.all('/api/projects/:id/live', livePreview)
+app.all('/api/projects/:id/live/*', livePreview)
 
 app.delete('/api/projects/:id/preview', (c) => {
   const r = owned(c)
