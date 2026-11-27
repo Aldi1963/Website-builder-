@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
-const src = readFileSync('/home/hatch/workspace/vibebuilder/platform/src/panels.tsx', 'utf8')
+const root = new URL('../..', import.meta.url).pathname
+const src = readFileSync(join(root, 'platform/src/panels.tsx'), 'utf8')
 const start = src.indexOf('function FileTreeRow(')
 const block = src.slice(start, src.indexOf('/* ', start + 10))
 

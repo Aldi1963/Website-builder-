@@ -34,6 +34,7 @@ import {
 import { db } from './db.ts'
 import type { Project } from './db.ts'
 import { getPendingPlan, clearPendingPlan } from './pending-plan.ts'
+import { saveReferenceImage, listReferenceImages, readReferenceImage, deleteReferenceImage } from './reference-images.ts'
 import { listVersions, getVersionDiff, restoreVersion, snapshotVersion, diffLines } from './versions.ts'
 import { projectZip } from './export.ts'
 import { syncToGitHub, saveGitHubConfig } from './github-sync.ts'
@@ -394,6 +395,30 @@ app.post('/api/projects/:id/database/query', async (c) => {
       return out
     })
     return c.json({ ok: true, columns: cols, rows, rowCount: rows.length, limit, truncated: res.rows.length > limit })
+  } catch (err) {
+    return c.json({ ok: false, error: (err as Error).message }, 400)
+  }
+})
+
+/* Eksekusi DML manual (INSERT/UPDATE/DELETE) dari panel database.
+   Memakai validator tokenisasi yang sama — satu pernyataan, operasi
+   administratif dan fungsi server terlarang tetap ditolak. Berjalan di pool
+   proyek yang sama dengan app (Neon bila aktif, lokal bila tidak). */
+app.post('/api/projects/:id/database/exec', async (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ ok: false, error: r.error }, r.status)
+  if (!isManagedDbEnabled()) return c.json({ ok: false, error: 'Database terkelola belum aktif.' }, 503)
+  const body = (await c.req.json().catch(() => ({}))) as { sql?: string }
+  const checked = validateProjectSql('query', body.sql ?? '')
+  if (!checked.ok) return c.json({ ok: false, error: checked.error }, 400)
+  const first = checked.sql.trim().split(/\s+/)[0]?.toLowerCase()
+  if (first !== 'insert' && first !== 'update' && first !== 'delete') {
+    return c.json({ ok: false, error: 'Endpoint ini hanya untuk INSERT / UPDATE / DELETE. Gunakan /database/query untuk SELECT.' }, 400)
+  }
+  try {
+    const { pool } = await projectDbPool(r.project.id)
+    const res = await pool.query(checked.sql)
+    return c.json({ ok: true, rowCount: res.rowCount ?? 0, command: res.command })
   } catch (err) {
     return c.json({ ok: false, error: (err as Error).message }, 400)
   }
@@ -829,9 +854,12 @@ app.post('/api/projects/:id/chat', async (c) => {
   if ('error' in r) return c.json({ error: r.error }, r.status)
   const id = r.project.id
 
-  const body = (await c.req.json().catch(() => ({}))) as { message?: string; model?: string; planMode?: boolean; confirmPlan?: boolean; confirmed?: boolean }
+  const body = (await c.req.json().catch(() => ({}))) as { message?: string; model?: string; planMode?: boolean; confirmPlan?: boolean; confirmed?: boolean; imageIds?: string[] }
   const message = (body.message ?? '').trim()
   if (!message) return c.json({ error: 'message kosong' }, 400)
+  const pendingPlan = getPendingPlan(id)
+  const imageIds = (body.confirmed && pendingPlan?.plan.imageIds?.length ? pendingPlan.plan.imageIds : body.imageIds ?? [])
+    .filter((x: unknown): x is string => typeof x === 'string' && /^[a-f0-9]{10}$/.test(x)).slice(0, 3)
 
   return streamSSE(c, async (stream) => {
     const dbg = (m: string) => { try { appendFileSync('/home/hatch/workspace/logs/vb-sse-debug.log', `${new Date().toISOString()} ${m}\n`) } catch {} }
@@ -857,17 +885,15 @@ app.post('/api/projects/:id/chat', async (c) => {
       dbg(`event ${e.type} at ${(Date.now() - t0) / 1000}s`)
       if (e.type === 'file' && (e.action === 'write' || e.action === 'delete')) uiChanged = true
       if (e.type === 'build' && e.ok) buildOk = true
-      /* Riwayat aktivitas persisten (transcript chat): tulis ke tabel
-         activity_events. Kegagalan tulis tidak boleh menggagalkan chat. */
+      /* Kartu aktivitas persisten: tulis event file/terminal ke
+         activity_events supaya transcript chat mempertahankannya melewati
+         reload (klien memuatnya lewat GET project / messages). Gagal
+         mencatat tidak boleh menggagalkan run. */
       try {
         if (e.type === 'file') addActivityEvent(id, { kind: 'file', label: e.path, action: e.action })
-        else if (e.type === 'build')
-          addActivityEvent(id, { kind: 'terminal', label: 'npm run build', detail: (e.log ?? '').slice(-4000), ok: e.ok })
-        else if (e.type === 'install')
-          addActivityEvent(id, { kind: 'terminal', label: 'npm install', detail: (e.log ?? '').slice(-4000), ok: e.ok })
-      } catch {
-        /* persistensi event bersifat best-effort */
-      }
+        else if (e.type === 'build') addActivityEvent(id, { kind: 'terminal', label: 'npm run build', detail: e.log, ok: e.ok })
+        else if (e.type === 'install') addActivityEvent(id, { kind: 'terminal', label: 'npm install', detail: e.log, ok: e.ok })
+      } catch { /* abaikan */ }
       if (e.type === 'file') await send('file', e)
       else if (e.type === 'build') await send('build', e)
       else if (e.type === 'install') await send('install', e)
@@ -883,7 +909,7 @@ app.post('/api/projects/:id/chat', async (c) => {
 
     let agentFailed = false
     try {
-      await runAgent(id, message, onEvent, body.model, body.planMode, { userId: c.get('user').id, confirmPlan: body.confirmPlan === true, confirmed: body.confirmed === true })
+      await runAgent(id, message, onEvent, body.model, body.planMode, { userId: c.get('user').id, confirmPlan: body.confirmPlan === true, confirmed: body.confirmed === true, imageIds })
       dbg(`agent resolved at ${(Date.now() - t0) / 1000}s`)
       setStatus(id, 'idle')
     } catch (err) {
@@ -1034,6 +1060,45 @@ app.post('/api/projects/:id/messages', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { role?: string; content?: string }
   const m = addMessage(r.project.id, body.role ?? 'assistant', body.content ?? '')
   return c.json({ message: m })
+})
+
+/* ---------- referensi gambar (screenshot desain dari user) ---------- */
+
+app.get('/api/projects/:id/references', async (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  return c.json({ images: await listReferenceImages(r.project.id) })
+})
+
+app.post('/api/projects/:id/references', async (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  const body = (await c.req.json().catch(() => ({}))) as { dataUrl?: string; name?: string }
+  try {
+    if (!body.dataUrl) throw new Error('dataUrl gambar wajib diisi')
+    const image = await saveReferenceImage(r.project.id, body.dataUrl, body.name ?? 'referensi')
+    return c.json({ ok: true, image: { ...image, dataUrl: undefined } })
+  } catch (err) {
+    return c.json({ ok: false, error: (err as Error).message }, 400)
+  }
+})
+
+app.get('/api/projects/:id/references/:refId', async (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  const img = await readReferenceImage(r.project.id, c.req.param('refId'))
+  if (!img) return c.json({ error: 'gambar tidak ditemukan' }, 404)
+  const bytes = Buffer.from(img.dataUrl.split(',')[1]!, 'base64')
+  return new Response(new Uint8Array(bytes), {
+    headers: { 'content-type': img.mime, 'content-length': String(bytes.length), 'cache-control': 'private, max-age=31536000' },
+  })
+})
+
+app.delete('/api/projects/:id/references/:refId', async (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  const ok = await deleteReferenceImage(r.project.id, c.req.param('refId'))
+  return c.json({ ok })
 })
 
 /* ---------- screenshot preview ---------- */

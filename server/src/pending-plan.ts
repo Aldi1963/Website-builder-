@@ -16,6 +16,7 @@ export type PendingPlanData = {
   langkah: { judul: string; detail: string }[]
   berkas: string[]
   asumsi: string[]
+  imageIds?: string[]
 }
 
 export type PendingPlan = {

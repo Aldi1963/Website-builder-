@@ -47,17 +47,17 @@ function Home() {
 
   return (
     <main className="min-h-dvh">
-      <header className="border-b border-white/10 bg-slate-950/70 backdrop-blur">
+      <header className="border-b border-edge bg-surface/90 backdrop-blur">
         <div className="container-page flex items-center justify-between py-4">
-          <Link to="/" className="flex items-center gap-2 font-bold tracking-tight text-white">
-            <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-400/15 text-emerald-300">L</span>
+          <Link to="/" className="flex items-center gap-2 font-bold tracking-tight text-ink">
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600/10 text-emerald-700">L</span>
             <span>Akademi</span>
           </Link>
           <nav className="flex items-center gap-2 text-sm">
             {user ? (
               <>
                 <Link to="/dashboard" className="btn-ghost">Dashboard</Link>
-                <span className="hidden text-slate-400 sm:inline">{user.name || user.email}</span>
+                <span className="hidden text-muted sm:inline">{user.name || user.email}</span>
                 <span className="badge capitalize">{user.role || 'user'}</span>
               </>
             ) : (
@@ -71,9 +71,9 @@ function Home() {
         <div className="mx-auto max-w-3xl text-center">
           <span className="badge">Learning Management System</span>
           <h1 className="mt-4 text-4xl font-extrabold tracking-tight sm:text-6xl">
-            Belajar, kelola, <span className="gradient-text">tumbuh</span>
+            Belajar, kelola, <span className="font-display text-accent">tumbuh</span>
           </h1>
-          <p className="mt-5 text-base leading-relaxed text-slate-400 sm:text-lg">
+          <p className="mt-5 text-base leading-relaxed text-ink sm:text-lg">
             Platform LMS untuk kursus, materi, tugas, diskusi, dan penilaian. Guru kelola kelas,
             siswa belajar dengan progres yang jelas.
           </p>
@@ -92,35 +92,35 @@ function Home() {
         <div className="mt-14">
           <div className="mb-5 flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-xl font-semibold text-white">Kursus tersedia</h2>
-              <p className="text-sm text-slate-400">{courses.length} kursus</p>
+              <h2 className="text-xl font-semibold text-ink">Kursus tersedia</h2>
+              <p className="text-sm text-muted">{courses.length} kursus</p>
             </div>
             {canManage && <Link to="/dashboard" className="btn-ghost text-sm">Kelola kursus →</Link>}
           </div>
 
           {courses.length === 0 ? (
             <div className="card p-10 text-center">
-              <p className="text-slate-300">Belum ada kursus.</p>
-              <p className="mt-1 text-sm text-slate-400">
+              <p className="text-muted">Belum ada kursus.</p>
+              <p className="mt-1 text-sm text-muted">
                 {canManage ? 'Buat kursus pertama dari dashboard.' : 'Kursus akan muncul di sini setelah dipublikasikan.'}
               </p>
             </div>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {courses.map((c) => (
-                <Link key={c.id} to="/courses/$slug" params={{ slug: c.slug }} className="card group block p-5 transition hover:border-emerald-400/30 hover:bg-white/[0.06]">
+                <Link key={c.id} to="/courses/$slug" params={{ slug: c.slug }} className="card group block p-5 transition hover:border-emerald-600/40">
                   <div className="flex items-start justify-between gap-3">
-                    <div className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-400/10 text-lg font-bold text-emerald-300">
+                    <div className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-600/10 text-lg font-bold text-emerald-700">
                       {c.title.slice(0, 1).toUpperCase()}
                     </div>
                     <div className="flex gap-1.5">
                       {!c.published && <span className="badge">Draft</span>}
-                      {c.enrolled && <span className="badge border-emerald-400/30 bg-emerald-400/10 text-emerald-300">Terdaftar</span>}
+                      {c.enrolled && <span className="badge border-emerald-600/30 bg-emerald-600/10 text-emerald-700">Terdaftar</span>}
                     </div>
                   </div>
-                  <h3 className="mt-4 font-semibold text-white group-hover:text-emerald-200">{c.title}</h3>
-                  <p className="mt-1 line-clamp-2 text-sm text-slate-400">{c.description || 'Belum ada deskripsi.'}</p>
-                  <div className="mt-4 flex gap-3 text-xs text-slate-500">
+                  <h3 className="mt-4 font-semibold text-ink group-hover:text-emerald-700">{c.title}</h3>
+                  <p className="mt-1 line-clamp-2 text-sm text-muted">{c.description || 'Belum ada deskripsi.'}</p>
+                  <div className="mt-4 flex gap-3 text-xs text-muted">
                     <span>{c.lesson_count} materi</span>
                     <span>{c.student_count} siswa</span>
                   </div>

@@ -27,9 +27,9 @@ function Home() {
       <div className="mx-auto max-w-2xl text-center">
         <span className="badge">Siap dikembangkan</span>
         <h1 className="mt-4 text-4xl font-extrabold tracking-tight sm:text-5xl">
-          Aplikasi <span className="gradient-text">berjalan</span>
+          Aplikasi <span className="font-display text-accent">berjalan</span>
         </h1>
-        <p className="mt-4 text-base text-slate-400">
+        <p className="mt-4 text-base text-ink">
           SSR TanStack Start aktif dengan database Postgres terkelola. Mulai bangun fitur pertamamu
           di sini.
         </p>
@@ -45,11 +45,11 @@ function Home() {
 
       <div className="card mx-auto mt-12 max-w-2xl p-5 text-left">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-slate-200">Tabel database</h2>
+          <h2 className="text-sm font-semibold text-ink">Tabel database</h2>
           <span className="badge">{tables.length} tabel</span>
         </div>
         {tables.length === 0 ? (
-          <p className="text-sm text-slate-400">
+          <p className="text-sm text-muted">
             Belum ada tabel. Saat kamu meminta fitur yang butuh data, tabel akan dibuat otomatis.
           </p>
         ) : (
@@ -62,7 +62,7 @@ function Home() {
           </div>
         )}
         {!info.ok && (
-          <p className="mt-3 text-sm text-red-400">Gagal membaca database: {info.message}</p>
+          <p className="mt-3 text-sm text-danger">Gagal membaca database: {info.message}</p>
         )}
       </div>
     </main>

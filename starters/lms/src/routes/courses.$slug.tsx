@@ -217,9 +217,9 @@ function CoursePage() {
 
   return (
     <main className="min-h-dvh">
-      <header className="border-b border-white/10 bg-slate-950/70 backdrop-blur">
+      <header className="border-b border-edge bg-surface/90 backdrop-blur">
         <div className="container-page flex items-center justify-between py-4">
-          <Link to="/" className="font-bold text-white">← Akademi</Link>
+          <Link to="/" className="font-bold text-ink">← Akademi</Link>
           <div className="flex items-center gap-2">
             {data.user && <Link to="/dashboard" className="btn-ghost text-xs">Dashboard</Link>}
             <span className="badge capitalize">{data.user?.role || 'tamu'}</span>
@@ -229,8 +229,8 @@ function CoursePage() {
       <section className="container-page py-10">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="max-w-2xl">
-            <h1 className="text-3xl font-bold text-white">{data.course.title}</h1>
-            <p className="mt-2 text-slate-400">{data.course.description}</p>
+            <h1 className="text-3xl font-bold text-ink">{data.course.title}</h1>
+            <p className="mt-2 text-ink">{data.course.description}</p>
           </div>
           <div className="flex flex-col items-end gap-2">
             {!data.enrolled && data.user?.role === 'siswa' && data.course.published && (
@@ -245,20 +245,20 @@ function CoursePage() {
               </Link>
             )}
             {data.enrolled && (
-              <span className="badge border-emerald-400/30 bg-emerald-400/10 text-emerald-300">
+              <span className="badge border-emerald-600/30 bg-emerald-600/10 text-emerald-700">
                 Progres {data.progress}%
               </span>
             )}
           </div>
         </div>
-        {error && <p className="mt-4 rounded-xl border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-300">{error}</p>}
+        {error && <p className="mt-4 rounded-xl border border-danger/30 bg-danger/10 p-3 text-sm text-danger">{error}</p>}
 
-        {!data.enrolled && !canManage && <p className="mt-6 rounded-xl border border-emerald-400/20 bg-emerald-400/5 p-4 text-sm text-slate-300">Daftar di kursus ini untuk membuka materi, tugas, progres, dan diskusi.</p>}
+        {!data.enrolled && !canManage && <p className="mt-6 rounded-xl border border-emerald-600/30 bg-emerald-600/10 p-4 text-sm text-muted">Daftar di kursus ini untuk membuka materi, tugas, progres, dan diskusi.</p>}
         <div className="mt-10 grid gap-8 lg:grid-cols-[1.6fr_1fr]">
           <div>
-            <h2 className="text-xl font-semibold text-white">Materi</h2>
+            <h2 className="text-xl font-semibold text-ink">Materi</h2>
             {data.lessons.length === 0 && (
-              <p className="mt-3 text-sm text-slate-400">
+              <p className="mt-3 text-sm text-muted">
                 {data.canViewContent ? 'Belum ada materi yang diunggah.' : 'Daftar di kursus ini untuk membuka materi.'}
               </p>
             )}
@@ -266,15 +266,15 @@ function CoursePage() {
               {data.lessons.map((l) => (
                 <article key={l.id} className="card p-5">
                   <div className="flex items-center justify-between gap-3">
-                    <h3 className="font-semibold text-white">
+                    <h3 className="font-semibold text-ink">
                       {l.position + 1}. {l.title}
                     </h3>
                     {data.enrolled && (
                       l.done ? (
-                        <span className="badge border-emerald-400/30 bg-emerald-400/10 text-emerald-300">Selesai</span>
+                        <span className="badge border-emerald-600/30 bg-emerald-600/10 text-emerald-700">Selesai</span>
                       ) : (
                         <button
-                          className="text-xs text-emerald-300 underline"
+                          className="text-xs text-emerald-700 underline"
                           disabled={busy}
                           onClick={() => act(() => completeLesson({ data: { lessonId: l.id } }))}
                         >
@@ -283,9 +283,9 @@ function CoursePage() {
                       )
                     )}
                   </div>
-                  <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-300">{l.content}</p>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-ink">{l.content}</p>
                   {l.video_url && (
-                    <a href={l.video_url} target="_blank" rel="noreferrer" className="mt-2 inline-block text-sm text-emerald-300 underline">
+                    <a href={l.video_url} target="_blank" rel="noreferrer" className="mt-2 inline-block text-sm text-emerald-700 underline">
                       Tonton video ↗
                     </a>
                   )}
@@ -293,27 +293,27 @@ function CoursePage() {
               ))}
             </div>
 
-            <h2 className="mt-10 text-xl font-semibold text-white">Tugas</h2>
-            {data.assignments.length === 0 && <p className="mt-3 text-sm text-slate-400">Belum ada tugas.</p>}
+            <h2 className="mt-10 text-xl font-semibold text-ink">Tugas</h2>
+            {data.assignments.length === 0 && <p className="mt-3 text-sm text-muted">Belum ada tugas.</p>}
             <div className="mt-4 space-y-4">
               {data.assignments.map((a) => {
                 const sub = data.myGrades.find((g) => g.assignment_id === a.id)
                 return (
                   <article key={a.id} className="card p-5">
                     <div className="flex justify-between gap-3">
-                      <h3 className="font-semibold text-white">{a.title}</h3>
+                      <h3 className="font-semibold text-ink">{a.title}</h3>
                       {sub?.grade != null ? (
-                        <span className="badge border-emerald-400/30 text-emerald-300">Nilai {sub.grade}</span>
+                        <span className="badge border-emerald-600/30 text-emerald-700">Nilai {sub.grade}</span>
                       ) : sub ? (
                         <span className="badge">Dikumpulkan</span>
                       ) : null}
                     </div>
-                    <p className="mt-1 whitespace-pre-wrap text-sm text-slate-400">{a.description}</p>
+                    <p className="mt-1 whitespace-pre-wrap text-sm text-ink">{a.description}</p>
                     {a.due_at && (
-                      <p className="mt-1 text-xs text-slate-500">Batas: {new Date(a.due_at).toLocaleString('id-ID')}</p>
+                      <p className="mt-1 text-xs text-muted">Batas: {new Date(a.due_at).toLocaleString('id-ID')}</p>
                     )}
                     {sub?.feedback && (
-                      <p className="mt-2 rounded-lg bg-white/5 p-3 text-sm text-slate-300">Catatan guru: {sub.feedback}</p>
+                      <p className="mt-2 rounded-lg bg-surface p-3 text-sm text-muted">Catatan guru: {sub.feedback}</p>
                     )}
                     {data.enrolled && (
                       <div className="mt-3 flex gap-2">
@@ -340,7 +340,7 @@ function CoursePage() {
           </div>
 
           <aside>
-            <h2 className="text-xl font-semibold text-white">Diskusi</h2>
+            <h2 className="text-xl font-semibold text-ink">Diskusi</h2>
             {data.canViewContent && (
               <form
                 className="mt-4 flex gap-2"
@@ -361,11 +361,11 @@ function CoursePage() {
               </form>
             )}
             <div className="mt-4 space-y-3">
-              {data.discussions.length === 0 && <p className="text-sm text-slate-400">Belum ada diskusi.</p>}
+              {data.discussions.length === 0 && <p className="text-sm text-muted">Belum ada diskusi.</p>}
               {data.discussions.map((d) => (
                 <div key={d.id} className="card p-4">
-                  <p className="text-sm text-slate-200">{d.body}</p>
-                  <p className="mt-2 text-xs text-slate-500">
+                  <p className="text-sm text-ink">{d.body}</p>
+                  <p className="mt-2 text-xs text-muted">
                     {d.user_name} · {new Date(d.created_at).toLocaleString('id-ID')}
                   </p>
                 </div>
@@ -374,13 +374,13 @@ function CoursePage() {
 
             {data.enrolled && (
               <div className="card mt-6 p-5">
-                <h2 className="font-semibold text-white">Nilai saya</h2>
+                <h2 className="font-semibold text-ink">Nilai saya</h2>
                 {data.myGrades.length === 0 ? (
-                  <p className="mt-2 text-sm text-slate-400">Belum ada tugas dikumpulkan.</p>
+                  <p className="mt-2 text-sm text-muted">Belum ada tugas dikumpulkan.</p>
                 ) : (
                   <ul className="mt-3 space-y-2 text-sm">
                     {data.myGrades.map((g, i) => (
-                      <li key={i} className="flex justify-between text-slate-300">
+                      <li key={i} className="flex justify-between text-muted">
                         <span>{g.title}</span>
                         <span>{g.grade ?? 'menunggu'}</span>
                       </li>
@@ -395,19 +395,19 @@ function CoursePage() {
         {data.canViewContent && data.quizzes.length > 0 && (
           <div className="card mt-10 p-6">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <h2 className="text-xl font-semibold text-white">Kuis</h2>
-              <span className="text-xs text-slate-400">Skor dihitung otomatis setelah jawaban dikumpulkan.</span>
+              <h2 className="text-xl font-semibold text-ink">Kuis</h2>
+              <span className="text-xs text-muted">Skor dihitung otomatis setelah jawaban dikumpulkan.</span>
             </div>
-            {quizMsg && <p className="mt-3 rounded-xl border border-emerald-400/30 bg-emerald-400/10 p-3 text-sm text-emerald-200">{quizMsg}</p>}
+            {quizMsg && <p className="mt-3 rounded-xl border border-emerald-600/30 bg-emerald-600/10 p-3 text-sm text-emerald-700">{quizMsg}</p>}
             <div className="mt-6 space-y-8">
               {data.quizzes.map((q) => {
                 const questions = data.quizForms[String(q.id)] ?? []
                 return (
-                  <div key={q.id} className="rounded-2xl border border-white/10 p-5">
+                  <div key={q.id} className="rounded-2xl border border-edge p-5">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
-                        <h3 className="font-semibold text-white">{q.title}</h3>
-                        {q.description && <p className="mt-1 text-sm text-slate-400">{q.description}</p>}
+                        <h3 className="font-semibold text-ink">{q.title}</h3>
+                        {q.description && <p className="mt-1 text-sm text-muted">{q.description}</p>}
                       </div>
                       <span className="badge">
                         {q.last_score != null ? `Skor terakhir ${q.last_score}/${q.last_total}` : 'Belum dikerjakan'}
@@ -415,17 +415,17 @@ function CoursePage() {
                     </div>
 
                     {questions.length === 0 ? (
-                      <p className="mt-4 text-sm text-slate-400">Guru belum menambahkan soal ke kuis ini.</p>
+                      <p className="mt-4 text-sm text-muted">Guru belum menambahkan soal ke kuis ini.</p>
                     ) : (
                       <>
                         {questions.map((qq, qi) => (
                           <fieldset key={qq.id} className="mt-5">
-                            <legend className="text-sm font-medium text-slate-200">
+                            <legend className="text-sm font-medium text-ink">
                               {qi + 1}. {qq.question}
                             </legend>
                             <div className="mt-2 space-y-2">
                               {qq.options.map((o) => (
-                                <label key={o.id} className="flex cursor-pointer items-center gap-3 text-sm text-slate-300">
+                                <label key={o.id} className="flex cursor-pointer items-center gap-3 text-sm text-muted">
                                   <input
                                     type="radio"
                                     className="h-4 w-4 accent-emerald-400"

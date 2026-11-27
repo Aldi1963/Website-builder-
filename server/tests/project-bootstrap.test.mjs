@@ -7,20 +7,22 @@ const root = mkdtempSync(join(tmpdir(), 'vb-bootstrap-'))
 process.env.VB_DB = join(root, 'platform.db')
 const calls = []
 let installCode = 0
-mock.module('../src/workspace.ts', { exports: {
+const workspaceMock = {
   ensureWorkspace(id, starter) { calls.push(['copy', starter]); return join(root, id) },
   async installDeps() { calls.push(['install']); return { code: installCode, output: 'install result' } },
   async buildProject() { calls.push(['build']); return { code: 0, output: 'build result' } },
   async startPreview() { return 45100 }, stopPreview() {}, runningPreviews() { return [] },
   previewPort() { return 45100 }, readProjectFile() { return null }, writeProjectFile() {},
   projectDir(id) { return join(root, id) }, newDirsForFile() { return [] }, deleteProjectFile() {},
-} })
-mock.module('../src/managed-db.ts', { exports: {
+}
+mock.module('../src/workspace.ts', { exports: workspaceMock, namedExports: workspaceMock })
+const managedDbMock = {
   async provisionProjectDb() { calls.push(['database']); return {} },
   isManagedDbEnabled() { return true }, async dropProjectDb() {}, async projectDbPool() {},
   async projectDbUrl() {}, async execProjectSql() {}, validateProjectSql() { return { ok: true, sql: '' } },
   async projectSchemaBrief() { return null },
-} })
+}
+mock.module('../src/managed-db.ts', { exports: managedDbMock, namedExports: managedDbMock })
 const { app } = await import('../src/app.ts')
 const { createUser, createSession, SESSION_COOKIE } = await import('../src/auth.ts')
 const { db } = await import('../src/db.ts')

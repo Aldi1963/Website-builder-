@@ -5,14 +5,14 @@
 const DESIGN_FILTER = `FILTER DESAIN — WAJIB, tidak bisa dinegosiasikan:
 
 Tipografi
-- Pilih satu display face yang punya karakter dan satu face UI yang tenang. Jangan pakai Inter, Roboto, Poppins, atau system-ui sebagai display.
+- Pakai font display Fraunces dan UI DM Sans yang sudah dimuat di stylesheet. Jangan ganti ke Inter, Roboto, Poppins, atau system-ui, dan jangan menambah font lain tanpa alasan yang jelas.
 - Ukuran teks minimal 12px untuk isi, 11px hanya untuk metadata. Jangan pakai huruf kapital semua dengan letter-spacing lebar sebagai label.
 - Pemenggalan baris: batasi lebar paragraf 60-72 karakter.
 
 Warna
 - Maksimal tiga warna inti plus satu accent. Accent hanya untuk aksi utama dan status aktif, bukan dekorasi.
 - Dilarang gradien ungu-biru, glassmorphism, glow, dan blob blur di belakang konten.
-- Kontras teks terhadap latar minimal 4.5:1. Uji di tema terang dan tema gelap.
+- Kontras teks terhadap latar minimal 4.5:1. Uji di tema terang.
 
 Tata letak
 - Jangan pakai grid latar dekoratif, titik-titik, atau garis-garis hiasan.
@@ -42,12 +42,14 @@ const STACK = `Stack wajib (jangan diganti):
 - Database: Postgres terkelola (per-proyek, permanen). Buat tabel lewat TOOL db_schema (jangan menulis migrasi manual), lalu query/mutasi dari server function via helper query di src/lib/db.ts (import { query } dari '~/lib/db', file server-only). Helper membaca koneksi dari env VB_APP_DATABASE_URL yang sudah disuntikkan server. JANGAN pakai node:sqlite / localStorage / ':memory:' untuk data aplikasi.
 - Root layout di src/routes/__root.tsx, halaman di src/routes/index.tsx
 
-Desain & kualitas visual (WAJIB — mengikuti DESIGN_FILTER di bawah, bukan gaya generik):
-- styles.css sudah berisi design system (token @theme + kelas komponen: .card, .btn, .btn-primary, .btn-ghost, .input, .label, .badge, .container-page). PAKAI kelas itu untuk kartu/tombol/input; jangan menulis Tailwind mentah berulang.
-- Tipografi: pakai satu display face yang punya karakter + satu UI face yang tenang. JANGAN Inter/Roboto/Poppins/system-ui sebagai display, JANGAN .gradient-text. Isi minimal 12px, metadata 11px.
-- Warna: maksimal tiga warna inti + satu accent. Dilarang gradien ungu-biru, glassmorphism, glow, blob blur. Uji kontras 4.5:1 di tema terang DAN gelap.
-- Setiap halaman punya: kontainer .container-page, heading yang menyebut isi halaman (bukan slogan), konten di dalam .card. Empty state menjelaskan kenapa kosong + langkah berikutnya; loading menyebut apa yang dimuat; error menyebut penyebab + perbaikan.
-- Responsive sejak awal: grid fleksibel (grid-cols-1 sm:grid-cols-2 lg:grid-cols-3), target sentuh minimal 44px, tabel panjang jadi daftar bertumpuk di mobile, tidak ada overflow horizontal di 360px.
+Desain & kualitas visual (WAJIB — DESIGN_FILTER + DESIGN.md proyek adalah sumber kebenaran):
+- Baca DESIGN.md di root proyek (disuntikkan otomatis ke konteksmu). Ikuti keputusan visual di sana. Bila user meminta perubahan desain, perbarui DESIGN.md dan nilai token di src/styles.css — jangan menyimpan keputusan desain hanya di chat.
+- styles.css sudah berisi design system lengkap: token @theme + kelas komponen (.card .card-pad .btn .btn-primary .btn-ghost .input .label .badge .table-wrap .table-data .empty-state .notice .nav-link .tab .modal-panel .toast .stack-mobile). PAKAI kelas itu; jangan menulis Tailwind mentah berulang untuk pola yang sudah ada.
+- Tipografi: font display Fraunces + UI DM Sans sudah dimuat. JANGAN pakai Inter/Roboto/Poppins/system-ui sebagai display, JANGAN .gradient-text (sudah dihapus). Isi minimal 12px, metadata 11px.
+- Warna: neutral + satu accent lewat token (--color-surface/ink/muted/edge/accent). Dilarang gradien ungu-biru, glassmorphism, glow, blob blur, grid dekoratif. Uji kontras 4.5:1 di tema terang.
+- Setiap halaman punya: kontainer .container-page, heading yang menyebut isi halaman (bukan slogan), konten di dalam .card. Empty state (.empty-state) menjelaskan kenapa kosong + langkah berikutnya; loading menyebut apa yang dimuat; error (.notice-error) menyebut penyebab + perbaikan.
+- Data: pakai .table-wrap + .table-data (w-max, scroll horizontal, header sticky, NULL italic via .cell-null, angka via .cell-number). Jangan pernah w-full pada tabel data.
+- Responsive sejak awal: .stack-mobile, target sentuh min 44px (kelas .btn/.input sudah min-h-11), tabel panjang jadi .mobile-list di layar kecil, tidak ada overflow horizontal di 360px.
 - Halaman terlihat jadi PRODUK, bukan debug: hindari dump JSON mentah; tampilkan data dalam kartu/tabel/daftar yang ditata. Angka penting rata kanan / tabular, satuan diberi label.`
 
 const RULES = `Aturan teknis:

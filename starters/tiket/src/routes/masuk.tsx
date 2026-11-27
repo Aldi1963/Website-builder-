@@ -71,13 +71,13 @@ function LoginPage() {
   return (
     <main className="container-page py-16">
       <div className="mx-auto max-w-md">
-        <Link to="/" className="text-sm text-slate-400 hover:text-white">← Katalog</Link>
+        <Link to="/" className="text-sm text-muted hover:text-ink">← Katalog</Link>
         <div className="card mt-6 p-6">
-          <h1 className="text-2xl font-bold text-white">{mode === 'login' ? 'Masuk' : 'Daftar'}</h1>
-          <p className="mt-1 text-sm text-slate-400">
+          <h1 className="text-2xl font-bold text-ink">{mode === 'login' ? 'Masuk' : 'Daftar'}</h1>
+          <p className="mt-1 text-sm text-muted">
             {mode === 'login' ? 'Masuk untuk memesan dan melihat tiket.' : 'Akun baru mendapat role pengguna.'}
           </p>
-          {current && <p className="mt-3 rounded-lg bg-emerald-400/10 p-3 text-sm text-emerald-300">Sedang masuk sebagai {current.email}.</p>}
+          {current && <p className="mt-3 rounded-lg bg-emerald-600/10 p-3 text-sm text-emerald-700">Sedang masuk sebagai {current.email}.</p>}
           <form onSubmit={submit} className="mt-6 space-y-4">
             {mode === 'register' && (
               <label className="block"><span className="label">Nama</span>
@@ -90,7 +90,7 @@ function LoginPage() {
             <label className="block"><span className="label">Password</span>
               <input type="password" className="input mt-1 w-full" value={password} onChange={(e) => setPassword(e.target.value)} minLength={6} required />
             </label>
-            {error && <p className="rounded-lg bg-red-500/10 p-3 text-sm text-red-300">{error}</p>}
+            {error && <p className="rounded-lg bg-danger/10 p-3 text-sm text-danger">{error}</p>}
             <button className="btn-primary w-full" disabled={busy}>{busy ? 'Tunggu…' : mode === 'login' ? 'Masuk' : 'Daftar'}</button>
           </form>
           <button className="btn-ghost mt-4 w-full" onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError('') }}>

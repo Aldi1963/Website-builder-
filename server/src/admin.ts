@@ -25,6 +25,7 @@ import {
 } from './llm.ts'
 import { ROOT } from './paths.ts'
 import { registerBilling } from './billing.ts'
+import { isNeonConfigured, neonSettings } from './neon-db.ts'
 import { registerProviderRoutes } from './providers.ts'
 import {
   getBalance,
@@ -889,6 +890,85 @@ export function registerAdmin(app: Hono<AdminEnv>) {
   /* token_limit 0 = tanpa batas. Kuota dipakai untuk pemantauan di     */
   /* panel (token tercatat per pengguna); chat belum dibatasi kuota.    */
   /* ---------------------------------------------------------------- */
+
+  /* ---------------------------------------------------------------- */
+  /* Pengaturan Neon serverless Postgres (DB per project).             */
+  /* Panel admin hanya melihat STATUS; nilai rahasia tidak pernah      */
+  /* dikembalikan. Field kosong = tidak berubah; hapus hanya lewat tombol Hapus per field.                  */
+  /* ---------------------------------------------------------------- */
+
+  app.get('/api/admin/neon', (c) => {
+    const s = neonSettings()
+    return c.json({
+      configured: isNeonConfigured(),
+      hasApiKey: Boolean(s.apiKey),
+      projectId: s.projectId ? s.projectId.slice(0, 8) + '…' : '',
+      hasBranchId: Boolean(s.branchId),
+      fromEnv: {
+        apiKey: Boolean(process.env.NEON_API_KEY),
+        projectId: Boolean(process.env.NEON_PROJECT_ID),
+      },
+      note: 'Isi NEON_API_KEY dan NEON_PROJECT_ID (opsional NEON_BRANCH_ID). Berlaku langsung tanpa restart. Kredensial tidak pernah ditampilkan kembali.',
+    })
+  })
+
+  app.put('/api/admin/neon', async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as {
+      apiKey?: string
+      projectId?: string
+      branchId?: string
+      clear?: string[]
+    }
+    /* Aturan simpan — atomik, tanpa hapus diam-diam:
+       - Field yang TIDAK dikirim atau kosong = TIDAK BERUBAH. String kosong
+         TIDAK PERNAH berarti hapus (dulu: rotasi satu field menghapus field
+         lain yang dibiarkan kosong sesuai hint form).
+       - Hapus eksplisit hanya lewat `clear`: ['apiKey' | 'projectId' | 'branchId'].
+       - SEMUA field divalidasi dulu sebelum ada yang ditulis: gagal
+         validasi = tidak ada satu pun yang tertulis. */
+    const FIELDS = { apiKey: 'neon.api_key', projectId: 'neon.project_id', branchId: 'neon.branch_id' } as const
+    const MAX = { apiKey: 300, projectId: 80, branchId: 80 } as const
+    const toWrite: Array<{ key: string; value: string }> = []
+    for (const [field, key] of Object.entries(FIELDS)) {
+      const v = (body as Record<string, unknown>)[field]
+      if (v === undefined) continue
+      if (typeof v !== 'string') return c.json({ error: `Field ${field} harus string.` }, 400)
+      const s = v.trim()
+      if (s === '') continue // kosong = tidak berubah, bukan hapus
+      if (s.length > MAX[field as keyof typeof MAX]) return c.json({ error: `Field ${field} terlalu panjang (maks ${MAX[field as keyof typeof MAX]}).` }, 400)
+      toWrite.push({ key, value: s })
+    }
+    const toClear: string[] = []
+    if (body.clear !== undefined) {
+      if (!Array.isArray(body.clear)) return c.json({ error: 'Field clear harus array.' }, 400)
+      for (const f of body.clear) {
+        if (typeof f !== 'string' || !(f in FIELDS)) return c.json({ error: `Field clear tidak dikenal: ${String(f)}.` }, 400)
+        toClear.push(FIELDS[f as keyof typeof FIELDS])
+      }
+    }
+    try {
+      db.exec('BEGIN IMMEDIATE')
+      try {
+        for (const { key, value } of toWrite) {
+          db.prepare(
+            `INSERT INTO admin_settings (key, value, updated_at) VALUES (?, ?, ?)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+          ).run(key, value, Date.now())
+        }
+        for (const key of toClear) {
+          db.prepare(`DELETE FROM admin_settings WHERE key = ?`).run(key)
+        }
+        db.exec('COMMIT')
+      } catch (err) {
+        try { db.exec('ROLLBACK') } catch { /* sudah rollback */ }
+        throw err
+      }
+    } catch (err) {
+      return c.json({ error: `Gagal menyimpan kredensial Neon: ${(err as Error).message}` }, 500)
+    }
+    logAdmin(c, 'neon_settings.update', 'neon', 'settings', 'kredensial Neon diperbarui')
+    return c.json({ ok: true, configured: isNeonConfigured() })
+  })
 
   app.get('/api/admin/plans', (c) => {
     const plans = db

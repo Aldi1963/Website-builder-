@@ -104,6 +104,11 @@ const PATHS: Record<string, string> = {
   camera: 'M4 8h4l2-2h4l2 2h4v11H4zM12 18a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z',
   eye: 'M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6ZM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z',
   'eye-off': 'M4 4l16 16M9.9 5.2A9.9 9.9 0 0 1 12 5c6.4 0 10 7 10 7a18 18 0 0 1-3.2 4M6.6 6.6A17.6 17.6 0 0 0 2 12s3.6 7 10 7a9.7 9.7 0 0 0 3.4-.6M9.9 9.9a3 3 0 0 0 4.2 4.2',
+  list: 'M4 6h3M4 12h3M4 18h3M10 6h10M10 12h10M10 18h10',
+  code: 'M9 7l-5 5 5 5M15 7l5 5-5 5',
+  table: 'M3 5h18v14H3zM3 10h18M9 10v9M15 10v9',
+  'arrow-left': 'M20 12H7M13 5l-7 7 7 7',
+  'arrows-clockwise': 'M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6M4 13a8 8 0 0 0 2.3 5.7M4 19v-6h6',
 }
 
 export function Icon({

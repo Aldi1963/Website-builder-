@@ -2,12 +2,12 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFileSync } from 'node:fs'
 
-const root = '/home/hatch/workspace/vibebuilder/'
-const app = readFileSync(root + 'platform/src/App.tsx', 'utf8')
+const root = new URL('../..', import.meta.url).pathname
+const app = readFileSync(root + 'platform/src/database-ui.tsx', 'utf8')
 const server = readFileSync(root + 'server/src/app.ts', 'utf8')
 
 test('tabel database: lebar natural + scroll horizontal, bukan kolom menyusut', () => {
-  const block = app.slice(app.indexOf("mode === 'Browse'"), app.indexOf("mode === 'Structure'"))
+  const block = app.slice(app.indexOf("mode === 'browse'"), app.indexOf("mode === 'structure'"))
   assert.match(block, /min-w-max|w-max|table-auto/)
   assert.match(block, /overflow-(x-)?auto/)
   assert.doesNotMatch(block, /table className="w-full/)

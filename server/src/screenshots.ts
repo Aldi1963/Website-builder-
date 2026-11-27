@@ -7,6 +7,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSy
 import { join } from 'node:path'
 import { PROJECTS_DIR } from './paths.ts'
 import { startPreview } from './workspace.ts'
+import { probeInteractions } from './interaction-probe.ts'
 
 const MAX_BYTES = 8 * 1024 * 1024
 const LOCAL_PLAYWRIGHT = '/home/hatch/workspace/tools/waview/node_modules/playwright-core'
@@ -253,6 +254,20 @@ async function captureNowWithErrors(projectId: string, target: string, opts?: Pr
         }
       }
     } catch { /* abaikan */ }
+    /* Interaction probe dijalankan SETELAH capture langkah-langkah visual,
+       dan sebelum screenshot akhir. Probe BERSIFAT NON-MUTATING (tidak pernah
+       submit form, tidak pernah klik tombol bermutasi) sehingga tidak ada
+       baris database aplikasi yang ditulis selama probe. */
+    try {
+      for (const finding of await probeInteractions(page, target)) defects.push(`${finding.kind}: ${finding.detail}`)
+    } catch { /* probe interaksi gagal tidak membatalkan capture */ }
+    /* Probe tidak pernah memutasi, jadi tidak ada data yang perlu
+       dikembalikan. Reload ini hanya membersihkan nilai "Probe" yang diketik
+       di DOM supaya screenshot akhir menunjukkan keadaan awal halaman. */
+    try {
+      await page.goto(target, { waitUntil: 'load', timeout: 10_000 })
+      await page.waitForTimeout(500)
+    } catch { /* abaikan: screenshot tetap diambil dari halaman terakhir */ }
     const buf: Buffer = await page.screenshot({ type: 'png' })
     if (!buf?.length) throw new Error('hasil screenshot kosong')
     // Simpan juga sebagai file supaya muncul di galeri screenshot UI.

@@ -1,5 +1,6 @@
 import { Pool } from 'pg'
 import { randomBytes } from 'node:crypto'
+import { isNeonConfigured, neonProvision, neonConnectionUrl, neonDropProject } from './neon-db.ts'
 
 /**
  * Database terkelola untuk proyek hasil generate (Fase 0).
@@ -30,7 +31,12 @@ function dbName(projectId: string): string {
 }
 
 export function isManagedDbEnabled(): boolean {
-  return Boolean(ADMIN_URL)
+  return Boolean(ADMIN_URL) || isNeonConfigured()
+}
+
+/** Aktif Neon bila kredensial API tersedia; jika tidak, tetap Postgres lokal. */
+function useNeon(): boolean {
+  return isNeonConfigured()
 }
 
 async function adminPool(): Promise<Pool> {
@@ -45,6 +51,7 @@ async function adminPool(): Promise<Pool> {
  * melewati restart preview.
  */
 export async function provisionProjectDb(projectId: string): Promise<{ role: string; database: string; password: string }> {
+  if (useNeon()) return neonProvision(projectId)
   const admin = await adminPool()
   try {
     const role = roleName(projectId)
@@ -127,14 +134,24 @@ export async function projectDbPool(projectId: string): Promise<{ pool: Pool; da
     return { pool: cached.pool, database: dbName(projectId) }
   }
   if (cached) poolCache.delete(projectId)
-  const { role, database, password } = await provisionProjectDb(projectId)
-  const url = projectConnectionUrl(role, database, password)
+  const neonUrl = useNeon() ? await neonConnectionUrl(projectId) : null
+  let url: string
+  let database: string
+  if (neonUrl) {
+    const parsed = new URL(neonUrl)
+    database = decodeURIComponent(parsed.pathname.replace(/^\//, ''))
+    url = neonUrl
+  } else {
+    const provisioned = await provisionProjectDb(projectId)
+    database = provisioned.database
+    url = projectConnectionUrl(provisioned.role, database, provisioned.password)
+  }
   const pool = new Pool({ connectionString: url, max: 5, idleTimeoutMillis: 30_000 })
   // Error pada client idle tidak boleh menjatuhkan proses platform.
   pool.on('error', (err) => {
     console.error('[managed-db] pool error', projectId, err.message)
   })
-  poolCache.set(projectId, { pool, password })
+  poolCache.set(projectId, { pool, password: '' })
   return { pool, database }
 }
 
@@ -144,6 +161,7 @@ export async function projectDbPool(projectId: string): Promise<{ pool: Pool; da
  * kredensial sendiri. Password role proyek di-provision (segar) saat dipanggil.
  */
 export async function projectDbUrl(projectId: string): Promise<string | null> {
+  if (useNeon()) return neonConnectionUrl(projectId)
   if (!isManagedDbEnabled()) return null
   try {
     const { role, database, password } = await provisionProjectDb(projectId)
@@ -154,6 +172,7 @@ export async function projectDbUrl(projectId: string): Promise<string | null> {
 }
 
 function projectConnectionUrl(role: string, database: string, password: string): string {
+  if (!ADMIN_URL) throw new Error('VB_PG_URL kosong dan Neon belum dikonfigurasi.')
   const url = new URL(ADMIN_URL)
   url.username = role
   url.password = password
@@ -378,6 +397,11 @@ export async function projectSchemaBrief(projectId: string): Promise<string | nu
 }
 
 export async function dropProjectDb(projectId: string): Promise<{ ok: boolean; error?: string }> {
+  if (useNeon()) {
+    await poolCache.get(projectId)?.pool.end().catch(() => {})
+    poolCache.delete(projectId)
+    return neonDropProject(projectId)
+  }
   if (!ADMIN_URL) return { ok: false, error: 'VB_PG_URL kosong.' }
   const admin = await adminPool()
   try {

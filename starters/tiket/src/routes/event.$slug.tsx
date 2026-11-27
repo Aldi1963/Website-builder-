@@ -50,7 +50,7 @@ function EventPage() {
     return (
       <main className="container-page py-20">
         <div className="card p-10 text-center">
-          <p className="text-slate-300">Event tidak ditemukan atau belum dipublikasikan.</p>
+          <p className="text-muted">Event tidak ditemukan atau belum dipublikasikan.</p>
           <Link to="/" className="btn-ghost mt-4">Kembali ke katalog</Link>
         </div>
       </main>
@@ -80,31 +80,31 @@ function EventPage() {
 
   return (
     <main className="container-page py-10">
-      <Link to="/" className="text-sm text-slate-400 hover:text-white">← Katalog event</Link>
+      <Link to="/" className="text-sm text-muted hover:text-ink">← Katalog event</Link>
       <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_360px]">
         <section className="card p-6">
           <span className="badge">{event.status}</span>
-          <h1 className="mt-3 text-3xl font-bold text-white">{event.title}</h1>
-          <p className="mt-2 text-sm text-slate-400">{formatDate(event.starts_at)} · {event.venue || 'Lokasi belum diumumkan'}</p>
-          <p className="mt-4 leading-relaxed text-slate-300">{event.description || 'Belum ada deskripsi.'}</p>
+          <h1 className="mt-3 text-3xl font-bold text-ink">{event.title}</h1>
+          <p className="mt-2 text-sm text-muted">{formatDate(event.starts_at)} · {event.venue || 'Lokasi belum diumumkan'}</p>
+          <p className="mt-4 leading-relaxed text-ink">{event.description || 'Belum ada deskripsi.'}</p>
 
-          <h2 className="mt-8 text-lg font-semibold text-white">Jenis tiket</h2>
+          <h2 className="mt-8 text-lg font-semibold text-ink">Jenis tiket</h2>
           {types.length === 0 ? (
-            <p className="mt-3 text-sm text-slate-400">Belum ada tiket untuk event ini.</p>
+            <p className="mt-3 text-sm text-muted">Belum ada tiket untuk event ini.</p>
           ) : (
-            <div className="mt-3 divide-y divide-white/10">
+            <div className="mt-3 divide-y divide-edge">
               {types.map((t) => {
                 const left = t.quota - t.sold
                 return (
                   <div key={t.id} className="flex flex-wrap items-center justify-between gap-3 py-4">
                     <div>
-                      <p className="font-medium text-white">{t.name}</p>
-                      <p className="text-sm text-slate-400">{formatPrice(t.price_cents)} · sisa {left} tiket</p>
+                      <p className="font-medium text-ink">{t.name}</p>
+                      <p className="text-sm text-muted">{formatPrice(t.price_cents)} · sisa {left} tiket</p>
                     </div>
                     <div className="flex items-center gap-2">
                       <button type="button" className="btn-ghost h-11 w-11 p-0 text-lg" disabled={(qty[t.id] ?? 0) === 0}
                         onClick={() => setQty((s) => ({ ...s, [t.id]: Math.max(0, (s[t.id] ?? 0) - 1) }))} aria-label={`Kurangi ${t.name}`}>−</button>
-                      <span className="w-8 text-center tabular-nums text-white">{qty[t.id] ?? 0}</span>
+                      <span className="w-8 text-center tabular-nums text-ink">{qty[t.id] ?? 0}</span>
                       <button type="button" className="btn-ghost h-11 w-11 p-0 text-lg" disabled={(qty[t.id] ?? 0) >= left}
                         onClick={() => setQty((s) => ({ ...s, [t.id]: Math.min(left, (s[t.id] ?? 0) + 1) }))} aria-label={`Tambah ${t.name}`}>+</button>
                     </div>
@@ -116,23 +116,23 @@ function EventPage() {
         </section>
 
         <aside className="card h-fit p-6">
-          <h2 className="text-lg font-semibold text-white">Ringkasan pesanan</h2>
-          <p className="mt-1 text-sm text-slate-400">{count} tiket dipilih</p>
+          <h2 className="text-lg font-semibold text-ink">Ringkasan pesanan</h2>
+          <p className="mt-1 text-sm text-muted">{count} tiket dipilih</p>
           <div className="mt-5 flex items-baseline justify-between">
-            <span className="text-sm text-slate-400">Total</span>
-            <span className="text-2xl font-bold tabular-nums text-white">{formatPrice(total)}</span>
+            <span className="text-sm text-muted">Total</span>
+            <span className="text-2xl font-bold tabular-nums text-ink">{formatPrice(total)}</span>
           </div>
           <form onSubmit={submit} className="mt-5 space-y-3">
             <label className="block">
               <span className="label">Kode promo (opsional)</span>
               <input className="input mt-1 w-full" value={promo} onChange={(e) => setPromo(e.target.value)} placeholder="PROMO2026" />
             </label>
-            {error && <p className="rounded-lg bg-red-500/10 p-3 text-sm text-red-300">{error}</p>}
+            {error && <p className="rounded-lg bg-danger/10 p-3 text-sm text-danger">{error}</p>}
             <button className="btn-primary w-full" disabled={busy || count < 1}>
               {busy ? 'Memproses pesanan…' : 'Pesan tiket'}
             </button>
           </form>
-          <p className="mt-3 text-xs text-slate-500">Harus masuk terlebih dahulu. Kode tiket muncul di dashboard setelah pembayaran tercatat.</p>
+          <p className="mt-3 text-xs text-muted">Harus masuk terlebih dahulu. Kode tiket muncul di dashboard setelah pembayaran tercatat.</p>
         </aside>
       </div>
     </main>

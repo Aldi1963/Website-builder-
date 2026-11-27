@@ -89,17 +89,17 @@ function Dashboard() {
 
   return (
     <main className="min-h-dvh">
-      <header className="border-b border-white/10 bg-slate-950/70 backdrop-blur">
+      <header className="border-b border-edge bg-surface/90 backdrop-blur">
         <div className="container-page flex items-center justify-between py-4">
-          <Link to="/" className="font-bold text-white">← Akademi</Link>
+          <Link to="/" className="font-bold text-ink">← Akademi</Link>
           <span className="badge capitalize">{data.user?.role || 'tamu'}</span>
         </div>
       </header>
       <section className="container-page py-10">
         <div className="flex items-end justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-white">Dashboard</h1>
-            <p className="mt-1 text-sm text-slate-400">
+            <h1 className="text-3xl font-bold text-ink">Dashboard</h1>
+            <p className="mt-1 text-sm text-muted">
               {canManage ? 'Kelola kursus, materi, tugas, dan penilaian.' : 'Kursus yang kamu ikuti.'}
             </p>
           </div>
@@ -110,28 +110,28 @@ function Dashboard() {
 
         {data.pending.length > 0 && (
           <div className="card mt-8 p-5">
-            <h2 className="font-semibold text-white">Tugas perlu dinilai ({data.pending.length})</h2>
-            <ul className="mt-3 divide-y divide-white/10 text-sm">
+            <h2 className="font-semibold text-ink">Tugas perlu dinilai ({data.pending.length})</h2>
+            <ul className="mt-3 divide-y divide-edge text-sm">
               {data.pending.map((p) => (
                 <li key={p.id} className="flex items-center justify-between gap-3 py-2">
-                  <span className="text-slate-300">{p.title} — <span className="text-slate-500">{p.user_name} · {p.course_title}</span></span>
-                  <a href={`/courses/${p.course_slug}/grade/${p.id}`} className="text-emerald-300 underline">Nilai</a>
+                  <span className="text-muted">{p.title} — <span className="text-muted">{p.user_name} · {p.course_title}</span></span>
+                  <a href={`/courses/${p.course_slug}/grade/${p.id}`} className="text-emerald-700 underline">Nilai</a>
                 </li>
               ))}
             </ul>
           </div>
         )}
 
-        <h2 className="mt-8 text-xl font-semibold text-white">{canManage ? 'Kursus kelolaan' : 'Kursus saya'}</h2>
+        <h2 className="mt-8 text-xl font-semibold text-ink">{canManage ? 'Kursus kelolaan' : 'Kursus saya'}</h2>
         {data.courses.length === 0 ? (
-          <p className="mt-4 text-sm text-slate-400">Belum ada kursus.</p>
+          <p className="mt-4 text-sm text-muted">Belum ada kursus.</p>
         ) : (
           <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {data.courses.map((c) => (
-              <Link key={c.id} to="/courses/$slug" params={{ slug: c.slug }} className="card block p-5 transition hover:border-emerald-400/30">
+              <Link key={c.id} to="/courses/$slug" params={{ slug: c.slug }} className="card block p-5 transition hover:border-emerald-600/40">
                 <div className="flex justify-between"><span className="badge">{c.published ? 'Diterbitkan' : 'Draft'}</span></div>
-                <h3 className="mt-3 font-semibold text-white">{c.title}</h3>
-                <div className="mt-3 flex gap-3 text-xs text-slate-500"><span>{c.lesson_count} materi</span><span>{c.student_count} siswa</span></div>
+                <h3 className="mt-3 font-semibold text-ink">{c.title}</h3>
+                <div className="mt-3 flex gap-3 text-xs text-muted"><span>{c.lesson_count} materi</span><span>{c.student_count} siswa</span></div>
               </Link>
             ))}
           </div>
@@ -158,11 +158,11 @@ function CreateCourse() {
   }
   return (
     <form onSubmit={submit} className="card mt-8 max-w-xl p-5">
-      <h2 className="font-semibold text-white">Buat kursus baru</h2>
+      <h2 className="font-semibold text-ink">Buat kursus baru</h2>
       <div className="mt-4 space-y-3">
         <input className="input" placeholder="Judul kursus" value={title} onInput={(e) => setTitle((e.target as HTMLInputElement).value)} />
         <textarea className="input" placeholder="Deskripsi singkat" value={description} onInput={(e) => setDescription((e.target as HTMLTextAreaElement).value)} rows={3} />
-        {error && <p className="text-sm text-red-400">{error}</p>}
+        {error && <p className="text-sm text-danger">{error}</p>}
         <button className="btn-primary" disabled={busy || title.trim().length < 3}>{busy ? 'Menyimpan…' : 'Buat kursus'}</button>
       </div>
     </form>

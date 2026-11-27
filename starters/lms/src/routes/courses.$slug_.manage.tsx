@@ -183,9 +183,9 @@ function ManageCoursePage() {
 
   return (
     <main className="min-h-dvh">
-      <header className="border-b border-white/10 bg-slate-950/70 backdrop-blur">
+      <header className="border-b border-edge bg-surface/90 backdrop-blur">
         <div className="container-page flex items-center justify-between py-4">
-          <Link to="/courses/$slug" params={{ slug: data.course.slug }} className="font-bold text-white">
+          <Link to="/courses/$slug" params={{ slug: data.course.slug }} className="font-bold text-ink">
             ← {data.course.title}
           </Link>
           <button
@@ -199,8 +199,8 @@ function ManageCoursePage() {
       </header>
 
       <section className="container-page py-10">
-        <h1 className="text-2xl font-bold text-white">Kelola Konten Kursus</h1>
-        {error && <p className="mt-4 rounded-xl border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-300">{error}</p>}
+        <h1 className="text-2xl font-bold text-ink">Kelola Konten Kursus</h1>
+        {error && <p className="mt-4 rounded-xl border border-danger/30 bg-danger/10 p-3 text-sm text-danger">{error}</p>}
 
         <div className="mt-8 grid gap-8 lg:grid-cols-2">
           <form
@@ -214,7 +214,7 @@ function ManageCoursePage() {
               })
             }}
           >
-            <h2 className="font-semibold text-white">Tambah Materi</h2>
+            <h2 className="font-semibold text-ink">Tambah Materi</h2>
             <div className="mt-4 space-y-3">
               <input className="input" placeholder="Judul materi" value={lTitle} onInput={(e) => setLTitle((e.target as HTMLInputElement).value)} />
               <textarea className="input" rows={4} placeholder="Isi materi…" value={lContent} onInput={(e) => setLContent((e.target as HTMLTextAreaElement).value)} />
@@ -233,7 +233,7 @@ function ManageCoursePage() {
               })
             }}
           >
-            <h2 className="font-semibold text-white">Tambah Tugas</h2>
+            <h2 className="font-semibold text-ink">Tambah Tugas</h2>
             <div className="mt-4 space-y-3">
               <input className="input" placeholder="Judul tugas" value={aTitle} onInput={(e) => setATitle((e.target as HTMLInputElement).value)} />
               <textarea className="input" rows={4} placeholder="Instruksi tugas…" value={aDesc} onInput={(e) => setADesc((e.target as HTMLTextAreaElement).value)} />
@@ -253,8 +253,8 @@ function ManageCoursePage() {
               })
             }}
           >
-            <h2 className="font-semibold text-white">Buat Kuis</h2>
-            <p className="mt-1 text-xs text-slate-400">Skor dihitung otomatis saat siswa mengumpulkan.</p>
+            <h2 className="font-semibold text-ink">Buat Kuis</h2>
+            <p className="mt-1 text-xs text-muted">Skor dihitung otomatis saat siswa mengumpulkan.</p>
             <div className="mt-4 space-y-3">
               <input className="input" placeholder="Judul kuis" value={qTitle} onInput={(e) => setQTitle((e.target as HTMLInputElement).value)} />
               <input className="input" placeholder="Deskripsi singkat (opsional)" value={qDesc} onInput={(e) => setQDesc((e.target as HTMLInputElement).value)} />
@@ -282,7 +282,7 @@ function ManageCoursePage() {
               })
             }}
           >
-            <h2 className="font-semibold text-white">Tambah Soal</h2>
+            <h2 className="font-semibold text-ink">Tambah Soal</h2>
             <div className="mt-4 space-y-3">
               <select className="input" value={quizId} onChange={(e) => setQuizId((e.target as HTMLSelectElement).value)} aria-label="Pilih kuis">
                 <option value="">Pilih kuis…</option>
@@ -293,7 +293,7 @@ function ManageCoursePage() {
                 ))}
               </select>
               <input className="input" placeholder="Pertanyaan" value={qText} onInput={(e) => setQText((e.target as HTMLInputElement).value)} />
-              <p className="text-xs text-slate-400">Tandai satu jawaban benar:</p>
+              <p className="text-xs text-muted">Tandai satu jawaban benar:</p>
               {[0, 1, 2, 3].map((i) => (
                 <div key={i} className="flex items-center gap-3">
                   <input
@@ -321,17 +321,17 @@ function ManageCoursePage() {
         </div>
 
         <div className="card mt-8 p-5">
-          <h2 className="font-semibold text-white">Daftar Kuis ({data.quizzes.length})</h2>
+          <h2 className="font-semibold text-ink">Daftar Kuis ({data.quizzes.length})</h2>
           {data.quizzes.length === 0 ? (
-            <p className="mt-3 text-sm text-slate-400">Belum ada kuis. Buat kuis dulu, lalu tambahkan soalnya.</p>
+            <p className="mt-3 text-sm text-muted">Belum ada kuis. Buat kuis dulu, lalu tambahkan soalnya.</p>
           ) : (
-            <ul className="mt-3 divide-y divide-white/10 text-sm">
+            <ul className="mt-3 divide-y divide-edge text-sm">
               {data.quizzes.map((q) => (
                 <li key={q.id} className="flex items-center justify-between py-2.5">
-                  <span className="text-slate-200">
-                    {q.title} <span className="text-slate-500">· {q.question_count} soal</span>
+                  <span className="text-ink">
+                    {q.title} <span className="text-muted">· {q.question_count} soal</span>
                   </span>
-                  <button className="text-xs text-red-400 underline" disabled={busy} onClick={() => act(() => deleteQuizFn({ data: { quizId: q.id } }))}>
+                  <button className="text-xs text-danger underline" disabled={busy} onClick={() => act(() => deleteQuizFn({ data: { quizId: q.id } }))}>
                     Hapus
                   </button>
                 </li>
@@ -342,12 +342,12 @@ function ManageCoursePage() {
 
         <div className="mt-8 grid gap-8 lg:grid-cols-2">
           <div className="card p-5">
-            <h2 className="font-semibold text-white">Daftar Materi ({data.lessons.length})</h2>
-            <ul className="mt-3 divide-y divide-white/10 text-sm">
+            <h2 className="font-semibold text-ink">Daftar Materi ({data.lessons.length})</h2>
+            <ul className="mt-3 divide-y divide-edge text-sm">
               {data.lessons.map((l) => (
                 <li key={l.id} className="flex items-center justify-between py-2.5">
-                  <span className="text-slate-200">{l.position + 1}. {l.title}</span>
-                  <button className="text-xs text-red-400 underline" disabled={busy} onClick={() => act(() => deleteLesson({ data: { lessonId: l.id } }))}>
+                  <span className="text-ink">{l.position + 1}. {l.title}</span>
+                  <button className="text-xs text-danger underline" disabled={busy} onClick={() => act(() => deleteLesson({ data: { lessonId: l.id } }))}>
                     Hapus
                   </button>
                 </li>
@@ -356,15 +356,15 @@ function ManageCoursePage() {
           </div>
 
           <div className="card p-5">
-            <h2 className="font-semibold text-white">Pengumpulan Tugas ({data.submissions.length})</h2>
-            <ul className="mt-3 divide-y divide-white/10 text-sm">
+            <h2 className="font-semibold text-ink">Pengumpulan Tugas ({data.submissions.length})</h2>
+            <ul className="mt-3 divide-y divide-edge text-sm">
               {data.submissions.map((s) => (
                 <li key={s.id} className="flex items-center justify-between py-2.5">
-                  <span className="text-slate-300">{s.assignment_title} — <span className="text-slate-500">{s.user_name}</span></span>
+                  <span className="text-muted">{s.assignment_title} — <span className="text-muted">{s.user_name}</span></span>
                   <Link
                     to="/courses/$slug/grade/$submissionId"
                     params={{ slug: data.course.slug, submissionId: String(s.id) }}
-                    className="text-emerald-300 underline"
+                    className="text-emerald-700 underline"
                   >
                     {s.grade == null ? 'Nilai' : `Nilai: ${s.grade}`}
                   </Link>

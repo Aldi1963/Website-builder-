@@ -24,6 +24,16 @@ interface BillingData {
   hasWebhookSecret: boolean
 }
 
+
+interface NeonData {
+  configured: boolean
+  hasApiKey: boolean
+  projectId: string
+  hasBranchId: boolean
+  fromEnv: { apiKey: boolean; projectId: boolean }
+  note: string
+}
+
 interface Provider {
   id: string
   name: string
@@ -44,6 +54,10 @@ export function ApiKeysSection() {
   const [ai, setAi] = useState<AiSettings | null>(null)
   const [billing, setBilling] = useState<BillingData | null>(null)
   const [providers, setProviders] = useState<Provider[]>([])
+  const [neon, setNeon] = useState<NeonData | null>(null)
+  const [neonKey, setNeonKey] = useState('')
+  const [neonProject, setNeonProject] = useState('')
+  const [neonBranch, setNeonBranch] = useState('')
   const [llmKey, setLlmKey] = useState('')
   const [apiKey, setApiKey] = useState('')
   const [webhookSecret, setWebhookSecret] = useState('')
@@ -52,17 +66,22 @@ export function ApiKeysSection() {
 
   const load = useCallback(async () => {
     try {
-      const [a, b, p] = await Promise.all([
+      const [a, b, p, n] = await Promise.all([
         api.get<AiSettings>('/api/admin/ai-settings'),
         api.get<BillingData>('/api/admin/billing'),
         api.get<{ providers: Provider[] }>('/api/admin/llm/providers'),
+        api.get<NeonData>('/api/admin/neon'),
       ])
       setAi(a)
       setBilling(b)
       setProviders(p.providers || [])
+      setNeon(n)
       setLlmKey('')
       setApiKey('')
       setWebhookSecret('')
+      setNeonKey('')
+      setNeonProject('')
+      setNeonBranch('')
       setProviderKeys({})
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : 'Gagal memuat kredensial.')
@@ -102,6 +121,45 @@ export function ApiKeysSection() {
     } finally { setBusy(null) }
   }
 
+
+  const saveNeon = async (e: FormEvent) => {
+    e.preventDefault()
+    /* Hanya field yang diisi yang dikirim: field kosong = tidak berubah
+       (server tidak lagi mengartikan string kosong sebagai hapus). */
+    const payload: { apiKey?: string; projectId?: string; branchId?: string } = {}
+    if (neonKey.trim()) payload.apiKey = neonKey.trim()
+    if (neonProject.trim()) payload.projectId = neonProject.trim()
+    if (neonBranch.trim()) payload.branchId = neonBranch.trim()
+    if (Object.keys(payload).length === 0) {
+      toast.info('Tidak ada field yang diisi — tidak ada perubahan.')
+      return
+    }
+    setBusy('neon')
+    try {
+      const r = await api.put<{ configured: boolean }>('/api/admin/neon', payload)
+      toast.success(r.configured ? 'Kredensial Neon disimpan.' : 'Kredensial Neon disimpan — memakai Postgres lokal.')
+      setNeonKey('')
+      setNeonProject('')
+      setNeonBranch('')
+      await load()
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Gagal menyimpan kredensial Neon.')
+    } finally { setBusy(null) }
+  }
+
+  /* Hapus eksplisit per field — satu-satunya cara menghapus nilai Neon dari
+     panel. Mengirim parameter `clear`, bukan string kosong. */
+  const clearNeon = async (field: 'apiKey' | 'projectId' | 'branchId', label: string) => {
+    setBusy(`neon-clear-${field}`)
+    try {
+      await api.put('/api/admin/neon', { clear: [field] })
+      toast.success(`${label} dihapus.`)
+      await load()
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : `Gagal menghapus ${label}.`)
+    } finally { setBusy(null) }
+  }
+
   const saveProviderKey = async (id: string) => {
     setBusy(id)
     try {
@@ -121,7 +179,7 @@ export function ApiKeysSection() {
 
   return (
     <div className="space-y-4">
-      {ai === null || billing === null ? <Spinner label="Memuat kredensial…" /> : (
+      {ai === null || billing === null || neon === null ? <Spinner label="Memuat kredensial…" /> : (
         <>
           <Alert tone="info">
             Semua API key & secret dikelola di sini. Nilai key <strong>tidak pernah ditampilkan</strong> —
@@ -191,6 +249,84 @@ export function ApiKeysSection() {
               </form>
             </Card>
           </div>
+
+
+          <Card title="Database Neon (Serverless Postgres)">
+            <form onSubmit={(e) => void saveNeon(e)} className="space-y-4">
+              <p className="text-sm text-muted">
+                Database terkelola per proyek memakai Neon bila terpasang, Postgres lokal bila tidak.
+                {neon.configured
+                  ? ' Terpasang — nilai rahasia tidak pernah ditampilkan kembali.'
+                  : ' Belum terpasang.'}
+                {neon.projectId ? ` Project: ${neon.projectId}` : ''}
+                {neon.hasBranchId ? ' · branch terpasang.' : ''}
+                {neon.fromEnv.apiKey ? ' (key dari environment)' : ''}
+              </p>
+              <Field
+                label={<>Neon API key <SrcBadge src={neon.fromEnv.apiKey ? 'env' : 'db'} configured={neon.hasApiKey} /></>}
+                htmlFor="settings-neon-key"
+                hint="API key Neon (console.neon.tech). Field yang dikosongkan tidak berubah — pakai tombol Hapus untuk menghapus."
+              >
+                <input
+                  id="settings-neon-key"
+                  type="password"
+                  autoComplete="new-password"
+                  className={`${inputClass} font-mono`}
+                  placeholder={neon.hasApiKey ? '•••••••• (terpasang — isi untuk mengganti)' : 'Belum ada key'}
+                  value={neonKey}
+                  onChange={(e) => setNeonKey(e.target.value)}
+                />
+              </Field>
+              {neon.hasApiKey && (
+                <button type="button" onClick={() => void clearNeon('apiKey', 'Neon API key')} disabled={busy !== null} className={btnOutline}>
+                  Hapus API key
+                </button>
+              )}
+              <Field
+                label="Neon project ID"
+                htmlFor="settings-neon-project"
+                hint="ID project Neon. Kosong bila memakai personal API key (project dicari otomatis). Field yang dikosongkan tidak berubah."
+              >
+                <input
+                  id="settings-neon-project"
+                  type="text"
+                  autoComplete="off"
+                  className={`${inputClass} font-mono`}
+                  placeholder={neon.projectId ? `${neon.projectId} (terpasang — isi untuk mengganti)` : 'Belum ada project ID'}
+                  value={neonProject}
+                  onChange={(e) => setNeonProject(e.target.value)}
+                />
+              </Field>
+              {neon.projectId && (
+                <button type="button" onClick={() => void clearNeon('projectId', 'Neon project ID')} disabled={busy !== null} className={btnOutline}>
+                  Hapus project ID
+                </button>
+              )}
+              <Field
+                label="Neon branch ID"
+                htmlFor="settings-neon-branch"
+                hint="Opsional. Kosongkan untuk memakai branch utama project. Field yang dikosongkan tidak berubah."
+              >
+                <input
+                  id="settings-neon-branch"
+                  type="text"
+                  autoComplete="off"
+                  className={`${inputClass} font-mono`}
+                  placeholder={neon.hasBranchId ? '•••••••• (terpasang — isi untuk mengganti)' : 'Belum ada branch ID'}
+                  value={neonBranch}
+                  onChange={(e) => setNeonBranch(e.target.value)}
+                />
+              </Field>
+              {neon.hasBranchId && (
+                <button type="button" onClick={() => void clearNeon('branchId', 'Neon branch ID')} disabled={busy !== null} className={btnOutline}>
+                  Hapus branch ID
+                </button>
+              )}
+              <button type="submit" className={btnPrimary} disabled={busy !== null}>
+                {busy === 'neon' ? 'Menyimpan…' : 'Simpan kredensial Neon'}
+              </button>
+            </form>
+          </Card>
 
           <Card title="API Key per Provider LLM">
             <div className="space-y-4">

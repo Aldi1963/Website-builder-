@@ -117,7 +117,7 @@ function Dashboard() {
     return (
       <main className="container-page py-20">
         <div className="card p-10 text-center">
-          <p className="text-slate-300">Masuk untuk melihat pesanan dan tiket Anda.</p>
+          <p className="text-muted">Masuk untuk melihat pesanan dan tiket Anda.</p>
           <Link to="/masuk" className="btn-primary mt-4">Masuk</Link>
         </div>
       </main>
@@ -146,32 +146,32 @@ function Dashboard() {
     <main className="container-page py-10">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold text-white">Dashboard</h1>
-          <p className="mt-1 text-sm text-slate-400">{data.user.email} · {data.user.role || 'user'}</p>
+          <h1 className="text-3xl font-bold text-ink">Dashboard</h1>
+          <p className="mt-1 text-sm text-muted">{data.user.email} · {data.user.role || 'user'}</p>
         </div>
         <Link to="/" className="btn-ghost">Lihat event</Link>
       </div>
 
       {(error || ok) && (
-        <p className={`mt-5 rounded-lg p-3 text-sm ${error ? 'bg-red-500/10 text-red-300' : 'bg-emerald-400/10 text-emerald-300'}`}>
+        <p className={`mt-5 rounded-lg p-3 text-sm ${error ? 'bg-danger/10 text-danger' : 'bg-emerald-600/10 text-emerald-700'}`}>
           {error || ok}
         </p>
       )}
 
       <section className="mt-8">
-        <h2 className="text-xl font-semibold text-white">Pesanan saya</h2>
+        <h2 className="text-xl font-semibold text-ink">Pesanan saya</h2>
         {data.orders.length === 0 ? (
-          <div className="card mt-3 p-8 text-center text-sm text-slate-400">Belum ada pesanan. <Link to="/" className="text-amber-300">Cari event</Link>.</div>
+          <div className="card mt-3 p-8 text-center text-sm text-muted">Belum ada pesanan. <Link to="/" className="text-amber-700">Cari event</Link>.</div>
         ) : (
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             {data.orders.map((o) => (
               <div key={o.id} className="card p-5">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="font-semibold text-white">{o.event_title}</p>
+                  <p className="font-semibold text-ink">{o.event_title}</p>
                   <span className="badge">{o.status}</span>
                 </div>
-                <p className="mt-2 text-sm text-slate-400">Kode pesanan <span className="font-mono text-amber-300">{o.code}</span></p>
-                <p className="mt-1 text-sm tabular-nums text-slate-300">Total {formatPrice(o.total_cents)}</p>
+                <p className="mt-2 text-sm text-muted">Kode pesanan <span className="font-mono text-amber-700">{o.code}</span></p>
+                <p className="mt-1 text-sm tabular-nums text-muted">Total {formatPrice(o.total_cents)}</p>
               </div>
             ))}
           </div>
@@ -182,7 +182,7 @@ function Dashboard() {
         <>
           <section className="mt-10 grid gap-6 lg:grid-cols-2">
             <div className="card p-6">
-              <h2 className="text-lg font-semibold text-white">Buat event baru</h2>
+              <h2 className="text-lg font-semibold text-ink">Buat event baru</h2>
               <form onSubmit={submitEvent} className="mt-4 space-y-3">
                 <label className="block"><span className="label">Judul event</span>
                   <input className="input mt-1 w-full" value={title} onChange={(e) => setTitle(e.target.value)} required />
@@ -201,8 +201,8 @@ function Dashboard() {
             </div>
 
             <div className="card p-6">
-              <h2 className="text-lg font-semibold text-white">Check-in tiket</h2>
-              <p className="mt-1 text-sm text-slate-400">Masukkan kode tiket peserta (SCAN-…).</p>
+              <h2 className="text-lg font-semibold text-ink">Check-in tiket</h2>
+              <p className="mt-1 text-sm text-muted">Masukkan kode tiket peserta (SCAN-…).</p>
               <form className="mt-4 flex gap-2" onSubmit={(e) => {
                 e.preventDefault()
                 void run(async () => { await scanTicket({ data: code }); setCode('') })
@@ -214,9 +214,9 @@ function Dashboard() {
           </section>
 
           <section className="mt-10">
-            <h2 className="text-xl font-semibold text-white">Event yang dikelola</h2>
+            <h2 className="text-xl font-semibold text-ink">Event yang dikelola</h2>
             {data.managed.length === 0 ? (
-              <p className="card mt-3 p-8 text-center text-sm text-slate-400">Belum ada event. Buat event pertama di atas.</p>
+              <p className="card mt-3 p-8 text-center text-sm text-muted">Belum ada event. Buat event pertama di atas.</p>
             ) : (
               <div className="mt-3 space-y-3">
                 {data.managed.map((e) => (
@@ -227,16 +227,16 @@ function Dashboard() {
           </section>
 
           <section className="mt-10">
-            <h2 className="text-xl font-semibold text-white">Tiket terdaftar</h2>
+            <h2 className="text-xl font-semibold text-ink">Tiket terdaftar</h2>
             {data.attendees.length === 0 ? (
-              <p className="card mt-3 p-8 text-center text-sm text-slate-400">Belum ada tiket yang dipesan.</p>
+              <p className="card mt-3 p-8 text-center text-sm text-muted">Belum ada tiket yang dipesan.</p>
             ) : (
-              <div className="card mt-3 divide-y divide-white/10">
+              <div className="card mt-3 divide-y divide-edge">
                 {data.attendees.map((a) => (
                   <div key={a.id} className="flex flex-wrap items-center justify-between gap-2 p-4">
                     <div>
-                      <p className="text-sm text-white">{a.name} · {a.event_title}</p>
-                      <p className="font-mono text-xs text-amber-300">{a.code}</p>
+                      <p className="text-sm text-ink">{a.name} · {a.event_title}</p>
+                      <p className="font-mono text-xs text-amber-700">{a.code}</p>
                     </div>
                     <span className="badge">{a.checked_in_at ? 'Sudah check-in' : 'Belum check-in'}</span>
                   </div>
@@ -258,7 +258,7 @@ function EventAdmin({ id, title, status, run, router }: { id: number; title: str
   return (
     <div className="card p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="font-semibold text-white">{title}</p>
+        <p className="font-semibold text-ink">{title}</p>
         <span className="badge">{status}</span>
       </div>
       <form className="mt-4 flex flex-wrap gap-2" onSubmit={(e) => {

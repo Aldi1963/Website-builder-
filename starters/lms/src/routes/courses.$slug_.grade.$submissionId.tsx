@@ -86,9 +86,9 @@ function GradePage() {
 
   return (
     <main className="min-h-dvh">
-      <header className="border-b border-white/10 bg-slate-950/70 backdrop-blur">
+      <header className="border-b border-edge bg-surface/90 backdrop-blur">
         <div className="container-page flex items-center justify-between py-4">
-          <Link to="/courses/$slug/manage" params={{ slug: sub.course_slug }} className="font-bold text-white">
+          <Link to="/courses/$slug/manage" params={{ slug: sub.course_slug }} className="font-bold text-ink">
             ← {sub.course_title}
           </Link>
         </div>
@@ -96,13 +96,13 @@ function GradePage() {
       <section className="container-page py-10">
         <div className="card mx-auto max-w-2xl p-6">
           <span className="badge">Penilaian Tugas</span>
-          <h1 className="mt-3 text-2xl font-bold text-white">{sub.assignment_title}</h1>
-          <p className="mt-1 text-sm text-slate-400">
+          <h1 className="mt-3 text-2xl font-bold text-ink">{sub.assignment_title}</h1>
+          <p className="mt-1 text-sm text-muted">
             Siswa: {sub.student_name} · Dikumpulkan {new Date(sub.submitted_at).toLocaleString('id-ID')}
           </p>
-          <div className="mt-5 rounded-xl border border-white/10 bg-white/5 p-4">
-            <p className="text-xs font-medium uppercase tracking-wider text-slate-400">Jawaban Siswa</p>
-            <p className="mt-2 whitespace-pre-wrap text-sm text-slate-200">{sub.content}</p>
+          <div className="mt-5 rounded-xl border border-edge bg-surface p-4">
+            <p className="text-xs font-medium uppercase tracking-wider text-muted">Jawaban Siswa</p>
+            <p className="mt-2 whitespace-pre-wrap text-sm text-ink">{sub.content}</p>
           </div>
           <form onSubmit={submit} className="mt-6 space-y-4">
             <div>
@@ -125,7 +125,7 @@ function GradePage() {
                 onInput={(e) => setFeedback((e.target as HTMLTextAreaElement).value)}
               />
             </div>
-            {error && <p className="text-sm text-red-400">{error}</p>}
+            {error && <p className="text-sm text-danger">{error}</p>}
             <button className="btn-primary" disabled={busy || grade === ''}>
               {busy ? 'Menyimpan…' : 'Simpan Nilai'}
             </button>

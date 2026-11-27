@@ -81,18 +81,18 @@ function LoginPage() {
 
   return (
     <main className="min-h-dvh">
-      <header className="border-b border-white/10 bg-slate-950/70 backdrop-blur">
+      <header className="border-b border-edge bg-surface/90 backdrop-blur">
         <div className="container-page flex items-center justify-between py-4">
-          <Link to="/" className="font-bold text-white">← Akademi</Link>
+          <Link to="/" className="font-bold text-ink">← Akademi</Link>
         </div>
       </header>
       <div className="container-page py-16">
         <div className="card mx-auto max-w-md p-6">
-          <h1 className="text-2xl font-bold text-white">{mode === 'login' ? 'Masuk' : 'Daftar Akun'}</h1>
+          <h1 className="text-2xl font-bold text-ink">{mode === 'login' ? 'Masuk' : 'Daftar Akun'}</h1>
           {current ? (
             <div className="mt-4 space-y-4">
-              <p className="text-sm text-slate-300">
-                Sudah masuk sebagai <span className="font-medium text-white">{current.email}</span> ({current.role || 'user'}).
+              <p className="text-sm text-muted">
+                Sudah masuk sebagai <span className="font-medium text-ink">{current.email}</span> ({current.role || 'user'}).
               </p>
               <div className="flex gap-3">
                 <Link to="/dashboard" className="btn-primary">Buka Dashboard</Link>
@@ -135,13 +135,13 @@ function LoginPage() {
                     onInput={(e) => setPassword((e.target as HTMLInputElement).value)}
                   />
                 </div>
-                {error && <p className="text-sm text-red-400">{error}</p>}
+                {error && <p className="text-sm text-danger">{error}</p>}
                 <button className="btn-primary w-full" type="submit" disabled={busy}>
                   {busy ? 'Memproses…' : mode === 'login' ? 'Masuk' : 'Daftar'}
                 </button>
               </form>
               <button
-                className="mt-4 text-sm text-slate-400 underline hover:text-white"
+                className="mt-4 text-sm text-muted underline hover:text-ink"
                 type="button"
                 onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
               >

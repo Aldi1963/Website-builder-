@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFileSync } from 'node:fs'
 
-const root = '/home/hatch/workspace/vibebuilder/'
+const root = new URL('../..', import.meta.url).pathname
 const proxy = readFileSync(root + 'server/src/preview-proxy.ts', 'utf8')
 const panels = readFileSync(root + 'platform/src/panels.tsx', 'utf8')
 const bridge = readFileSync(root + 'server/src/visual-bridge.js', 'utf8')

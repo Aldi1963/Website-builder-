@@ -1,4 +1,4 @@
-import { complete, STRONG_MODEL, effectiveAuditModel, type ChatMessage, type ToolCall } from './llm.ts'
+import { complete, STRONG_MODEL, effectiveAuditModel, type ChatMessage, type ContentPart, type ToolCall } from './llm.ts'
 import { appendFileSync } from 'node:fs'
 import { AUDIT_SYSTEM, BASE_SYSTEM, PLAN_SYSTEM, QUICK_EDIT_SYSTEM } from './prompts.ts'
 import {
@@ -11,7 +11,8 @@ import {
   ensureWorkspace,
 } from './workspace.ts'
 import { putFile, removeFile, listFiles, addMessage, listMessages } from './db.ts'
-import { savePendingPlan, clearPendingPlan } from './pending-plan.ts'
+import { savePendingPlan, clearPendingPlan, type PendingPlanData } from './pending-plan.ts'
+import { readReferenceImage } from './reference-images.ts'
 import { snapshotVersion, restoreVersion, listVersions } from './versions.ts'
 import { captureScreenshot, captureForReview } from './screenshots.ts'
 import { routePathFromFile } from './route-paths.ts'
@@ -143,7 +144,7 @@ export async function runAgent(
   emit: (e: AgentEvent) => void | Promise<void>,
   model?: string,
   forcePlanMode?: boolean,
-  opts?: { userId?: string; confirmed?: boolean; confirmPlan?: boolean },
+  opts?: { userId?: string; confirmed?: boolean; confirmPlan?: boolean; imageIds?: string[] },
 ): Promise<void> {
   ensureWorkspace(projectId)
   // Run baru menggantikan rencana lama yang belum disetujui (atau menghabiskan
@@ -166,10 +167,41 @@ export async function runAgent(
   let schemaBrief = ''
   try { schemaBrief = (await projectSchemaBrief(projectId)) ?? '' } catch { /* abaikan */ }
   const dbContext = schemaBrief ? `\n\nSkema database proyek saat ini (pakai nama ini, jangan menebak):\n${schemaBrief}` : ''
+  /* DESIGN.md adalah kontrak visual proyek. Disuntikkan setiap run supaya
+     keputusan desain tidak hilang antar percakapan. Proyek lama yang belum
+     punya file memakai default dari template — agent akan menuliskannya
+     saat diminta mengubah desain. */
+  const designBrief = (readProjectFile(projectId, 'DESIGN.md') ?? '').trim().slice(0, 4000)
+  const designContext = designBrief
+    ? `\n\nKONTRAK DESAIN PROYEK (DESIGN.md — ikuti, jangan bertentangan):\n${designBrief}`
+    : `\n\nKONTRAK DESAIN PROYEK: proyek ini belum punya DESIGN.md. Ikuti DESIGN_FILTER pada instruksi utama; bila user meminta perubahan desain, tulis DESIGN.md berisi keputusan visual yang dipakai.`
   const messages: ChatMessage[] = [
-    { role: 'system', content: `${BASE_SYSTEM}\n\nWorkspace saat ini:\n${fileIndex(projectId)}${dbContext}` },
+    { role: 'system', content: `${BASE_SYSTEM}${designContext}\n\nWorkspace saat ini:\n${fileIndex(projectId)}${dbContext}` },
     ...history.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
   ]
+
+  /* Referensi gambar dari user: dimuat dari .references, dikirim sekali di awal
+     sebagai pesan user multimodal. Bersifat referensi visual, bukan screenshot
+     hasil render — jangan tertukar dengan loop check_preview. */
+  const imageIds = Array.from(new Set(opts?.imageIds ?? [])).slice(0, 3)
+  const referenceParts: ContentPart[] = []
+  for (const id of imageIds) {
+    try {
+      const img = await readReferenceImage(projectId, id)
+      if (!img) continue
+      await emit({ type: 'status', text: `Melihat referensi gambar: ${img.name}…` })
+      referenceParts.push({ type: 'image_url', image_url: { url: img.dataUrl } })
+    } catch { /* referensi rusak tidak memblokir run */ }
+  }
+  if (referenceParts.length) {
+    messages.push({
+      role: 'user',
+      content: [
+        { type: 'text', text: `${userPrompt}\n\nGAMBAR REFERENSI DESAIN dari user (${referenceParts.length} gambar). Amati warna, tipografi, spacing, grid, komponen, dan hierarchy visualnya. Pakai sebagai acuan nyata: selaraskan DESIGN.md dan token di src/styles.css dengan pola yang terlihat, lalu terapkan ke komponen. Jangan menyalin teks/brand pihak ketiga atau aset berhak cipta — ambil hanya pola visualnya. Jangan mengklaim sudah mengikuti gambar bila tidak menyentuh file.` },
+        ...referenceParts,
+      ],
+    })
+  }
 
   /* Deteksi sapaan/pertanyaan ringan TANPA LLM (instan & hemat token): pesan
      pendek yang cuma menyapa / basa-basi dijawab sebagai chat biasa — tidak
@@ -273,7 +305,7 @@ let pendingPreviewDefects: string[] = []
   // regenerate plan (nanti membingungkan karena bisa berubah). Langsung eksekusi.
   if (quickEdit || opts?.confirmed) {
     if (!opts?.confirmed) {
-      messages[0] = { role: 'system', content: `${QUICK_EDIT_SYSTEM}\n\nWorkspace saat ini:\n${fileIndex(projectId)}` }
+      messages[0] = { role: 'system', content: `${QUICK_EDIT_SYSTEM}${designContext}\n\nWorkspace saat ini:\n${fileIndex(projectId)}` }
       await emit({ type: 'plan', ringkasan: 'Edit cepat: perubahan kecil langsung diterapkan', langkah: [{ judul: 'Terapkan perubahan', detail: 'Menulis file minimum yang disebut permintaan.' }, { judul: 'Verifikasi build', detail: 'Build produksi untuk memastikan tidak merusak aplikasi.' }], berkas: [], asumsi: [] })
     }
   } else {
@@ -318,7 +350,7 @@ let pendingPreviewDefects: string[] = []
     // Simpan rencana ke DB supaya tidak hilang bila user keluar sebelum
     // menyetujui; simpan juga ringkasannya sebagai pesan asisten supaya
     // thread tidak kosong saat user kembali.
-    savePendingPlan(projectId, userPrompt, { ringkasan, langkah, berkas, asumsi })
+    savePendingPlan(projectId, userPrompt, { ringkasan, langkah, berkas, asumsi, imageIds })
     const planText = langkah.length
       ? `${ringkasan}\n\nRencana kerja:\n${langkah.map((x: { judul: string; detail: string }, i: number) => `${i + 1}. ${x.judul}: ${x.detail}`).join('\n')}`
       : ringkasan
@@ -387,7 +419,7 @@ let pendingPreviewDefects: string[] = []
       messages.push({
         role: 'user',
         content: [
-          { type: 'text', text: `Ini screenshot preview aplikasimu saat ini. Error runtime:\n${errList}\n\nCacat render yang TERDETEKSI otomatis (harus diperbaiki, bukan sekadar opini):\n${defectList}\n\nBila ada cacat di atas atau masalah visual nyata (layout rusak, konten kosong/placeholder, elemen tumpang tindih), perbaiki lewat write_file lalu panggil build, lalu check_preview lagi. Bila daftar cacat KOSONG dan error runtime tidak ada, JANGAN menulis file apa pun dan langsung beri ringkasan akhir.` },
+          { type: 'text', text: `Ini screenshot preview aplikasimu saat ini. Error runtime:\n${errList}\n\nCacat yang TERDETEKSI otomatis (visual DAN interaksi nyata — harus diperbaiki, bukan sekadar opini):\n${defectList}\n\nTemuan dead-button/form-no-submit/form-invalid berarti tombol atau form ada di tampilan tetapi tidak berfungsi: tombol aman yang diklik tidak mengubah apa pun, form tidak punya tombol submit aktif, atau form menolak isian yang valid. Perbaiki handler klik, tombol submit, atau aturan validasi — jangan hanya mengganti warna atau teksnya. (Probe tidak pernah men-submit form atau mengklik tombol yang bisa mengubah data, jadi temuan ini murni soal perilaku client-side.)\n\nBila ada cacat di atas atau masalah visual nyata (layout rusak, konten kosong/placeholder, elemen tumpang tindih), perbaiki lewat write_file lalu panggil build, lalu check_preview lagi. Bila daftar cacat KOSONG dan error runtime tidak ada, JANGAN menulis file apa pun dan langsung beri ringkasan akhir.` },
           { type: 'image_url', image_url: { url: pendingPreviewImage } },
         ],
       })
@@ -556,10 +588,20 @@ let pendingPreviewDefects: string[] = []
           const seen = new Set(modelFindings.map((x: any) => `${x.berkas}:${x.kategori}:${x.masalah}`))
           const temuan = [...modelFindings, ...deterministic.filter((x) => !seen.has(`${x.berkas}:${x.kategori}:${x.masalah}`))].slice(0, 16)
           await emit({ type: 'audit', nilai: Math.max(0, Math.min(100, Number(report.nilai ?? 0))), temuan, catatan: String(report.catatan ?? '') })
+          /* Audit terstruktur disimpan juga sebagai pesan asisten (seperti
+             rencana di atas) supaya nilainya bertahan melewati reload —
+             event 'audit' saja hanya hidup di stream dan hilang. */
+          const auditText = [
+            `Audit kualitas: nilai ${Math.max(0, Math.min(100, Number(report.nilai ?? 0)))}/100.`,
+            ...temuan.map((x: any) => `- [${x.tingkat}/${x.kategori}] ${x.berkas}: ${x.masalah} Perbaikan: ${x.perbaikan}`),
+            String(report.catatan ?? '') ? `Catatan: ${String(report.catatan)}` : '',
+          ].filter(Boolean).join('\n').slice(0, 4000)
+          addMessage(projectId, 'assistant', auditText)
           result = JSON.stringify({nilai:report.nilai,temuan,catatan:report.catatan, instruksi: needsFix ? 'Perbaiki hanya temuan kritis/penting yang nyata, build ulang, lalu langsung beri ringkasan akhir tanpa memanggil audit lagi.' : 'Tidak ada temuan kritis/penting. Langsung beri ringkasan akhir tanpa memanggil audit lagi.'})
         } catch (err) {
           const note = `Audit gagal dijalankan atau diparse: ${(err as Error).message}`
           await emit({ type: 'audit', nilai: 0, temuan: [], catatan: note })
+          addMessage(projectId, 'assistant', note)
           auditCompleted = true
           result = note
         }

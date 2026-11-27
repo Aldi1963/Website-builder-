@@ -77,4 +77,8 @@ test('activity_events: klien memuat + menggabung event ke transcript + segarkan 
   assert.match(app, /const refreshEvents = async/)
   /* Sesudah run: kartu live diganti kartu persisten (tanpa dobel). */
   assert.ok((app.match(/setInlineEvents\(\[\]\)/g) ?? []).length >= 2, 'onDone/onError harus mengosongkan inlineEvents')
+  /* onScreenshot: kartu live yang sudah persisten dibersihkan (tanpa dobel). */
+  assert.match(app, /onScreenshot: \(\) => \{/)
+  assert.match(app, /setInlineEvents\(\(prev\) =>\s*prev\.filter/)
+  assert.match(app, /persisted\.has\(key\)/)
 })

@@ -550,6 +550,7 @@ function ToggleRow({
 }
 
 export function ChatPanel({
+  projectId,
   messages,
   sending,
   status,
@@ -570,6 +571,7 @@ export function ChatPanel({
   previewOpen,
   previewUrl,
 }: {
+  projectId: string
   messages: ChatItem[]
   sending: boolean
   status: string
@@ -577,7 +579,7 @@ export function ChatPanel({
   audit: ChatAudit | null
   streamText?: string
   activity?: ActivityEntry[]
-  onSend: (text: string) => void
+  onSend: (text: string, imageIds?: string[]) => void
   onCancel: () => void
   onConfirmPlan?: () => void
   onCancelPlan?: () => void
@@ -594,13 +596,54 @@ export function ChatPanel({
 }) {
   const [input, setInput] = useState('')
   const [attached, setAttached] = useState<{ name: string; content: string }[]>([])
+  const [images, setImages] = useState<{ id: string; name: string; mime: string }[]>([])
+  const [imageBusy, setImageBusy] = useState(false)
+  const [refError, setRefError] = useState('')
   const [expanded, setExpanded] = useState(false)
   const [recording, setRecording] = useState(false)
   const scrollRef = useAutoScroll(messages.length + (streamText?.length ?? 0) + (activity?.length ?? 0) + (events?.length ?? 0))
   const transcript = mergeTranscript(messages, events ?? [])
   const taRef = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const imageRef = useRef<HTMLInputElement>(null)
   const speechRef = useRef<{ stop: () => void } | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    void api.references(projectId).then((d) => { if (alive) setImages(d.images.slice(0, 12)) }).catch(() => {})
+    return () => { alive = false }
+  }, [projectId])
+
+  const addImageDataUrls = async (items: { dataUrl: string; name: string }[]) => {
+    setRefError('')
+    for (const item of items.slice(0, 3 - images.length)) {
+      try {
+        setImageBusy(true)
+        const res = await api.addReference(projectId, item.dataUrl, item.name)
+        if (res.image) setImages((prev) => [res.image, ...prev].slice(0, 12))
+      } catch (err) {
+        setRefError((err as Error).message || 'Gambar gagal disimpan')
+        break
+      } finally { setImageBusy(false) }
+    }
+  }
+  const readImageFiles = async (files: FileList | null) => {
+    if (!files?.length) return
+    const items: { dataUrl: string; name: string }[] = []
+    for (const file of Array.from(files)) {
+      if (!file.type.startsWith('image/') || file.size > 5 * 1024 * 1024) continue
+      items.push({ dataUrl: await new Promise<string>((resolve) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(String(reader.result ?? ''))
+        reader.readAsDataURL(file)
+      }), name: file.name })
+    }
+    await addImageDataUrls(items)
+  }
+  const removeImage = async (id: string) => {
+    setImages((prev) => prev.filter((x) => x.id !== id))
+    try { await api.deleteReference(projectId, id) } catch {}
+  }
 
   useEffect(() => () => speechRef.current?.stop(), [])
 
@@ -612,11 +655,12 @@ export function ChatPanel({
   }, [input])
 
   const submit = () => {
-    if ((!input.trim() && !attached.length) || sending) return
+    if ((!input.trim() && !images.length && !attached.length) || sending) return
     const fileContext = attached.map((f) => `\n\n--- Attached file: ${f.name} ---\n${f.content}`).join('')
-    onSend(`${input.trim()}${fileContext}`.trim())
+    onSend(`${input.trim()}${fileContext}`.trim(), images.slice(0, 3).map((x) => x.id))
     setInput('')
     setAttached([])
+    setImages([])
   }
 
   const addFiles = async (files: FileList | null) => {
@@ -757,12 +801,31 @@ export function ChatPanel({
                 ))}
               </div>
             )}
+            {images.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 px-3 pt-2">
+                {images.map((img) => (
+                  <span key={img.id} className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-edge bg-ink px-1.5 py-1 text-[10.5px] text-body">
+                    <img src={`/api/projects/${projectId}/references/${img.id}`} alt={img.name} className="h-7 w-7 rounded object-cover" />
+                    <span className="max-w-[110px] truncate">{img.name}</span>
+                    <button type="button" aria-label={`Hapus gambar ${img.name}`} onClick={() => void removeImage(img.id)} className="text-quiet hover:text-body">×</button>
+                  </span>
+                ))}
+                {refError && <span className="text-[10px] text-red-500">{refError}</span>}
+                {imageBusy && <span className="text-[10px] text-quiet">Menyimpan gambar…</span>}
+              </div>
+            )}
             <label htmlFor="vb-prompt" className="sr-only">Instruksi untuk agent</label>
             <textarea
               id="vb-prompt"
               ref={taRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
+              onPaste={(e) => {
+                const files = Array.from(e.clipboardData?.files ?? []).filter((f) => f.type.startsWith('image/'))
+                if (!files.length) return
+                e.preventDefault()
+                void readImageFiles(e.clipboardData.files)
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault()
@@ -775,8 +838,10 @@ export function ChatPanel({
               aria-label="Pesan untuk agent"
             />
             <input ref={fileRef} type="file" multiple hidden accept=".txt,.md,.mdx,.json,.csv,.ts,.tsx,.js,.jsx,.css,.html,.xml,.yaml,.yml,.sql,.py,.go,.rs,.sh,.toml,.env,.log" onChange={(e) => { void addFiles(e.currentTarget.files); e.currentTarget.value = '' }} />
+            <input ref={imageRef} type="file" multiple hidden accept="image/png,image/jpeg,image/webp,image/gif" onChange={(e) => { void readImageFiles(e.currentTarget.files); e.currentTarget.value = '' }} />
             <div className="flex items-center justify-between gap-2 px-2.5 pb-2.5">
               <div className="flex items-center gap-0.5">
+                <button type="button" onClick={() => imageRef.current?.click()} disabled={sending || imageBusy || images.length >= 3} aria-label="Lampirkan gambar referensi desain" title="Tempel atau lampirkan gambar referensi (PNG/JPEG/WebP/GIF, maks. 5 MB, 3 gambar)" className="flex h-9 w-9 items-center justify-center rounded-full text-quiet hover:bg-surface-muted hover:text-body disabled:opacity-40"><Icon name="camera" size={16} /></button>
                 <button type="button" onClick={() => fileRef.current?.click()} disabled={sending || attached.length >= 5} aria-label="Lampirkan file teks atau kode" title="Lampirkan file teks/kode (maks. 5 file, 256 KB per file)" className="flex h-9 w-9 items-center justify-center rounded-full text-quiet hover:bg-surface-muted hover:text-body disabled:opacity-40"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m8 12.5 6.2-6.2a3.2 3.2 0 0 1 4.5 4.5l-8.4 8.4a5 5 0 0 1-7.1-7.1l8.3-8.3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg></button>
                 <button type="button" onClick={onOpenSettings} aria-label="Setelan sesi dan model" title="Setelan sesi dan model" className="flex h-9 w-9 items-center justify-center rounded-full text-quiet hover:bg-surface-muted hover:text-body"><Icon name="rule" size={15} /></button>
                 <button type="button" onClick={() => setExpanded((v) => !v)} aria-expanded={expanded} aria-label={expanded ? 'Ciutkan composer' : 'Perluas composer'} title={expanded ? 'Ciutkan' : 'Perluas'} className="flex h-9 w-9 items-center justify-center rounded-full text-quiet hover:bg-surface-muted hover:text-body">
@@ -788,7 +853,7 @@ export function ChatPanel({
                 {sending ? (
                   <Button variant="outline" size="sm" onClick={onCancel} aria-label="Hentikan proses agent" className="h-9 rounded-full px-3"><Icon name="stop" size={10} /> Hentikan</Button>
                 ) : (
-                  <Button variant="primary" size="sm" shape="circle" onClick={submit} disabled={!input.trim() && !attached.length} aria-label="Kirim pesan" title="Kirim pesan" className="h-9 w-9 min-w-9 rounded-full p-0"><Icon name="arrow" size={15} /></Button>
+                  <Button variant="primary" size="sm" shape="circle" onClick={submit} disabled={(!input.trim() && !images.length && !attached.length) || imageBusy} aria-label="Kirim pesan" title="Kirim pesan" className="h-9 w-9 min-w-9 rounded-full p-0"><Icon name="arrow" size={15} /></Button>
                 )}
               </div>
             </div>
@@ -800,7 +865,7 @@ export function ChatPanel({
   )
 }
 
-function SuggestionsCard({ audit, onSend }: { audit: ChatAudit; onSend: (text: string) => void }) {
+function SuggestionsCard({ audit, onSend }: { audit: ChatAudit;  onSend: (text: string, imageIds?: string[]) => void }) {
   // Hanya muncul kalau AI punya saran lanjutan (temuan audit). Kalau tidak ada
   // temuan, kartu ini tidak dirender sama sekali — bukan disembunyikan.
   const order: Record<string, number> = { kritis: 0, penting: 1, ringan: 2 }

@@ -27,9 +27,19 @@ test('probe visual mendeteksi blank, overlay, dan overflow desktop + 360px', () 
 test('cacat hasil probe masuk ke tool result DAN pesan multimodal self-healing', () => {
   assert.match(agent, /pendingPreviewDefects = cap\.defects/, 'state cacat harus ditampung')
   assert.match(agent, /\$\{defectNote\}/, 'tool result harus memberi tahu model soal cacat')
-  assert.match(agent, /Cacat render yang TERDETEKSI otomatis/, 'pesan multimodal harus memuat cacat')
+  assert.match(agent, /Cacat yang TERDETEKSI otomatis/, 'pesan multimodal harus memuat cacat')
+  assert.match(agent, /dead-button\/form-no-submit\/form-invalid/, 'model harus diberi tahu cara memperbaiki cacat interaksi')
+  assert.match(shots, /probeInteractions/, 'screenshots harus menjalankan interaction probe')
   // Kalau model tanpa vision, cacat tetap harus dibersihkan supaya tidak bocor ke giliran berikut.
   assert.equal((agent.match(/pendingPreviewDefects = \[\]/g) ?? []).length >= 2, true, 'state cacat harus direset di semua jalur')
+})
+
+test('audit terstruktur disimpan sebagai pesan supaya bertahan melewati reload', () => {
+  /* Event 'audit' saja hanya hidup di stream; tanpa addMessage, nilai audit
+     hilang saat halaman dimuat ulang (bandingkan rencana di agent.ts:333). */
+  assert.match(agent, /addMessage\(projectId, 'assistant', auditText\)/, 'audit sukses harus disimpan sebagai pesan')
+  assert.match(agent, /Audit kualitas: nilai/, 'pesan audit harus memuat nilai')
+  assert.match(agent, /addMessage\(projectId, 'assistant', note\)/, 'audit yang gagal pun harus tercatat sebagai pesan')
 })
 
 test('routePathFromFile memetakan nama file TanStack ke URL', async () => {

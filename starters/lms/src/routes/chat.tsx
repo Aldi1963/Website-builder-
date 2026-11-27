@@ -49,10 +49,10 @@ function ChatPage() {
   return (
     <main className="mx-auto flex min-h-dvh max-w-2xl flex-col px-6 py-10">
       <h1 className="text-3xl font-bold tracking-tight">Chat</h1>
-      <p className="mt-2 text-sm text-slate-400">Tanya apa saja. Jawaban mengalir langsung dari AI.</p>
+      <p className="mt-2 text-sm text-muted">Tanya apa saja. Jawaban mengalir langsung dari AI.</p>
       <div className="mt-6 flex flex-1 flex-col gap-3">
         {messages.length === 0 && (
-          <p className="rounded-lg border border-slate-800 bg-slate-900 p-4 text-sm text-slate-400">
+          <p className="rounded-lg border border-edge bg-surface p-4 text-sm text-muted">
             Belum ada percakapan. Tulis pesan di bawah untuk memulai.
           </p>
         )}
@@ -61,8 +61,8 @@ function ChatPage() {
             key={i}
             className={
               m.role === 'user'
-                ? 'self-end rounded-lg bg-slate-800 px-4 py-2 text-sm'
-                : 'self-start whitespace-pre-wrap rounded-lg border border-slate-800 bg-slate-900 px-4 py-2 text-sm'
+                ? 'self-end rounded-lg bg-accent px-4 py-2 text-sm text-white'
+                : 'self-start whitespace-pre-wrap rounded-lg border border-edge bg-surface px-4 py-2 text-sm text-ink'
             }
           >
             {m.content || '…'}
@@ -70,7 +70,7 @@ function ChatPage() {
         ))}
       </div>
       {error && (
-        <p className="mt-4 rounded-lg border border-red-900 bg-red-950 p-3 text-sm text-red-200">{error}</p>
+        <p className="mt-4 rounded-lg border border-danger/30 bg-danger/5 p-3 text-sm text-danger">{error}</p>
       )}
       <div className="mt-4 flex gap-2">
         <input
@@ -84,12 +84,12 @@ function ChatPage() {
           }}
           placeholder="Tulis pesan…"
           disabled={busy}
-          className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-slate-500"
+          className="input min-w-0 flex-1"
         />
         {busy ? (
           <button
             onClick={() => abortRef.current?.abort()}
-            className="rounded-lg border border-slate-700 px-4 py-2 text-sm"
+            className="btn"
           >
             Berhenti
           </button>
@@ -97,7 +97,7 @@ function ChatPage() {
           <button
             onClick={() => void send()}
             disabled={!input.trim()}
-            className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-900 disabled:opacity-40"
+            className="btn-primary"
           >
             Kirim
           </button>

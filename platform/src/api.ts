@@ -34,9 +34,11 @@ export type FileEntry = { path: string; updated_at: number }
 
 export type PendingPlan = {
   prompt: string
-  plan: { ringkasan: string; langkah: PlanStep[]; berkas: string[]; asumsi: string[] }
+  plan: { ringkasan: string; langkah: PlanStep[]; berkas: string[]; asumsi: string[]; imageIds?: string[] }
   createdAt: number
 }
+
+export type ReferenceImage = { id: string; name: string; mime: string; size: number; createdAt: number }
 
 export type PlanStep = { judul: string; detail: string }
 export type AuditFinding = { tingkat: string; kategori: string; berkas: string; baris: number; masalah: string; perbaikan: string }
@@ -129,6 +131,11 @@ export const api = {
       `/api/projects/${id}/database/query`,
       { method: 'POST', body: JSON.stringify({ sql, limit }) },
     ),
+  dbExec: (id: string, sql: string) =>
+    req<{ ok: boolean; rowCount?: number; command?: string; error?: string }>(
+      `/api/projects/${id}/database/exec`,
+      { method: 'POST', body: JSON.stringify({ sql }) },
+    ),
   databaseTable: (id: string, name: string, search = '', page = 0, perPage = 25) =>
     req<{ ok: boolean; table?: string; page?: number; perPage?: number; total?: number; pageCount?: number;
       columns?: Array<{ name: string; type: string; nullable: boolean; default: string | null }>;
@@ -148,6 +155,9 @@ export const api = {
     req<{ ok: boolean; log: string }>(`/api/projects/${id}/build`, { method: 'POST' }),
   preview: (id: string) =>
     req<{ ok: boolean; port: number; url: string }>(`/api/projects/${id}/preview`, { method: 'POST' }),
+  references: (id: string) => req<{ images: ReferenceImage[] }>(`/api/projects/${id}/references`),
+  addReference: (id: string, dataUrl: string, name?: string) => req<{ ok: boolean; image: ReferenceImage }>(`/api/projects/${id}/references`, { method: 'POST', body: JSON.stringify({ dataUrl, name }) }),
+  deleteReference: (id: string, refId: string) => req<{ ok: boolean }>(`/api/projects/${id}/references/${encodeURIComponent(refId)}`, { method: 'DELETE' }),
   previewStatus: (id: string) =>
     req<{ running: boolean; port: number }>(`/api/projects/${id}/preview/status`),
   publish: (id: string, slug?: string) =>
@@ -278,12 +288,12 @@ export async function chatStream(
   message: string,
   h: ChatHandlers,
   signal?: AbortSignal,
-  opts?: { model?: string; planMode?: boolean; confirmPlan?: boolean; confirmed?: boolean },
+  opts?: { model?: string; planMode?: boolean; confirmPlan?: boolean; confirmed?: boolean; imageIds?: string[] },
 ) {
   const res = await fetch(`/api/projects/${projectId}/chat`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ message, model: opts?.model, planMode: opts?.planMode, confirmPlan: opts?.confirmPlan, confirmed: opts?.confirmed }),
+    body: JSON.stringify({ message, model: opts?.model, planMode: opts?.planMode, confirmPlan: opts?.confirmPlan, confirmed: opts?.confirmed, imageIds: opts?.imageIds }),
     signal,
   })
   if (!res.ok || !res.body) throw new Error(`chat gagal: ${res.status}`)

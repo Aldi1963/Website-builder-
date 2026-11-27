@@ -12,6 +12,7 @@ import { MODEL_AUTO, getPickerModels, isSelectionAvailable, modelIdForServer } f
    di-commit oleh trek ini; komponennya sendiri ada di billing-ui.tsx. */
 import { CreditChip, CreditMeter, UsagePage, notifyBalanceChanged } from './billing-ui'
 import { MarketplacePage } from './marketplace-ui'
+import DatabasePage from './database-ui'
 
 /* Right-side session menu (Emergent-style): a single 3-dot button in the chat
    header that opens a small dropdown with the actions that used to clutter the
@@ -73,685 +74,6 @@ function SessionMenu({ projectId, usage }: { projectId: string; usage: { request
           <button className={item} onClick={go('tampilan')} role="menuitem"><Icon name="moon" size={13} /> Mode tampilan</button>
         </div>
       )}
-    </div>
-  )
-}
-
-/* ---------- Penampil database aplikasi hasil generate ----------
-   Client-side saja, tanpa endpoint baru: isi dibaca dari file proyek yang
-   sudah ada di workspace (biasanya src/lib/db.server.ts) lewat
-   GET /api/projects/:id/file yang sudah ada. Parser ini TIDAK memakai eval:
-   CREATE TABLE diambil untuk skema, array seed (const ... = [{...}]) diambil
-   untuk baris, lalu dipasangkan lewat INSERT INTO + loop .run(...) bila ada.
-   Tabel tanpa seed yang terbaca menampilkan skemanya + catatan jujur — isi
-   TIDAK pernah dikarang. Penampil juga menjelaskan bahwa data aplikasi
-   tersimpan di file database proyek (kanonik: data/app.db) dan bertahan
-   melewati restart preview maupun server. */
-
-type DbTableView = {
-  name: string
-  columns: string[]
-  rows: Record<string, string | number | boolean>[]
-  note?: string
-}
-
-/* Pindai kurung berimbang dari posisi buka; hormati string ' " `. */
-function scanBalanced(src: string, openIdx: number, openCh: string, closeCh: string): number {
-  let depth = 0
-  let quote: string | null = null
-  let escaped = false
-  for (let i = openIdx; i < src.length; i++) {
-    const ch = src[i]
-    if (quote) {
-      if (escaped) { escaped = false; continue }
-      if (ch === '\\') { escaped = true; continue }
-      if (ch === quote) quote = null
-      continue
-    }
-    if (ch === "'" || ch === '"' || ch === '`') { quote = ch; continue }
-    if (ch === openCh) depth++
-    else if (ch === closeCh) {
-      depth--
-      if (depth === 0) return i
-    }
-  }
-  return -1
-}
-
-function splitTopLevel(s: string, sep: string): string[] {
-  const parts: string[] = []
-  let depth = 0
-  let quote: string | null = null
-  let cur = ''
-  for (let i = 0; i < s.length; i++) {
-    const ch = s[i]
-    if (quote) {
-      cur += ch
-      if (ch === quote) quote = null
-      continue
-    }
-    if (ch === "'" || ch === '"' || ch === '`') { quote = ch; cur += ch; continue }
-    if (ch === '(' || ch === '[' || ch === '{') depth++
-    if (ch === ')' || ch === ']' || ch === '}') depth--
-    if (ch === sep && depth === 0) { parts.push(cur); cur = ''; continue }
-    cur += ch
-  }
-  if (cur) parts.push(cur)
-  return parts
-}
-
-type JsValue = string | number | boolean | null | JsValue[] | { [k: string]: JsValue }
-
-/* Parser nilai literal JS secukupnya (string, angka, boolean, null, array,
-   object) — cukup untuk array seed; template literal ${...} ditolak. */
-function parseJsValue(src: string, i: number): { value: JsValue; next: number } | null {
-  while (i < src.length && /\s/.test(src[i])) i++
-  if (i >= src.length) return null
-  const ch = src[i]
-  if (ch === "'" || ch === '"' || ch === '`') {
-    let out = ''
-    i++
-    while (i < src.length) {
-      const c = src[i]
-      if (ch === '`' && c === '$' && src[i + 1] === '{') return null
-      if (c === '\\' && i + 1 < src.length) {
-        const n = src[i + 1]
-        out += n === 'n' ? '\n' : n === 't' ? '\t' : n === 'r' ? '\r' : n
-        i += 2
-        continue
-      }
-      if (c === ch) return { value: out, next: i + 1 }
-      out += c
-      i++
-    }
-    return null
-  }
-  if (ch === '[') {
-    const arr: JsValue[] = []
-    i++
-    for (;;) {
-      while (i < src.length && /\s/.test(src[i])) i++
-      if (src[i] === ']') return { value: arr, next: i + 1 }
-      const v = parseJsValue(src, i)
-      if (!v) return null
-      arr.push(v.value)
-      i = v.next
-      while (i < src.length && /\s/.test(src[i])) i++
-      if (src[i] === ',') { i++; continue }
-      if (src[i] === ']') return { value: arr, next: i + 1 }
-      return null
-    }
-  }
-  if (ch === '{') {
-    const obj: Record<string, JsValue> = {}
-    i++
-    for (;;) {
-      while (i < src.length && /\s/.test(src[i])) i++
-      if (src[i] === '}') return { value: obj, next: i + 1 }
-      let key = ''
-      if (src[i] === "'" || src[i] === '"') {
-        const k = parseJsValue(src, i)
-        if (!k || typeof k.value !== 'string') return null
-        key = k.value
-        i = k.next
-      } else {
-        const m = /^[A-Za-z_$][\w$]*/.exec(src.slice(i))
-        if (!m) return null
-        key = m[0]
-        i += m[0].length
-      }
-      while (i < src.length && /\s/.test(src[i])) i++
-      if (src[i] !== ':') return null
-      i++
-      const v = parseJsValue(src, i)
-      if (!v) return null
-      obj[key] = v.value
-      i = v.next
-      while (i < src.length && /\s/.test(src[i])) i++
-      if (src[i] === ',') { i++; continue }
-      if (src[i] === '}') return { value: obj, next: i + 1 }
-      return null
-    }
-  }
-  const m = /^(true|false|null|-?\d+(?:\.\d+)?)/.exec(src.slice(i))
-  if (m) {
-    const t = m[1]
-    return { value: t === 'true' ? true : t === 'false' ? false : t === 'null' ? null : Number(t), next: i + t.length }
-  }
-  return null
-}
-
-function extractTables(src: string): { name: string; columns: string[] }[] {
-  const tables: { name: string; columns: string[] }[] = []
-  const re = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?["'`]?([\w$]+)["'`]?\s*\(/gi
-  let m: RegExpExecArray | null
-  while ((m = re.exec(src)) !== null) {
-    const openIdx = src.indexOf('(', m.index)
-    const closeIdx = scanBalanced(src, openIdx, '(', ')')
-    if (closeIdx < 0) continue
-    const inner = src.slice(openIdx + 1, closeIdx)
-    const columns = splitTopLevel(inner, ',')
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .map((seg) => {
-        const km = /^["'`]?([\w$]+)["'`]?/.exec(seg)
-        return km ? km[1] : ''
-      })
-      .filter((name) => name && !/^(PRIMARY|FOREIGN|UNIQUE|CHECK|CONSTRAINT|KEY)$/i.test(name))
-    tables.push({ name: m[1], columns })
-  }
-  return tables
-}
-
-function extractSeedArrays(src: string): { varName: string; items: Record<string, JsValue>[] }[] {
-  const out: { varName: string; items: Record<string, JsValue>[] }[] = []
-  const re = /const\s+([\w$]+)(?::\s*[^=]+?)?=\s*\[/g
-  let m: RegExpExecArray | null
-  while ((m = re.exec(src)) !== null) {
-    /* Kurung buka array = '[' terakhir dari match (bukan '[' pertama sesudah
-       'const' — anotasi tipe seperti Recipe[] juga mengandung '['). */
-    const bracketIdx = m.index + m[0].lastIndexOf('[')
-    const closeIdx = scanBalanced(src, bracketIdx, '[', ']')
-    if (closeIdx < 0) continue
-    const body = src.slice(bracketIdx + 1, closeIdx)
-    const items: Record<string, JsValue>[] = []
-    let ok = true
-    let j = 0
-    while (j < body.length) {
-      const o = body.indexOf('{', j)
-      if (o < 0) break
-      const c = scanBalanced(body, o, '{', '}')
-      if (c < 0) { ok = false; break }
-      const v = parseJsValue(body, o)
-      if (!v || typeof v.value !== 'object' || v.value === null || Array.isArray(v.value)) { ok = false; break }
-      items.push(v.value as Record<string, JsValue>)
-      j = c + 1
-    }
-    if (ok && items.length) out.push({ varName: m[1], items })
-  }
-  return out
-}
-
-const toSnake = (s: string) => s.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase()
-const normName = (s: string) => s.toLowerCase().replace(/_/g, '')
-
-function parseAppDatabase(source: string): DbTableView[] {
-  const tables = extractTables(source)
-  if (!tables.length) return []
-  const seeds = extractSeedArrays(source)
-
-  /* INSERT INTO <tabel> [(kolom...)] VALUES ... + loop for..of <array>
-     <stmt>.run(<item>.f1, JSON.stringify(<item>.f2), ...) — posisi argumen
-     = posisi kolom. */
-  const inserts: { table: string; columns: string[] | null; varName: string }[] = []
-  const insRe = /const\s+([\w$]+)\s*=\s*[\w$.]+\.prepare\(\s*['"]INSERT\s+INTO\s+["'`]?([\w$]+)["'`]?\s*(?:\(([^)]*)\))?\s*VALUES/gi
-  let im: RegExpExecArray | null
-  while ((im = insRe.exec(source)) !== null) {
-    inserts.push({
-      varName: im[1],
-      table: im[2],
-      columns: im[3] ? im[3].split(',').map((c) => c.trim().replace(/["'`]/g, '')).filter(Boolean) : null,
-    })
-  }
-  const runs: { arrayVar: string; stmtVar: string; fields: string[] }[] = []
-  const runRe = /for\s*\(\s*const\s+([\w$]+)\s+of\s+([\w$]+)\s*\)\s*([\w$]+)\.run\(/g
-  let rm: RegExpExecArray | null
-  while ((rm = runRe.exec(source)) !== null) {
-    const openIdx = source.indexOf('(', rm.index + rm[0].length - 1)
-    const closeIdx = scanBalanced(source, openIdx, '(', ')')
-    if (closeIdx < 0) continue
-    const args = splitTopLevel(source.slice(openIdx + 1, closeIdx), ',')
-      .map((a) => {
-        /* Ambil pasangan kata.field TERAKHIR: 'recipe.id' -> 'id', tapi
-           'JSON.stringify(recipe.ingredients)' -> 'ingredients' (bukan
-           'stringify'). */
-        const all = [...a.trim().matchAll(/[\w$]+\.([\w$]+)/g)]
-        return all.length ? all[all.length - 1][1] : ''
-      })
-    runs.push({ arrayVar: rm[2], stmtVar: rm[3], fields: args })
-  }
-
-  const displayValue = (v: JsValue): string | number => {
-    if (Array.isArray(v)) return v.map((x) => (typeof x === 'object' ? JSON.stringify(x) : String(x))).join(', ')
-    if (v === null) return ''
-    if (typeof v === 'object') return JSON.stringify(v)
-    if (typeof v === 'boolean') return v ? 'true' : 'false'
-    return v
-  }
-
-  return tables.map((t) => {
-    const columns = t.columns
-    let rows: Record<string, string | number>[] = []
-    /* Jalur 1: INSERT + for..of — pemetaan posisi paling setia. */
-    const ins = inserts.find((x) => normName(x.table) === normName(t.name))
-    const run = ins ? runs.find((r) => r.stmtVar === ins.varName) : undefined
-    const seed = run ? seeds.find((s) => s.varName === run.arrayVar) : undefined
-    if (ins && run && seed && run.fields.length) {
-      const cols = ins.columns ?? columns
-      rows = seed.items.map((item) => {
-        const row: Record<string, string | number> = {}
-        cols.forEach((col, i) => {
-          const field = run.fields[i]
-          row[col] = field && field in item ? displayValue(item[field]) : ''
-        })
-        return row
-      })
-    } else {
-      /* Jalur 2: nama array seed sama dengan nama tabel — petakan kunci
-         camelCase ke kolom snake_case. */
-      const byName = seeds.find((s) => normName(s.varName) === normName(t.name))
-      if (byName) {
-        rows = byName.items.map((item) => {
-          const row: Record<string, string | number> = {}
-          columns.forEach((col) => {
-            const key = Object.keys(item).find((k) => toSnake(k) === col || normName(k) === normName(col))
-            row[col] = key ? displayValue(item[key]) : ''
-          })
-          return row
-        })
-      }
-    }
-    return {
-      name: t.name,
-      columns,
-      rows,
-      note: rows.length
-        ? undefined
-        : 'Tidak ada baris seed yang bisa dibaca dari file proyek. Baris tabel ini hanya terbentuk dari input pengguna di preview (tersimpan di file database proyek, kanonik data/app.db) — jadi isinya tidak bisa ditampilkan di sini, dan tabel ini bukan berarti kosong.',
-    }
-  })
-}
-
-function DatabaseViewer({
-  open,
-  onClose,
-  projectId,
-  files,
-}: {
-  open: boolean
-  onClose: () => void
-  projectId: string
-  files: { path: string }[]
-}) {
-  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
-  const [tables, setTables] = useState<DbTableView[]>([])
-  const [databaseLabel, setDatabaseLabel] = useState('')
-  const [error, setError] = useState('')
-  const [mode, setMode] = useState<'Browse' | 'Structure' | 'SQL' | 'Export'>('Browse')
-  const [tableFilter, setTableFilter] = useState('')
-  const [selectedTable, setSelectedTable] = useState<string | null>(null)
-  const [detail, setDetail] = useState<Awaited<ReturnType<typeof api.databaseTable>> | null>(null)
-  const [search, setSearch] = useState('')
-  const [page, setPage] = useState(0)
-  const [detailLoading, setDetailLoading] = useState(false)
-  const [exportSql, setExportSql] = useState('')
-  const [exportBusy, setExportBusy] = useState(false)
-  const [query, setQuery] = useState('')
-  const [queryResult, setQueryResult] = useState<{ columns: string[]; rows: Record<string, unknown>[]; truncated: boolean } | null>(null)
-  const [queryError, setQueryError] = useState('')
-  const [running, setRunning] = useState(false)
-
-  const loadTable = async (name: string, nextSearch = search, nextPage = page) => {
-    setSelectedTable(name); setDetail(null); setDetailLoading(true)
-    try {
-      const r = await api.databaseTable(projectId, name, nextSearch, nextPage)
-      setDetail(r)
-    } catch (e) { setDetail({ ok: false, error: (e as Error).message }) }
-    finally { setDetailLoading(false) }
-  }
-
-  useEffect(() => {
-    if (!open || status !== 'ready' || !tables.length) return
-    const first = tables[0].name
-    setSelectedTable((cur) => (cur && tables.some((t) => t.name === cur) ? cur : first))
-  }, [open, status, tables])
-
-  useEffect(() => {
-    if (!open || !selectedTable || mode !== 'Browse') return
-    void loadTable(selectedTable)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, selectedTable, mode])
-
-  const runQuery = async () => {
-    if (!query.trim() || running) return
-    setRunning(true); setQueryError(''); setQueryResult(null)
-    try {
-      const r = await api.dbQuery(projectId, query)
-      if (!r.ok || r.error) {
-        setQueryError(r.error || 'Query gagal.')
-        return
-      }
-      setQueryResult({ columns: r.columns ?? [], rows: r.rows ?? [], truncated: !!r.truncated })
-    } catch (e) {
-      setQueryError((e as Error).message || 'Query gagal.')
-    } finally {
-      setRunning(false)
-    }
-  }
-
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [open, onClose])
-
-  useEffect(() => {
-    if (!open) return
-    let alive = true
-    setStatus('loading')
-    setError('')
-    setTables([])
-    const load = async () => {
-      try {
-        const r = await api.database(projectId)
-        if (!alive) return
-        if (r.error) {
-          setError(r.error)
-          setStatus('error')
-          return
-        }
-        if (!r.tables.length) {
-          setError('Belum ada tabel di database proyek ini. Minta agent membuat tabel lewat chat.')
-          setStatus('error')
-          return
-        }
-        setTables(r.tables)
-        setDatabaseLabel(r.database ?? '')
-        setStatus('ready')
-      } catch (e) {
-        if (!alive) return
-        setError((e as Error).message || 'Gagal memuat database.')
-        setStatus('error')
-      }
-    }
-    void load()
-    return () => {
-      alive = false
-    }
-  }, [open, projectId])
-
-  if (!open) return null
-  return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/55 p-3" onClick={onClose} role="dialog" aria-label="Database aplikasi">
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="vb-enter flex max-h-[90dvh] w-full max-w-[980px] flex-col border border-edge bg-surface px-4 pb-5 pt-4 max-md:px-3"
-      >
-        <div className="mb-2 flex items-center justify-between">
-          <h2 className="font-display text-[16px] text-body">Database aplikasi</h2>
-          <button onClick={onClose} aria-label="Tutup database" className="flex h-8 w-8 items-center justify-center text-quiet hover:text-body">
-            <Icon name="close" size={14} />
-          </button>
-        </div>
-        <p className="mb-3 border-l-2 border-accent pl-2 text-[12px] leading-relaxed text-body">
-          Database aplikasi ini Postgres terkelola, dibuat otomatis per proyek — data yang dimasukkan
-          lewat preview tersimpan di sana dan bertahan melewati restart preview maupun server. Isi di
-          bawah dibaca langsung dari database yang sedang berjalan (skema + contoh data).
-        </p>
-        <div className="mb-3 flex items-center gap-1 border-b border-edge pb-2" role="tablist" aria-label="Mode database">
-          {(['Browse', 'Structure', 'SQL', 'Export'] as const).map((m) => (
-            <button
-              key={m}
-              onClick={() => setMode(m)}
-              role="tab"
-              aria-selected={mode === m}
-              className={`h-7 px-2 text-[11.5px] transition-colors ${mode === m ? 'text-body underline underline-offset-4' : 'text-quiet hover:text-body'}`}
-            >
-              {m}
-            </button>
-          ))}
-          <span className="ml-auto text-[10.5px] text-quiet">{databaseLabel}</span>
-        </div>
-        {mode === 'SQL' && (
-          <div className="mb-3">
-            <textarea
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') void runQuery() }}
-              spellCheck={false}
-              aria-label="Query SQL"
-              placeholder={'SELECT * FROM users ORDER BY created_at DESC LIMIT 20'}
-              className="vb-scroll h-24 w-full resize-y border border-edge bg-ink px-2.5 py-2 font-mono text-[11.5px] leading-relaxed text-body outline-none placeholder:text-quiet focus:border-accent"
-            />
-            <div className="mt-1.5 flex items-center justify-between gap-2">
-              <p className="text-[10.5px] text-quiet">Hanya SELECT/WITH · satu pernyataan · maks 100 baris · Ctrl+Enter</p>
-              <button
-                onClick={() => void runQuery()}
-                disabled={running || !query.trim()}
-                className="flex h-7 shrink-0 items-center gap-1 border border-accent bg-accent px-2.5 text-[11px] text-on-accent transition-opacity disabled:opacity-40"
-              >
-                <Icon name="run" size={10} /> {running ? 'Jalankan…' : 'Jalankan query'}
-              </button>
-            </div>
-            {queryError && <p className="mt-2 border-l-2 border-accent pl-2 text-[11.5px] text-body">{queryError}</p>}
-            {queryResult && (
-              <div className="vb-scroll mt-2 max-h-56 overflow-auto border border-edge">
-                {queryResult.columns.length ? (
-                  <table className="w-max border-collapse text-[11.5px]">
-                    <thead>
-                      <tr>{queryResult.columns.map((c) => <th key={c} className="whitespace-nowrap border border-edge bg-ink px-2 py-1 text-left font-medium text-body">{c}</th>)}</tr>
-                    </thead>
-                    <tbody>
-                      {queryResult.rows.map((row, i) => (
-                        <tr key={i}>{queryResult.columns.map((c) => {
-                          const raw = queryResult.rows[i]?.[c]
-                          const isNull = raw === null || raw === undefined
-                          const text = isNull ? 'NULL' : String(raw)
-                          return <td key={c} className="max-w-[180px] border border-edge px-2 py-1 align-top text-body"><span className={`block max-w-[176px] truncate ${isNull ? 'italic text-quiet' : ''}`} title={text}>{text}</span></td>
-                        })}</tr>
-                      ))}
-                    </tbody>
-                  </table>
-                ) : (
-                  <p className="px-2 py-2 text-[11.5px] text-quiet">Query berhasil, tanpa baris hasil.</p>
-                )}
-              </div>
-            )}
-            {queryResult && (
-              <p className="mt-1 text-[10.5px] text-quiet">
-                {queryResult.rows.length} baris{queryResult.truncated ? ' · dibatasi 100 baris pertama' : ''}
-              </p>
-            )}
-          </div>
-        )}
-        <div className="vb-scroll min-h-0 flex-1 overflow-y-auto">
-          {mode === 'Browse' && <>
-          {status === 'loading' && <p className="text-[12px] text-quiet">Membaca database…</p>}
-          {status === 'error' && <p className="border-l-2 border-accent pl-2 text-[12px] text-body">{error}</p>}
-          {status === 'ready' && (
-            <div className="flex gap-3 max-md:flex-col">
-              {/* Sidebar daftar tabel, seperti panel kiri phpMyAdmin */}
-              <aside className="w-[176px] shrink-0 max-md:w-full">
-                <input
-                  value={tableFilter}
-                  onChange={(e) => setTableFilter(e.target.value)}
-                  placeholder="Cari tabel…"
-                  aria-label="Cari tabel"
-                  className="mb-2 h-7 w-full border border-edge bg-ink px-2 text-[11.5px] text-body outline-none placeholder:text-quiet focus:border-accent"
-                />
-                <ul className="vb-scroll max-h-[40dvh] overflow-y-auto border border-edge max-md:max-h-32">
-                  {tables.filter((t) => t.name.toLowerCase().includes(tableFilter.toLowerCase())).map((t) => (
-                    <li key={t.name}>
-                      <button
-                        onClick={() => { setPage(0); setSearch(''); void loadTable(t.name, '', 0) }}
-                        aria-current={selectedTable === t.name}
-                        className={`block w-full truncate px-2 py-1.5 text-left font-mono text-[11.5px] transition-colors ${selectedTable === t.name ? 'bg-accent/15 text-body' : 'text-quiet hover:bg-ink hover:text-body'}`}
-                        title={`${t.name} · ${t.note ?? ''}`}
-                      >
-                        {t.name}
-                      </button>
-                    </li>
-                  ))}
-                  {!tables.filter((t) => t.name.toLowerCase().includes(tableFilter.toLowerCase())).length && (
-                    <li className="px-2 py-1.5 text-[11px] text-quiet">Tidak ada tabel cocok.</li>
-                  )}
-                </ul>
-                <p className="mt-1.5 text-[10.5px] text-quiet">{tables.length} tabel</p>
-              </aside>
-
-              {/* Panel kanan: isi tabel terpilih */}
-              <div className="min-w-0 flex-1">
-                {!selectedTable && <p className="text-[12px] text-quiet">Pilih tabel di kiri.</p>}
-                {selectedTable && (
-                  <>
-                    <div className="mb-2 flex flex-wrap items-center gap-2">
-                      <h3 className="font-mono text-[12.5px] font-medium text-body">{selectedTable}</h3>
-                      {detail?.total !== undefined && detailLoading === false && (
-                        <span className="text-[11px] text-quiet">{detail.total} baris</span>
-                      )}
-                      <form
-                        className="ml-auto flex items-center gap-1"
-                        onSubmit={(e) => { e.preventDefault(); setPage(0); void loadTable(selectedTable, search, 0) }}
-                      >
-                        <input
-                          value={search}
-                          onChange={(e) => setSearch(e.target.value)}
-                          placeholder="Cari isi tabel…"
-                          aria-label="Cari isi tabel"
-                          className="h-7 w-[130px] border border-edge bg-ink px-2 text-[11.5px] text-body outline-none placeholder:text-quiet focus:border-accent"
-                        />
-                        <button type="submit" className="h-7 border border-edge px-2 text-[11px] text-body hover:border-accent">Cari</button>
-                      </form>
-                    </div>
-                    {detailLoading && <p className="text-[11.5px] text-quiet">Memuat…</p>}
-                    {detail?.error && <p className="border-l-2 border-accent pl-2 text-[11.5px] text-body">{detail.error}</p>}
-                    {detail?.rows && (
-                      <>
-                        <div className="vb-scroll max-h-[42dvh] overflow-auto border border-edge" title="Geser horizontal untuk melihat semua kolom">
-                          <table className="w-max border-collapse text-[12px]">
-                            <thead>
-                              <tr>
-                                {(detail.columns ?? []).map((c) => (
-                                  <th key={c.name} className="sticky top-0 z-10 whitespace-nowrap border border-edge bg-ink px-2 py-1.5 text-left font-medium text-body">
-                                    {c.name}
-                                  </th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {detail.rows.map((row, i) => (
-                                <tr key={i} className="hover:bg-ink/60">
-                                  {(detail.columns ?? []).map((c) => {
-                                    const raw = row[c.name]
-                                    const isNull = raw === null || raw === undefined
-                                    const text = isNull ? 'NULL' : String(raw)
-                                    return (
-                                      <td key={c.name} className="max-w-[180px] border border-edge px-2 py-1 align-top text-body">
-                                        <span className={`block max-w-[176px] truncate ${isNull ? 'italic text-quiet' : ''}`} title={text}>
-                                          {text}
-                                        </span>
-                                      </td>
-                                    )
-                                  })}
-                                </tr>
-                              ))}
-                              {!detail.rows.length && (
-                                <tr><td colSpan={(detail.columns ?? []).length || 1} className="border border-edge px-2 py-2 text-[11.5px] text-quiet">Tabel kosong.</td></tr>
-                              )}
-                            </tbody>
-                          </table>
-                        </div>
-                        <div className="mt-1.5 flex items-center gap-2 text-[10.5px] text-quiet">
-                          <button
-                            disabled={page <= 0}
-                            onClick={() => { const p = Math.max(0, page - 1); setPage(p); void loadTable(selectedTable, search, p) }}
-                            className="h-6 border border-edge px-2 disabled:opacity-40"
-                          >‹ Sebelumnya</button>
-                          <span>Halaman {page + 1} dari {detail.pageCount ?? 1}</span>
-                          <button
-                            disabled={page + 1 >= (detail.pageCount ?? 1)}
-                            onClick={() => { const p = page + 1; setPage(p); void loadTable(selectedTable, search, p) }}
-                            className="h-6 border border-edge px-2 disabled:opacity-40"
-                          >Berikutnya ›</button>
-                        </div>
-                      </>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
-          )}
-          </>}
-          {mode === 'Structure' && (
-            <div>
-              {!selectedTable && <p className="text-[12px] text-quiet">Pilih tabel di tab Browse dulu.</p>}
-              {selectedTable && detailLoading && <p className="text-[11.5px] text-quiet">Memuat struktur…</p>}
-              {selectedTable && detail?.error && <p className="border-l-2 border-accent pl-2 text-[11.5px] text-body">{detail.error}</p>}
-              {selectedTable && detail?.columns && (
-                <>
-                  <h3 className="mb-2 font-mono text-[12.5px] font-medium text-body">{selectedTable}</h3>
-                  <div className="vb-scroll max-h-[50dvh] overflow-auto border border-edge">
-                    <table className="w-max border-collapse text-[12px]">
-                      <thead>
-                        <tr>
-                          {['Kolom', 'Tipe', 'Null', 'Default'].map((h) => (
-                            <th key={h} className="sticky top-0 z-10 whitespace-nowrap border border-edge bg-ink px-2 py-1.5 text-left font-medium text-body">{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {detail.columns.map((c) => (
-                          <tr key={c.name}>
-                            <td className="border border-edge px-2 py-1 font-mono text-body">{c.name}</td>
-                            <td className="border border-edge px-2 py-1 text-quiet">{c.type}</td>
-                            <td className="border border-edge px-2 py-1 text-quiet">{c.nullable ? 'Ya' : 'Tidak'}</td>
-                            <td className="max-w-[180px] border border-edge px-2 py-1">
-                              <span className="block max-w-[176px] truncate text-quiet" title={c.default ?? 'NULL'}>{c.default ?? 'NULL'}</span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-          {mode === 'Export' && (
-            <div>
-              <p className="mb-2 text-[11.5px] leading-relaxed text-quiet">
-                Dump SQL seluruh tabel (CREATE TABLE + INSERT) — bisa diimpor ke Postgres lain.
-              </p>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={async () => {
-                    setExportBusy(true); setExportSql('')
-                    try {
-                      const r = await api.databaseExport(projectId)
-                      setExportSql(r.ok && r.sql ? r.sql : `Gagal: ${r.error ?? 'tidak ada data'}`)
-                    } catch (e) { setExportSql(`Gagal: ${(e as Error).message}`) }
-                    finally { setExportBusy(false) }
-                  }}
-                  disabled={exportBusy}
-                  className="h-7 border border-accent bg-accent px-2.5 text-[11px] text-on-accent disabled:opacity-40"
-                >
-                  {exportBusy ? 'Menyiapkan…' : 'Buat dump SQL'}
-                </button>
-                {exportSql && !exportSql.startsWith('Gagal') && (
-                  <a
-                    href={`data:text/plain;charset=utf-8,${encodeURIComponent(exportSql)}`}
-                    download={`${databaseLabel || 'database'}.sql`}
-                    className="h-7 border border-edge px-2.5 text-[11px] leading-7 text-body hover:border-accent"
-                  >
-                    Unduh .sql
-                  </a>
-                )}
-              </div>
-              {exportSql && (
-                <textarea
-                  readOnly
-                  value={exportSql}
-                  aria-label="Hasil dump SQL"
-                  className="vb-scroll mt-2 h-[36dvh] w-full resize-y border border-edge bg-ink px-2 py-1.5 font-mono text-[10.5px] leading-relaxed text-body outline-none"
-                />
-              )}
-            </div>
-          )}
-        </div>
-      </div>
     </div>
   )
 }
@@ -1740,7 +1062,7 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
   }, [routeTab, projectId, openFile])
 
   const [planMode, setPlanMode] = useState(false)
-  const [pendingPlan, setPendingPlan] = useState<{ prompt: string } | null>(null)
+  const [pendingPlan, setPendingPlan] = useState<{ prompt: string; imageIds: string[] } | null>(null)
   const [awaitingConfirm, setAwaitingConfirm] = useState(false)
   const { entries: activity, push: pushActivity, reset: resetActivity } = useActivity()
   const abortRef = useRef<AbortController | null>(null)
@@ -1764,7 +1086,7 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
     // kembali sesudah keluar (disimpan server saat gerbang konfirmasi).
     if (d.pendingPlan) {
       setPlan(d.pendingPlan.plan)
-      setPendingPlan({ prompt: d.pendingPlan.prompt })
+      setPendingPlan({ prompt: d.pendingPlan.prompt, imageIds: d.pendingPlan.plan.imageIds ?? [] })
       setAwaitingConfirm(true)
     } else {
       setPlan(null)
@@ -1847,7 +1169,7 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
     }
   }
 
-  const send = async (text: string, optsConfirmed = false) => {
+  const send = async (text: string, optsConfirmed = false, imageIds: string[] = []) => {
     if (!text.trim() || sending) return
 
     // Ask discovery only for the first user request. If the model needs details,
@@ -1875,7 +1197,7 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
     setInlineEvents([])
     resetActivity()
     pushActivity({ kind: 'status', text: 'menyiapkan', at: Date.now() })
-    if (!optsConfirmed) setPendingPlan({ prompt: text })
+    if (!optsConfirmed) setPendingPlan({ prompt: text, imageIds })
     else setPendingPlan(null)
     setAwaitingConfirm(false)
     // Run konfirmasi = lanjutan dari prompt yang sama; jangan tampilkan bubble user dua kali.
@@ -1931,7 +1253,22 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
         setMessages((m) => [...m, { role: 'assistant', content: 'Rencana sudah ditampilkan. Setujui untuk mulai dibangun, atau tulis perubahan yang diinginkan.', created_at: Date.now() }])
       },
       onScreenshot: () => {
-        void load()
+        /* Screenshot datang sesudah event file/terminal run ini tersimpan di
+           server (persisten) — bersihkan salinan live-nya yang sudah ada di
+           persistent set supaya kartu tidak tampil dua kali sampai onDone. */
+        void load().then((d) => {
+          const persisted = new Set(
+            (d.events ?? []).map((e) =>
+              e.kind === 'file' ? `file\n${e.label}\n${e.action ?? ''}` : `terminal\n${e.label}`,
+            ),
+          )
+          setInlineEvents((prev) =>
+            prev.filter((ev) => {
+              const key = ev.kind === 'file' ? `file\n${ev.path}\n${ev.action}` : `terminal\n${ev.title}`
+              return !persisted.has(key)
+            }),
+          )
+        })
       },
       onPublished: (newSlug, url) => {
         setSlug(newSlug)
@@ -1978,7 +1315,7 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
       /* Wire ke server HANYA bare model id (auto → undefined = default
          server). Prefix provider dari pilihan dilepas di sini — server
          belum punya format wire untuk provider (lihat models.ts). */
-      await chatStream(projectId, text, handlers, ctrl.signal, { model: modelIdForServer(model), planMode, confirmPlan: true, confirmed: optsConfirmed })
+      await chatStream(projectId, text, handlers, ctrl.signal, { model: modelIdForServer(model), planMode, confirmPlan: true, confirmed: optsConfirmed, imageIds })
     } catch (err) {
       setMessages((m) => [...m, { role: 'error', content: (err as Error).message, created_at: Date.now() }])
     } finally {
@@ -2007,10 +1344,11 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
   const confirmPlanAndRun = async () => {
     if (!pendingPlan || sending) return
     const prompt = pendingPlan.prompt
+    const imageIds = pendingPlan.imageIds ?? []
     setAwaitingConfirm(false)
     // Hapus pesan "menunggu persetujuan" lama dari tampilan.
     setMessages((m) => m.filter((x) => !(x.role === 'assistant' && x.content.startsWith('Rencana sudah ditampilkan'))))
-    await send(prompt, true)
+    await send(prompt, true, imageIds)
   }
 
   const cancelPlan = async () => {
@@ -2107,6 +1445,11 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
 
   const unsaved = openFile !== null && fileContent !== savedContent
 
+  /* Database adalah halaman penuh route-driven, bukan popup overlay. */
+  if (routeTab === 'database') {
+    return <DatabasePage projectId={projectId} onBack={() => navigate(`/proyek/${projectId}/chat`)} />
+  }
+
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <header className="flex h-14 shrink-0 items-center gap-2 border-b border-edge bg-surface px-4 max-md:h-12">
@@ -2151,6 +1494,7 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
           }`}
         >
           <ChatPanel
+            projectId={projectId}
             messages={messages}
             sending={sending}
             status={status}
@@ -2158,7 +1502,7 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
             audit={audit}
             streamText={streamText}
             activity={activity}
-            onSend={send}
+            onSend={(text, imageIds) => void send(text, false, imageIds ?? [])}
             onCancel={() => abortRef.current?.abort()}
             onConfirmPlan={confirmPlanAndRun}
             onCancelPlan={cancelPlan}
@@ -2228,13 +1572,6 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
         }}
         planMode={planMode}
         onPlanMode={setPlanMode}
-      />
-
-      <DatabaseViewer
-        open={routeTab === 'database'}
-        onClose={() => navigate(`/proyek/${projectId}/chat`)}
-        projectId={projectId}
-        files={files}
       />
 
       {publishMsg && (

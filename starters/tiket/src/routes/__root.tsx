@@ -10,12 +10,11 @@ export const Route = createRootRoute({
     ],
     links: [
       { rel: 'stylesheet', href: styles },
-      // Font Inter untuk tipografi yang rapi & konsisten.
       { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
       { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossOrigin: 'anonymous' },
       {
         rel: 'stylesheet',
-        href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap',
+        href: 'https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap',
       },
     ],
   }),
@@ -36,7 +35,7 @@ function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
       <head>
         <HeadContent />
       </head>
-      <body className="min-h-dvh bg-slate-950 text-slate-100 antialiased">
+      <body className="min-h-dvh bg-white text-ink antialiased">
         {children}
       <script
         dangerouslySetInnerHTML={{
