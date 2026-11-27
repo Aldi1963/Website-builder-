@@ -14,7 +14,8 @@ import { putFile, removeFile, listFiles, addMessage, listMessages } from './db.t
 import { savePendingPlan, clearPendingPlan } from './pending-plan.ts'
 import { snapshotVersion, restoreVersion, listVersions } from './versions.ts'
 import { captureScreenshot, captureForReview } from './screenshots.ts'
-import { isManagedDbEnabled, execProjectSql } from './managed-db.ts'
+import { routePathFromFile } from './route-paths.ts'
+import { isManagedDbEnabled, execProjectSql, projectSchemaBrief } from './managed-db.ts'
 
 const TOOLS = [
   {
@@ -158,8 +159,15 @@ export async function runAgent(
   try { snapshotId = snapshotVersion(projectId, `sebelum: ${versionLabel}`) } catch { /* snapshot gagal tidak memblokir run */ }
 
   const history = listMessages(projectId).slice(-24)
+  /* Skema database nyata disuntikkan ke system prompt. Tanpa ini model menebak
+     nama tabel/kolom saat user minta perubahan data, lalu build sukses tapi
+     query runtime gagal. Ringkas & best-effort: kegagalan baca skema tidak
+     memblokir run. */
+  let schemaBrief = ''
+  try { schemaBrief = (await projectSchemaBrief(projectId)) ?? '' } catch { /* abaikan */ }
+  const dbContext = schemaBrief ? `\n\nSkema database proyek saat ini (pakai nama ini, jangan menebak):\n${schemaBrief}` : ''
   const messages: ChatMessage[] = [
-    { role: 'system', content: `${BASE_SYSTEM}\n\nWorkspace saat ini:\n${fileIndex(projectId)}` },
+    { role: 'system', content: `${BASE_SYSTEM}\n\nWorkspace saat ini:\n${fileIndex(projectId)}${dbContext}` },
     ...history.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
   ]
 
@@ -196,10 +204,15 @@ export async function runAgent(
   let screenshotSent = false
   /* Self-healing visual: batasi berapa kali agent mengulang siklus
      "lihat preview → perbaiki → build" agar tidak meledak biaya/waktu. */
-  const MAX_PREVIEW_ROUNDS = Number(process.env.VB_MAX_PREVIEW_ROUNDS ?? 2)
+  const MAX_PREVIEW_ROUNDS = Number(process.env.VB_MAX_PREVIEW_ROUNDS ?? 4)
   let previewRounds = 0
+  /* File rute yang ditulis pada run ini — dipakai probe untuk mendeteksi
+     halaman yatim (dibuat tapi tak bisa dicapai dari UI). */
+  const newRouteFiles: string[] = []
   let pendingPreviewImage: string | null = null
   let pendingPreviewErrors: string[] = []
+let pendingPreviewDefects: string[] = []
+  let lastDefectCount = 0
 
   /* Setelah perubahan UI selesai dan build lolos, ambil screenshot preview dan
      simpan sebagai pesan assistant. Kegagalan screenshot dilaporkan apa adanya. */
@@ -370,15 +383,17 @@ export async function runAgent(
        model bisa MELIHAT aplikasinya sendiri lalu memutuskan memperbaiki atau tidak. */
     if (pendingPreviewImage) {
       const errList = pendingPreviewErrors.length ? pendingPreviewErrors.join('\n') : '(tidak ada)'
+      const defectList = pendingPreviewDefects.length ? pendingPreviewDefects.join('\n') : '(tidak ada — render lolos probe otomatis)'
       messages.push({
         role: 'user',
         content: [
-          { type: 'text', text: `Ini screenshot preview aplikasimu saat ini. Error runtime:\n${errList}\n\nBila ada masalah visual nyata (layout rusak, konten kosong/placeholder, elemen tumpang tindih, error tercantum), perbaiki lewat write_file lalu panggil build, lalu check_preview lagi. Bila tampilan sudah baik, JANGAN menulis file apa pun dan langsung beri ringkasan akhir.` },
+          { type: 'text', text: `Ini screenshot preview aplikasimu saat ini. Error runtime:\n${errList}\n\nCacat render yang TERDETEKSI otomatis (harus diperbaiki, bukan sekadar opini):\n${defectList}\n\nBila ada cacat di atas atau masalah visual nyata (layout rusak, konten kosong/placeholder, elemen tumpang tindih), perbaiki lewat write_file lalu panggil build, lalu check_preview lagi. Bila daftar cacat KOSONG dan error runtime tidak ada, JANGAN menulis file apa pun dan langsung beri ringkasan akhir.` },
           { type: 'image_url', image_url: { url: pendingPreviewImage } },
         ],
       })
       pendingPreviewImage = null
       pendingPreviewErrors = []
+      pendingPreviewDefects = []
     }
 
     let resp
@@ -393,6 +408,7 @@ export async function runAgent(
         messages.pop()
         pendingPreviewImage = null
         pendingPreviewErrors = []
+        pendingPreviewDefects = []
         await emit({ type: 'status', text: 'Model tidak mendukung gambar, lanjut tanpa review visual…' })
         try {
           resp = await complete(messages, { model, tools: TOOLS, temperature: 0.25, maxTokens: 8192, userId: opts?.userId })
@@ -424,6 +440,16 @@ export async function runAgent(
       if (!quickEdit && touchedUi && buildSucceeded && auditCompleted && previewRounds < 1 && !pendingPreviewImage) {
         messages.push({ role: 'assistant', content: msg.content })
         messages.push({ role: 'user', content: 'Jangan selesaikan run sebelum check_preview. Panggil tool check_preview SEKALI sekarang untuk melihat render nyata, lalu beri ringkasan akhir setelah hasilnya.' })
+        continue
+      }
+      /* Gerbang cacat: probe menemukan masalah nyata dan belum diperbaiki.
+         Model tidak boleh mengakhiri run dengan klaim sukses. Suntik daftar
+         cacat sekali lagi dan paksa memperbaiki lewat write_file + build. */
+      if (!quickEdit && pendingPreviewDefects.length && msg.content && typeof msg.content === 'string' && !calls.length) {
+        const list = pendingPreviewDefects.join('\n')
+        pendingPreviewDefects = []
+        messages.push({ role: 'assistant', content: msg.content })
+        messages.push({ role: 'user', content: `Jangan beri ringkasan akhir: probe visual masih menemukan ${lastDefectCount} cacat nyata:\n${list}\n\nPerbaiki SEMUanya lewat write_file, panggil build, lalu check_preview lagi. Jangan mengklaim selesai sebelum cacat hilang.` })
         continue
       }
       const clean = msg.content.trim()
@@ -470,6 +496,10 @@ export async function runAgent(
           const written = writeProjectFile(projectId, path, String(args.content ?? ''))
           putFile(projectId, written, String(args.content ?? ''))
           if (/(^|\/)(src|app|pages|components|routes)\//.test(written) && /\.(tsx|jsx|css|html)$/i.test(written)) touchedUi = true
+          if (/src\/routes\//.test(written) && /\.(tsx|jsx)$/i.test(written)) {
+            const routePath = routePathFromFile(written)
+            if (routePath && !newRouteFiles.includes(routePath)) newRouteFiles.push(routePath)
+          }
           for (const d of newDirs) await emit({ type: 'file', path: d, action: 'mkdir' })
           await emit({ type: 'file', path: written, action: 'write' })
           stepDidWrite = true
@@ -538,20 +568,28 @@ export async function runAgent(
         /* Self-healing visual: render preview nyata, kirim gambar + error runtime
            ke agent supaya bisa MELIHAT dan memperbaiki. Berbatas ronde agar hemat. */
         if (previewRounds >= MAX_PREVIEW_ROUNDS) {
-          result = `Batas ${MAX_PREVIEW_ROUNDS} putaran check_preview tercapai. Lanjutkan ke ringkasan akhir.`
+          result = `Batas ${MAX_PREVIEW_ROUNDS} putaran check_preview tercapai. Sisa cacat: ${lastDefectCount}. Perbaiki langsung tanpa check_preview lagi lalu beri ringkasan yang jujur (sebutkan bila belum selesai).`
         } else {
           previewRounds++
           await emit({ type: 'status', text: 'Melihat preview aplikasi…' })
           try {
-            const cap = await captureForReview(projectId)
+            const cap = await captureForReview(projectId, { newRoutes: newRouteFiles })
             pendingPreviewImage = cap.image
             pendingPreviewErrors = cap.runtimeErrors
+            pendingPreviewDefects = cap.defects
+            lastDefectCount = cap.defects.length
+            if (cap.defects.length) {
+              await emit({ type: 'status', text: `Ada ${cap.defects.length} masalah tampilan, memperbaiki otomatis…` })
+            }
             // Gambar dilewatkan lewat message user multimodal di giliran berikut,
             // bukan lewat content tool (tool tak mendukung gambar).
             const errNote = cap.runtimeErrors.length
               ? `\n\nError runtime terdeteksi (${cap.runtimeErrors.length}):\n${cap.runtimeErrors.join('\n')}`
               : '\n\nTidak ada error console/pageerror.'
-            result = `Screenshot preview diambil. Gambar dikirim pada pesan berikutnya.${errNote}\n\nPeriksa gambar: bila ada kerusakan visual, layout rusak, konten kosong, atau error di atas, perbaiki lewat write_file lalu build lagi. Bila tampilan sudah baik, langsung beri ringkasan akhir.`
+            const defectNote = cap.defects.length
+              ? `\n\nCacat render terdeteksi (${cap.defects.length}):\n${cap.defects.join('\n')}`
+              : '\n\nProbe visual otomatis: LOLOS (tidak ada cacat terdeteksi).'
+            result = `Screenshot preview diambil. Gambar dikirim pada pesan berikutnya.${errNote}${defectNote}\n\nPeriksa gambar: bila ada kerusakan visual, layout rusak, konten kosong, atau error di atas, perbaiki lewat write_file lalu build lagi. Bila tampilan sudah baik, langsung beri ringkasan akhir.`
             stepDidWrite = false // melihat preview bukan menulis; jangan picu auto-fix build
           } catch (err) {
             result = `Preview gagal diambil: ${(err as Error).message}. Lewati review visual.`

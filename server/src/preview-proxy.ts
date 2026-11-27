@@ -1,4 +1,5 @@
 import type { Context } from 'hono'
+import { readFileSync } from 'node:fs'
 
 /**
  * Owner-scoped live preview.
@@ -23,6 +24,10 @@ const HOP_BY_HOP = ['connection', 'keep-alive', 'transfer-encoding', 'upgrade', 
 export async function proxyPreview(c: Context, projectId: string, port: number): Promise<Response> {
   const prefix = previewPrefix(projectId)
   const incoming = new URL(c.req.url)
+  const editor = incoming.searchParams.get('__vbEditor') === '1'
+  // Bridge disuntik HANYA untuk iframe editor (query __vbEditor=1). Aplikasi
+  // publik yang dibuka lewat /p/<slug> atau domain kustom tak menyadarinya.
+  if (editor) incoming.searchParams.delete('__vbEditor')
   const target = `http://127.0.0.1:${port}${incoming.pathname}${incoming.search}`
 
   const headers = new Headers(c.req.raw.headers)
@@ -41,6 +46,13 @@ export async function proxyPreview(c: Context, projectId: string, port: number):
       body: hasBody ? await c.req.arrayBuffer() : undefined,
       redirect: 'manual',
     })
+    if (editor && upstream.ok && (upstream.headers.get('content-type') ?? '').includes('text/html')) {
+      const html = await upstream.text()
+      const outHeaders = new Headers(upstream.headers)
+      outHeaders.delete('content-length')
+      outHeaders.set('content-security-policy', "frame-ancestors 'self'")
+      return new Response(withVisualBridge(html), { status: upstream.status, headers: outHeaders })
+    }
   } catch {
     return c.json({ ok: false, error: 'preview tidak dapat dihubungi' }, 502)
   }
@@ -58,6 +70,23 @@ export async function proxyPreview(c: Context, projectId: string, port: number):
   }
 
   return new Response(upstream.body, { status: upstream.status, headers: out })
+}
+
+
+/* Bridge mode "Pilih elemen". Disimpan sebagai file JS statis supaya regex
+   di dalamnya tak perlu di-escape dua kali di template literal TypeScript. */
+let bridgeScript: string | undefined
+function getBridgeScript(): string {
+  if (bridgeScript === undefined) {
+    bridgeScript = readFileSync(new URL('./visual-bridge.js', import.meta.url), 'utf8')
+  }
+  return bridgeScript
+}
+
+export function withVisualBridge(html: string): string {
+  if (/vb-visual-bridge/.test(html)) return html
+  const tag = '<script>' + getBridgeScript() + '</script>'
+  return /<\/body\s*>/i.test(html) ? html.replace(/<\/body\s*>/i, tag + '</body>') : html + tag
 }
 
 function rewriteLocation(value: string, prefix: string, port: number): string {

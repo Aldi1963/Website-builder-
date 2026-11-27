@@ -2,6 +2,8 @@
 @source "../node_modules/@cloudflare/kumo/dist/**/*.{js,jsx,ts,tsx}";
 @import "@cloudflare/kumo/styles/tailwind";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* Tema halaman user disatukan dengan panel admin: aksen navy #243370 di
    light, #8fa1e0 di dark, permukaan solid, tanpa gradien. Token --vb-*
    dipertahankan sebagai alias supaya komponen lama tetap bekerja. */
@@ -13,10 +15,18 @@
 
   --color-ink: var(--vb-ink);
   --color-surface: var(--vb-surface);
+  --color-surface-muted: var(--vb-surface-muted);
+  --color-panel: var(--vb-surface-muted);
   --color-edge: var(--vb-edge);
   --color-quiet: var(--vb-quiet);
   --color-body: var(--vb-body);
   --color-accent: var(--vb-accent);
+  --color-accent-hover: var(--vb-accent-hover);
+  --color-accent-soft: var(--vb-accent-soft);
+  --color-danger: var(--vb-danger);
+  --color-success: var(--vb-success);
+  --color-warning: var(--vb-warning);
+  --color-on-accent: #ffffff;
 }
 
 :root {
@@ -37,6 +47,7 @@
 }
 
 .dark {
+  --color-on-accent: #0b0b11;
   /* Sama dengan admin-react/src/index.css (dark). */
   --vb-ink: #0b0b11;
   --vb-surface: #17171f;
@@ -131,6 +142,49 @@ button:disabled, [aria-disabled="true"] {
 @keyframes vb-activity {
   0%, 70%, 100% { opacity: 0.25; }
   35% { opacity: 1; }
+}
+
+
+/* === Shared surface primitives (mirip admin-react, tapi tetap bernapas) ===
+   Dipakai lintas halaman platform supaya kartu, header, dan tombol punya
+   satu bahasa visual: solid, radius 12px, border 1px, shadow tipis. */
+@layer components {
+  .vb-card {
+    @apply min-w-0 rounded-xl border border-edge bg-surface shadow-sm;
+  }
+  .vb-card-head {
+    @apply flex flex-wrap items-start justify-between gap-3 border-b border-edge px-5 py-4;
+  }
+  .vb-card-body {
+    @apply px-5 py-4;
+  }
+  .vb-page-head {
+    @apply flex flex-wrap items-start justify-between gap-3;
+  }
+  .vb-btn {
+    @apply inline-flex h-9 items-center justify-center gap-2 rounded-lg px-3 text-[12.5px] font-medium transition-colors;
+  }
+  .vb-btn-primary {
+    @apply inline-flex h-9 items-center justify-center gap-2 rounded-lg px-3 text-[12.5px] font-medium transition-colors bg-accent text-on-accent hover:bg-accent-hover;
+  }
+  .vb-btn-ghost {
+    @apply inline-flex h-9 items-center justify-center gap-2 rounded-lg px-3 text-[12.5px] font-medium transition-colors border border-edge bg-surface text-body hover:bg-surface-muted;
+  }
+  .vb-chip {
+    @apply inline-flex items-center gap-1.5 rounded-md border border-edge bg-surface-muted px-2 py-1 text-[11px] text-quiet;
+  }
+  .vb-link-row {
+    @apply flex min-h-[52px] w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-surface-muted;
+  }
+  .vb-grid-2 {
+    @apply grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2;
+  }
+  .vb-grid-3 {
+    @apply grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-3;
+  }
+  .vb-eyebrow {
+    @apply text-[11px] font-semibold uppercase tracking-wide text-quiet;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

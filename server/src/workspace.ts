@@ -17,7 +17,7 @@ export function ensureWorkspace(projectId: string, starter?: string): string {
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true })
     const chosen = starter ?? getProject(projectId)?.starter ?? 'blank'
-    const candidate = chosen === 'lms' ? join(STARTERS_DIR, 'lms') : TEMPLATE_DIR
+    const candidate = chosen === 'lms' || chosen === 'tiket' ? join(STARTERS_DIR, chosen) : TEMPLATE_DIR
     const source = existsSync(candidate) ? candidate : TEMPLATE_DIR
     cpSync(source, dir, {
       recursive: true,

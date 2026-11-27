@@ -42,12 +42,13 @@ const STACK = `Stack wajib (jangan diganti):
 - Database: Postgres terkelola (per-proyek, permanen). Buat tabel lewat TOOL db_schema (jangan menulis migrasi manual), lalu query/mutasi dari server function via helper query di src/lib/db.ts (import { query } dari '~/lib/db', file server-only). Helper membaca koneksi dari env VB_APP_DATABASE_URL yang sudah disuntikkan server. JANGAN pakai node:sqlite / localStorage / ':memory:' untuk data aplikasi.
 - Root layout di src/routes/__root.tsx, halaman di src/routes/index.tsx
 
-Desain & kualitas visual (WAJIB, ini yang membedakan hasil rapi vs berantakan):
-- styles.css sudah berisi design system (token @theme + kelas komponen: .card, .btn, .btn-primary, .btn-ghost, .input, .label, .badge, .container-page, .gradient-text). PAKAI kelas ini — jangan menulis Tailwind mentah berulang untuk kartu/tombol/input.
-- Tipografi: font Inter sudah dimuat di __root.tsx. Judul pakai font-bold/font-extrabold + tracking-tight; teks sekunder pakai warna slate-400.
-- Setiap halaman punya: kontainer .container-page, heading jelas, dan konten di dalam .card. Beri empty state yang ramah saat data kosong.
-- Responsive sejak awal: grid fleksibel (grid-cols-1 sm:grid-cols-2 lg:grid-cols-3), padding nyaman, tidak ada overflow horizontal di layar sempit.
-- Halaman terlihat jadi PRODUK, bukan debug: hindari dump JSON mentah ke layar; tampilkan data dalam kartu/tabel/daftar yang ditata.`
+Desain & kualitas visual (WAJIB — mengikuti DESIGN_FILTER di bawah, bukan gaya generik):
+- styles.css sudah berisi design system (token @theme + kelas komponen: .card, .btn, .btn-primary, .btn-ghost, .input, .label, .badge, .container-page). PAKAI kelas itu untuk kartu/tombol/input; jangan menulis Tailwind mentah berulang.
+- Tipografi: pakai satu display face yang punya karakter + satu UI face yang tenang. JANGAN Inter/Roboto/Poppins/system-ui sebagai display, JANGAN .gradient-text. Isi minimal 12px, metadata 11px.
+- Warna: maksimal tiga warna inti + satu accent. Dilarang gradien ungu-biru, glassmorphism, glow, blob blur. Uji kontras 4.5:1 di tema terang DAN gelap.
+- Setiap halaman punya: kontainer .container-page, heading yang menyebut isi halaman (bukan slogan), konten di dalam .card. Empty state menjelaskan kenapa kosong + langkah berikutnya; loading menyebut apa yang dimuat; error menyebut penyebab + perbaikan.
+- Responsive sejak awal: grid fleksibel (grid-cols-1 sm:grid-cols-2 lg:grid-cols-3), target sentuh minimal 44px, tabel panjang jadi daftar bertumpuk di mobile, tidak ada overflow horizontal di 360px.
+- Halaman terlihat jadi PRODUK, bukan debug: hindari dump JSON mentah; tampilkan data dalam kartu/tabel/daftar yang ditata. Angka penting rata kanan / tabular, satuan diberi label.`
 
 const RULES = `Aturan teknis:
 1. Jangan pernah menulis ke node_modules, dist, .output, atau file konfigurasi build (vite.config.ts, package.json, tsconfig.json) kecuali diminta eksplisit.
@@ -72,6 +73,29 @@ const RULES = `Aturan teknis:
    bisa punya fitur AI (mis. halaman chatbot) lewat proxy LLM yang sudah
    disediakan server aplikasi itu sendiri. Didefinisikan SEBELUM BASE_SYSTEM
    karena const ini dipakai di dalam template literal-nya saat modul dimuat. */
+const DOMAIN_LMS = `Bila proyek memakai starter LMS (starter = "lms"):
+- Starter sudah berisi alur inti yang terbukti jalan: courses, lessons, enrollment, assignment, submission, grading, progress. JANGAN menulis ulang atau mengganti skema tabel lms_* — baca src/lib/lms.ts dan pakai helper yang ada.
+- Fokus pada hal yang belum ada di starter dan benar-benar diminta user, misalnya: kategori/pencarian kursus, halaman detail guru, sertifikat, forum diskusi per lesson, notifikasi, upload materi, antrean penilaian, laporan progres per kelas.
+- Setiap aksi guru/siswa wajib melewati cek role di server (requireRole / requireUser) + cek kepemilikan data. Jangan percaya user_id atau role dari client.
+- Simpan nilai penilaian sebagai INTEGER (bukan float), validasi rentang di .validator(), dan tampilkan progres sebagai persentase bulat dengan label jelas.
+- Alur yang sudah ada jangan dipecah: enroll -> buka lesson -> submit tugas -> guru nilai -> siswa lihat nilai. Kalau user minta fitur baru, sambungkan ke alur ini, bukan membuat jalur paralel.
+- Uji dengan dua peran (guru & siswa) sebelum menyelesaikan pekerjaan.
+
+Bila user meminta aplikasi "pro"/bisnis (kasir, invoice, booking, CRM, dll):
+- Uang disimpan sebagai INTEGER sen (bukan float). Gunakan transaksi database untuk mutasi stok/saldo.
+- Setiap tabel punya id, timestamps, dan kolom owner/user_id bila datanya privat. Query daftar selalu pakai ORDER BY + LIMIT.
+- Tambahkan halaman ringkasan angka (dashboard) yang angkanya diambil dari database nyata, bukan hardcode.
+- Validasi semua input di .validator() dengan pesan bahasa Indonesia yang menyebut field yang salah.`
+
+const DOMAIN_TIKET = `Bila proyek memakai starter Event & Tiket (starter = "tiket"):
+- Starter sudah berisi alur inti yang terbukti jalan: katalog event, detail event + checkout, pesanan, dashboard organizer, buat event, jenis tiket, publikasi, promo, dan check-in. Baca src/lib/tiket.ts dan src/lib/auth.ts; JANGAN menulis ulang alur ini atau skema tabelnya.
+- Tabel inti: users, events, ticket_types, orders, order_items, attendees, ticket_scans, promo_codes. shared/schema.ts (Drizzle) + migrations/0001_tiket_schema.sql adalah kontrak bentuk tabel; perubahan skema lewat TOOL db_schema dengan CREATE TABLE IF NOT EXISTS, lalu update kedua file itu supaya tetap sinkron.
+- Uang SELALU INTEGER sen. createOrder memakai transaksi nyata: cek & kunci kuota (SELECT ... FOR UPDATE), kurangi sold, buat kode attendee unik. Jangan pernah hitung stok di client atau menyimpan harga sebagai float.
+- Katalog publik hanya menampilkan event status='published'. Order hanya boleh dibuat untuk event published. Check-in HANYA organizer pemilik event itu atau admin, dan hanya sekali (checked_in_at + tabel ticket_scans sebagai audit).
+- Pendaftaran publik HARUS memakai role 'user'. Role 'organizer'/'admin' tidak boleh diterima dari form publik — requireRole di server untuk semua aksi kelola event.
+- Fokus pada hal yang benar-benar diminta user dan belum ada: banner, kategori event, wishlist, refund, referral, laporan penjualan per event, QR check-in. Sambungkan ke alur yang ada, jangan buat jalur paralel.
+- Uji alur dengan dua peran (pembeli & organizer) sebelum menyelesaikan pekerjaan.`
+
 const LLM_FEATURES = `Fitur AI di aplikasi hasil generate (web LLM):
 - Server aplikasi sudah menyediakan proxy LLM: POST /api/chat (route di server.mjs). JANGAN membuat route AI sendiri, dan JANGAN PERNAH memanggil LLM langsung dari client.
 - Cara memakai dari client: POST /api/chat dengan body {messages: [{role: 'user'|'assistant'|'system', content}], system?: string} lalu baca SSE: event data: {"delta": "..."} diakhiri data: [DONE]. Helper siap pakai: streamChat dari ~/lib/chat.ts. Contoh halaman yang jalan: src/routes/chat.tsx.
@@ -110,7 +134,17 @@ ${RAG}
 
 ${DESIGN_FILTER}
 
-${LLM_FEATURES}`
+${LLM_FEATURES}
+
+VISUAL EDIT DARI PREVIEW (WAJIB):
+- Bila pesan user berisi "Ubah elemen yang saya pilih di preview" dengan Tag, Teks, Selector CSS, dan Posisi: itu berasal dari klik elemen di preview.
+- Perlakukan selector dan teks sebagai petunjuk lokasi. Telusuri file workspace (mulai dari komponen/route yang relevan) untuk menemukan elemen yang menaungi teks/selector tersebut, lalu ubah HANYA bagian yang diminta user.
+- Jangan menyisipkan selector CSS hasil inspeksi mentah ke dalam kode; pakai untuk mencari, bukan sebagai ganticlass. Jangan menambah script/screenshot bridge ke aplikasi hasil generate.
+- Jawab singkat: sebut file yang diubah dan perubahan yang dilakukan.
+
+${DOMAIN_LMS}
+
+${DOMAIN_TIKET}`
 
 /* Quick-edit: jalur ringkas untuk permintaan kecil (satu perubahan lokal).
    Tanpa plan/audit penuh — tulis file yang disebut, build, beres. */

@@ -1,4 +1,4 @@
-import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
+import { createHash, randomBytes, scryptSync } from 'node:crypto'
 import { query } from './db'
 
 /**
@@ -35,10 +35,13 @@ function hashPassword(password: string): string {
 function verifyPassword(password: string, stored: string): boolean {
   const [salt, hash] = stored.split(':')
   if (!salt || !hash) return false
-  const candidate = scryptSync(password, salt, 64)
-  const expected = Buffer.from(hash, 'hex')
-  if (candidate.length !== expected.length) return false
-  return timingSafeEqual(candidate, expected)
+  const candidate = scryptSync(password, salt, 64).toString('hex')
+  // Bandingkan hex, bukan Buffer — modul ini ikut ter-bundle ke client oleh
+  // TanStack Start, sehingga global Node `Buffer` tidak selalu tersedia.
+  if (candidate.length !== hash.length) return false
+  let diff = 0
+  for (let i = 0; i < candidate.length; i++) diff |= candidate.charCodeAt(i) ^ hash.charCodeAt(i)
+  return diff === 0
 }
 
 function hashToken(token: string): string {
@@ -88,6 +91,14 @@ export async function register(
   name?: string,
   role?: string,
 ): Promise<SafeUser> {
+  /* Registrasi publik tidak boleh membuat akun istimewa. Role admin/guru
+     harus diberikan lewat jalur internal (seed/import/by admin), bukan
+     lewat input siapa pun yang bisa mengakses halaman daftar. Cek ini
+     SEBELUM ensureAuthSchema() agar penolakan terjadi tanpa menyentuh DB. */
+  const requestedRole = (role ?? 'siswa').trim() || 'siswa'
+  if (['admin', 'guru', 'teacher', 'superadmin'].includes(requestedRole.toLowerCase())) {
+    throw new Error('Role tersebut tidak dapat didaftarkan publik.')
+  }
   await ensureAuthSchema()
   const normEmail = email.trim().toLowerCase()
   if (!normEmail.includes('@')) throw new Error('Email tidak valid.')
@@ -97,7 +108,7 @@ export async function register(
   const hash = hashPassword(password)
   const r = await query<SafeUser>(
     `insert into users (email, name, role, password_hash) values ($1,$2,$3,$4) returning id, email, name, role`,
-    [normEmail, name?.trim() || null, role?.trim() || null, hash],
+    [normEmail, name?.trim() || null, requestedRole, hash],
   )
   return r.rows[0]
 }

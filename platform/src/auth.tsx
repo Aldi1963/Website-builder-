@@ -86,14 +86,14 @@ export function AuthGate({ onUser }: { onUser: (u: User) => void }) {
 
   return (
     <div className="flex min-h-dvh items-center justify-center bg-ink px-4 py-10">
-      <div className="w-full max-w-[400px]">
-        <div className="mb-8 flex items-center gap-2">
-          <Wordmark size={18} />
+      <div className="w-full max-w-[404px]">
+        <div className="mb-6 flex items-center justify-center gap-2">
+          <Wordmark size={20} />
         </div>
 
-        <div className="border border-edge bg-surface p-6 vb-seam">
-          <h1 className="font-display text-[26px] leading-tight text-body">{title}</h1>
-          <p className="mt-1.5 text-[13px] leading-relaxed text-quiet">{subtitle}</p>
+        <div className="vb-card p-6 shadow-md">
+          <h1 className="font-display text-[24px] leading-tight tracking-tight text-body">{title}</h1>
+          <p className="mt-1.5 text-[12.5px] leading-relaxed text-quiet">{subtitle}</p>
 
           {!isForgot && !isReset && (
             <div className="mt-5 grid grid-cols-3 gap-2">
@@ -110,7 +110,7 @@ export function AuthGate({ onUser }: { onUser: (u: User) => void }) {
             </div>
           )}
 
-          <form onSubmit={submit} className={isForgot || isReset ? 'mt-5 space-y-4' : 'space-y-4'}>
+          <form onSubmit={submit} className={isForgot || isReset ? 'mt-5 space-y-3.5' : 'space-y-3.5'}>
             {!isReset && (
               <Field label="Email" type="email" value={email} onChange={setEmail} autoComplete="email" required />
             )}
@@ -180,7 +180,7 @@ export function AuthGate({ onUser }: { onUser: (u: User) => void }) {
             <button
               type="submit"
               disabled={busy}
-              className="flex h-9 w-full items-center justify-center gap-2 bg-accent text-[13px] font-medium text-surface transition-opacity hover:opacity-90 disabled:opacity-50"
+              className="vb-btn-primary h-10 w-full text-[13px] disabled:opacity-50"
             >
               {busy && <Spinner />}
               {mode === 'signup' ? 'Buat akun' : isForgot ? 'Kirim tautan' : isReset ? 'Simpan password' : 'Masuk'}
@@ -208,7 +208,7 @@ function SocialButton({ label, onClick }: { label: string; onClick: () => void }
     <button
       type="button"
       onClick={onClick}
-      className="flex h-9 items-center justify-center gap-1.5 border border-edge bg-ink text-[12px] text-body transition-colors hover:border-accent"
+      className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-edge bg-surface text-[12px] text-body transition-colors hover:border-accent hover:bg-accent-soft"
     >
       <SocialGlyph name={label} />
       {label}
@@ -256,7 +256,7 @@ function Field({
           type={resolvedType}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="h-9 w-full border border-edge bg-ink px-2.5 text-[13px] text-body outline-none transition-colors placeholder:text-quiet focus:border-accent"
+          className="h-10 w-full rounded-lg border border-edge bg-surface px-3 text-[13px] text-body outline-none transition-colors placeholder:text-quiet focus:border-accent"
         />
         {isPw && (
           <button

@@ -25,7 +25,9 @@ const getSessionUser = createServerFn({ method: 'GET' }).handler(async () => {
 const doRegister = createServerFn({ method: 'POST' })
   .validator((input: { email: string; password: string; name?: string }) => input)
   .handler(async ({ data }) => {
-    const user = await register(data.email, data.password, data.name)
+    // Public signup harus selalu menjadi 'siswa'. Jangan pernah mengambil
+    // role dari input klien — itu membuka eskalasi ke admin/guru.
+    const user = await register(data.email, data.password, data.name, 'siswa')
     const { token } = await login(data.email, data.password)
     setCookie(AUTH_COOKIE_NAME, token, cookieOpts)
     return { ok: true, user }

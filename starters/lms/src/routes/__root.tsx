@@ -38,6 +38,11 @@ function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
       </head>
       <body className="min-h-dvh bg-slate-950 text-slate-100 antialiased">
         {children}
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `if(typeof Buffer==='undefined'){globalThis.Buffer={from(v,enc){const a=typeof v==='string'?(enc==='hex'?Uint8Array.from(v.match(/../g)||[],x=>parseInt(x,16)):Uint8Array.from(atob(v),c=>c.charCodeAt(0))):v;return{length:a.length,[Symbol.iterator]:a[Symbol.iterator].bind(a),toString(e){if(e==='hex')return Array.from(a,x=>x.toString(16).padStart(2,'0')).join('');let s='';for(const b of a)s+=String.fromCharCode(b);return btoa(s)},write(s,off){for(let i=0;i<s.length;i++)a[off+i]=s.charCodeAt(i);return i},byteLength:a.length}},isBuffer(){return false}}}`,
+        }}
+      />
         <Scripts />
       </body>
     </html>

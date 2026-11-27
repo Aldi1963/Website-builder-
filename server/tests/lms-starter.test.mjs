@@ -10,15 +10,15 @@ const starterIndex = readFileSync(new URL('../../starters/lms/src/routes/index.t
 const starterDb = readFileSync(new URL('../../starters/lms/src/lib/lms.ts', import.meta.url), 'utf8')
 
 test('project create endpoint accepts only known starter ids and copies selected template', () => {
-  assert.match(appSource, /body\.starter === 'lms' \? 'lms' : 'blank'/)
+  assert.match(appSource, /body\.starter === 'lms' \|\| body\.starter === 'tiket' \? body\.starter : 'blank'/)
   assert.match(appSource, /ensureWorkspace\(id, starter\)/)
-  assert.match(workspaceSource, /chosen === 'lms' \? join\(STARTERS_DIR, 'lms'\) : TEMPLATE_DIR/)
+  assert.match(workspaceSource, /join\(STARTERS_DIR, chosen\) : TEMPLATE_DIR/)
 })
 
 test('new-project UI offers blank and LMS options and API transmits selection', () => {
   assert.match(uiSource, /Starter LMS/)
   assert.match(uiSource, /onCreate\('lms'\)/)
-  assert.match(apiSource, /starter: 'blank' \| 'lms'/)
+  assert.match(apiSource, /starter: 'blank' \| 'lms' \| 'tiket'/)
   assert.match(apiSource, /JSON\.stringify\(\{ name, prompt, starter \}\)/)
 })
 

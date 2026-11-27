@@ -10,6 +10,7 @@ mock.module('pg', { exports: { Pool: class {
     if (sql.startsWith('select password')) return { rowCount: 1, rows: [{ password: credentials }] }
     return { rowCount: 1, rows: [{}] }
   }
+  on() {}
   async end() {}
 } } })
 const managed = await import('../src/managed-db.ts')

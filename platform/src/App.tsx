@@ -4,7 +4,7 @@ import { Icon, Spinner, Wordmark } from './ui'
 import { api, auth, ChatHandlers, chatStream, Project, exportProjectZip, type User } from './api'
 import { AuthGate, UserBar } from './auth'
 import { matchPath, navigate, usePath } from './router'
-import { ChatPanel, CodePane, PreviewPane, SettingsSheet, type ChatAudit, type ChatPlan, type InlineEvent } from './panels'
+import { ChatPanel, CodePane, PreviewPane, SettingsSheet, type ChatAudit, type ChatPlan, type InlineEvent, type VisualTarget } from './panels'
 import { useActivity } from './activity'
 import { MODEL_AUTO, getPickerModels, isSelectionAvailable, modelIdForServer } from './models'
 /* Fase 3 (UI credit): chip saldo + halaman Penggunaan. File ini milik Hermes
@@ -91,25 +91,8 @@ function SessionMenu({ projectId, usage }: { projectId: string; usage: { request
 type DbTableView = {
   name: string
   columns: string[]
-  columnTypes?: string[]
   rows: Record<string, string | number | boolean>[]
-  total?: number
   note?: string
-}
-
-/* Ringkas tipe Postgres dari information_schema jadi label pendek. */
-function shortType(t: string | undefined): string {
-  if (!t) return ''
-  const map: Record<string, string> = {
-    'character varying': 'varchar',
-    character: 'char',
-    'timestamp without time zone': 'timestamp',
-    'timestamp with time zone': 'timestamptz',
-    'time without time zone': 'time',
-    'double precision': 'double',
-    boolean: 'bool',
-  }
-  return map[t] ?? t
 }
 
 /* Pindai kurung berimbang dari posisi buka; hormati string ' " `. */
@@ -392,29 +375,57 @@ function DatabaseViewer({
 }) {
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [tables, setTables] = useState<DbTableView[]>([])
+  const [databaseLabel, setDatabaseLabel] = useState('')
   const [error, setError] = useState('')
-  const [loadingMore, setLoadingMore] = useState<string | null>(null)
-  const [moreErrors, setMoreErrors] = useState<Record<string, string>>({})
+  const [mode, setMode] = useState<'Browse' | 'Structure' | 'SQL' | 'Export'>('Browse')
+  const [tableFilter, setTableFilter] = useState('')
+  const [selectedTable, setSelectedTable] = useState<string | null>(null)
+  const [detail, setDetail] = useState<Awaited<ReturnType<typeof api.databaseTable>> | null>(null)
+  const [search, setSearch] = useState('')
+  const [page, setPage] = useState(0)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [exportSql, setExportSql] = useState('')
+  const [exportBusy, setExportBusy] = useState(false)
+  const [query, setQuery] = useState('')
+  const [queryResult, setQueryResult] = useState<{ columns: string[]; rows: Record<string, unknown>[]; truncated: boolean } | null>(null)
+  const [queryError, setQueryError] = useState('')
+  const [running, setRunning] = useState(false)
 
-  /* Muat 50 baris berikutnya untuk satu tabel, tempel ke baris yang sudah ada. */
-  const loadMore = async (tableName: string) => {
-    const t = tables.find((x) => x.name === tableName)
-    if (!t || loadingMore) return
-    setLoadingMore(tableName)
-    setMoreErrors((prev) => ({ ...prev, [tableName]: '' }))
+  const loadTable = async (name: string, nextSearch = search, nextPage = page) => {
+    setSelectedTable(name); setDetail(null); setDetailLoading(true)
     try {
-      const r = await api.database(projectId, t.rows.length)
-      const next = r.tables.find((x) => x.name === tableName)
-      if (!next) throw new Error('Tabel tidak ditemukan di respons.')
-      setTables((prev) =>
-        prev.map((x) =>
-          x.name === tableName ? { ...x, rows: [...x.rows, ...next.rows], total: next.total ?? x.total } : x,
-        ),
-      )
+      const r = await api.databaseTable(projectId, name, nextSearch, nextPage)
+      setDetail(r)
+    } catch (e) { setDetail({ ok: false, error: (e as Error).message }) }
+    finally { setDetailLoading(false) }
+  }
+
+  useEffect(() => {
+    if (!open || status !== 'ready' || !tables.length) return
+    const first = tables[0].name
+    setSelectedTable((cur) => (cur && tables.some((t) => t.name === cur) ? cur : first))
+  }, [open, status, tables])
+
+  useEffect(() => {
+    if (!open || !selectedTable || mode !== 'Browse') return
+    void loadTable(selectedTable)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, selectedTable, mode])
+
+  const runQuery = async () => {
+    if (!query.trim() || running) return
+    setRunning(true); setQueryError(''); setQueryResult(null)
+    try {
+      const r = await api.dbQuery(projectId, query)
+      if (!r.ok || r.error) {
+        setQueryError(r.error || 'Query gagal.')
+        return
+      }
+      setQueryResult({ columns: r.columns ?? [], rows: r.rows ?? [], truncated: !!r.truncated })
     } catch (e) {
-      setMoreErrors((prev) => ({ ...prev, [tableName]: (e as Error).message || 'Gagal memuat baris berikutnya.' }))
+      setQueryError((e as Error).message || 'Query gagal.')
     } finally {
-      setLoadingMore(null)
+      setRunning(false)
     }
   }
 
@@ -448,6 +459,7 @@ function DatabaseViewer({
           return
         }
         setTables(r.tables)
+        setDatabaseLabel(r.database ?? '')
         setStatus('ready')
       } catch (e) {
         if (!alive) return
@@ -466,7 +478,7 @@ function DatabaseViewer({
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/55 p-3" onClick={onClose} role="dialog" aria-label="Database aplikasi">
       <div
         onClick={(e) => e.stopPropagation()}
-        className="vb-enter flex max-h-[86dvh] w-full max-w-[720px] flex-col border border-edge bg-surface px-4 pb-5 pt-4 max-md:px-3"
+        className="vb-enter flex max-h-[90dvh] w-full max-w-[980px] flex-col border border-edge bg-surface px-4 pb-5 pt-4 max-md:px-3"
       >
         <div className="mb-2 flex items-center justify-between">
           <h2 className="font-display text-[16px] text-body">Database aplikasi</h2>
@@ -479,78 +491,265 @@ function DatabaseViewer({
           lewat preview tersimpan di sana dan bertahan melewati restart preview maupun server. Isi di
           bawah dibaca langsung dari database yang sedang berjalan (skema + contoh data).
         </p>
+        <div className="mb-3 flex items-center gap-1 border-b border-edge pb-2" role="tablist" aria-label="Mode database">
+          {(['Browse', 'Structure', 'SQL', 'Export'] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setMode(m)}
+              role="tab"
+              aria-selected={mode === m}
+              className={`h-7 px-2 text-[11.5px] transition-colors ${mode === m ? 'text-body underline underline-offset-4' : 'text-quiet hover:text-body'}`}
+            >
+              {m}
+            </button>
+          ))}
+          <span className="ml-auto text-[10.5px] text-quiet">{databaseLabel}</span>
+        </div>
+        {mode === 'SQL' && (
+          <div className="mb-3">
+            <textarea
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') void runQuery() }}
+              spellCheck={false}
+              aria-label="Query SQL"
+              placeholder={'SELECT * FROM users ORDER BY created_at DESC LIMIT 20'}
+              className="vb-scroll h-24 w-full resize-y border border-edge bg-ink px-2.5 py-2 font-mono text-[11.5px] leading-relaxed text-body outline-none placeholder:text-quiet focus:border-accent"
+            />
+            <div className="mt-1.5 flex items-center justify-between gap-2">
+              <p className="text-[10.5px] text-quiet">Hanya SELECT/WITH · satu pernyataan · maks 100 baris · Ctrl+Enter</p>
+              <button
+                onClick={() => void runQuery()}
+                disabled={running || !query.trim()}
+                className="flex h-7 shrink-0 items-center gap-1 border border-accent bg-accent px-2.5 text-[11px] text-on-accent transition-opacity disabled:opacity-40"
+              >
+                <Icon name="run" size={10} /> {running ? 'Jalankan…' : 'Jalankan query'}
+              </button>
+            </div>
+            {queryError && <p className="mt-2 border-l-2 border-accent pl-2 text-[11.5px] text-body">{queryError}</p>}
+            {queryResult && (
+              <div className="vb-scroll mt-2 max-h-56 overflow-auto border border-edge">
+                {queryResult.columns.length ? (
+                  <table className="w-max border-collapse text-[11.5px]">
+                    <thead>
+                      <tr>{queryResult.columns.map((c) => <th key={c} className="whitespace-nowrap border border-edge bg-ink px-2 py-1 text-left font-medium text-body">{c}</th>)}</tr>
+                    </thead>
+                    <tbody>
+                      {queryResult.rows.map((row, i) => (
+                        <tr key={i}>{queryResult.columns.map((c) => {
+                          const raw = queryResult.rows[i]?.[c]
+                          const isNull = raw === null || raw === undefined
+                          const text = isNull ? 'NULL' : String(raw)
+                          return <td key={c} className="max-w-[180px] border border-edge px-2 py-1 align-top text-body"><span className={`block max-w-[176px] truncate ${isNull ? 'italic text-quiet' : ''}`} title={text}>{text}</span></td>
+                        })}</tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <p className="px-2 py-2 text-[11.5px] text-quiet">Query berhasil, tanpa baris hasil.</p>
+                )}
+              </div>
+            )}
+            {queryResult && (
+              <p className="mt-1 text-[10.5px] text-quiet">
+                {queryResult.rows.length} baris{queryResult.truncated ? ' · dibatasi 100 baris pertama' : ''}
+              </p>
+            )}
+          </div>
+        )}
         <div className="vb-scroll min-h-0 flex-1 overflow-y-auto">
+          {mode === 'Browse' && <>
           {status === 'loading' && <p className="text-[12px] text-quiet">Membaca database…</p>}
           {status === 'error' && <p className="border-l-2 border-accent pl-2 text-[12px] text-body">{error}</p>}
-          {status === 'ready' &&
-            tables.map((t) => (
-              <section key={t.name} className="mb-4">
-                <p className="text-[12.5px] font-medium text-body">
-                  {t.name}{' '}
-                  <span className="font-normal text-quiet">
-                    ·{' '}
-                    {t.total != null
-                      ? `${t.columns.length} kolom · ${t.total} baris${t.rows.length < t.total ? ` · menampilkan ${t.rows.length}` : ''}`
-                      : (t.note ?? `${t.columns.length} kolom · ${t.rows.length} baris`)}
-                  </span>
-                </p>
-                {t.rows.length > 0 ? (
-                  <div className="vb-scroll mt-2 overflow-x-auto">
-                    <table className="w-full border-collapse text-[12px]">
+          {status === 'ready' && (
+            <div className="flex gap-3 max-md:flex-col">
+              {/* Sidebar daftar tabel, seperti panel kiri phpMyAdmin */}
+              <aside className="w-[176px] shrink-0 max-md:w-full">
+                <input
+                  value={tableFilter}
+                  onChange={(e) => setTableFilter(e.target.value)}
+                  placeholder="Cari tabel…"
+                  aria-label="Cari tabel"
+                  className="mb-2 h-7 w-full border border-edge bg-ink px-2 text-[11.5px] text-body outline-none placeholder:text-quiet focus:border-accent"
+                />
+                <ul className="vb-scroll max-h-[40dvh] overflow-y-auto border border-edge max-md:max-h-32">
+                  {tables.filter((t) => t.name.toLowerCase().includes(tableFilter.toLowerCase())).map((t) => (
+                    <li key={t.name}>
+                      <button
+                        onClick={() => { setPage(0); setSearch(''); void loadTable(t.name, '', 0) }}
+                        aria-current={selectedTable === t.name}
+                        className={`block w-full truncate px-2 py-1.5 text-left font-mono text-[11.5px] transition-colors ${selectedTable === t.name ? 'bg-accent/15 text-body' : 'text-quiet hover:bg-ink hover:text-body'}`}
+                        title={`${t.name} · ${t.note ?? ''}`}
+                      >
+                        {t.name}
+                      </button>
+                    </li>
+                  ))}
+                  {!tables.filter((t) => t.name.toLowerCase().includes(tableFilter.toLowerCase())).length && (
+                    <li className="px-2 py-1.5 text-[11px] text-quiet">Tidak ada tabel cocok.</li>
+                  )}
+                </ul>
+                <p className="mt-1.5 text-[10.5px] text-quiet">{tables.length} tabel</p>
+              </aside>
+
+              {/* Panel kanan: isi tabel terpilih */}
+              <div className="min-w-0 flex-1">
+                {!selectedTable && <p className="text-[12px] text-quiet">Pilih tabel di kiri.</p>}
+                {selectedTable && (
+                  <>
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
+                      <h3 className="font-mono text-[12.5px] font-medium text-body">{selectedTable}</h3>
+                      {detail?.total !== undefined && detailLoading === false && (
+                        <span className="text-[11px] text-quiet">{detail.total} baris</span>
+                      )}
+                      <form
+                        className="ml-auto flex items-center gap-1"
+                        onSubmit={(e) => { e.preventDefault(); setPage(0); void loadTable(selectedTable, search, 0) }}
+                      >
+                        <input
+                          value={search}
+                          onChange={(e) => setSearch(e.target.value)}
+                          placeholder="Cari isi tabel…"
+                          aria-label="Cari isi tabel"
+                          className="h-7 w-[130px] border border-edge bg-ink px-2 text-[11.5px] text-body outline-none placeholder:text-quiet focus:border-accent"
+                        />
+                        <button type="submit" className="h-7 border border-edge px-2 text-[11px] text-body hover:border-accent">Cari</button>
+                      </form>
+                    </div>
+                    {detailLoading && <p className="text-[11.5px] text-quiet">Memuat…</p>}
+                    {detail?.error && <p className="border-l-2 border-accent pl-2 text-[11.5px] text-body">{detail.error}</p>}
+                    {detail?.rows && (
+                      <>
+                        <div className="vb-scroll max-h-[42dvh] overflow-auto border border-edge" title="Geser horizontal untuk melihat semua kolom">
+                          <table className="w-max border-collapse text-[12px]">
+                            <thead>
+                              <tr>
+                                {(detail.columns ?? []).map((c) => (
+                                  <th key={c.name} className="sticky top-0 z-10 whitespace-nowrap border border-edge bg-ink px-2 py-1.5 text-left font-medium text-body">
+                                    {c.name}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {detail.rows.map((row, i) => (
+                                <tr key={i} className="hover:bg-ink/60">
+                                  {(detail.columns ?? []).map((c) => {
+                                    const raw = row[c.name]
+                                    const isNull = raw === null || raw === undefined
+                                    const text = isNull ? 'NULL' : String(raw)
+                                    return (
+                                      <td key={c.name} className="max-w-[180px] border border-edge px-2 py-1 align-top text-body">
+                                        <span className={`block max-w-[176px] truncate ${isNull ? 'italic text-quiet' : ''}`} title={text}>
+                                          {text}
+                                        </span>
+                                      </td>
+                                    )
+                                  })}
+                                </tr>
+                              ))}
+                              {!detail.rows.length && (
+                                <tr><td colSpan={(detail.columns ?? []).length || 1} className="border border-edge px-2 py-2 text-[11.5px] text-quiet">Tabel kosong.</td></tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                        <div className="mt-1.5 flex items-center gap-2 text-[10.5px] text-quiet">
+                          <button
+                            disabled={page <= 0}
+                            onClick={() => { const p = Math.max(0, page - 1); setPage(p); void loadTable(selectedTable, search, p) }}
+                            className="h-6 border border-edge px-2 disabled:opacity-40"
+                          >‹ Sebelumnya</button>
+                          <span>Halaman {page + 1} dari {detail.pageCount ?? 1}</span>
+                          <button
+                            disabled={page + 1 >= (detail.pageCount ?? 1)}
+                            onClick={() => { const p = page + 1; setPage(p); void loadTable(selectedTable, search, p) }}
+                            className="h-6 border border-edge px-2 disabled:opacity-40"
+                          >Berikutnya ›</button>
+                        </div>
+                      </>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+          </>}
+          {mode === 'Structure' && (
+            <div>
+              {!selectedTable && <p className="text-[12px] text-quiet">Pilih tabel di tab Browse dulu.</p>}
+              {selectedTable && detailLoading && <p className="text-[11.5px] text-quiet">Memuat struktur…</p>}
+              {selectedTable && detail?.error && <p className="border-l-2 border-accent pl-2 text-[11.5px] text-body">{detail.error}</p>}
+              {selectedTable && detail?.columns && (
+                <>
+                  <h3 className="mb-2 font-mono text-[12.5px] font-medium text-body">{selectedTable}</h3>
+                  <div className="vb-scroll max-h-[50dvh] overflow-auto border border-edge">
+                    <table className="w-max border-collapse text-[12px]">
                       <thead>
                         <tr>
-                          {t.columns.map((c, i) => (
-                            <th key={c} className="whitespace-nowrap border border-edge bg-ink px-2 py-1.5 text-left font-medium text-body">
-                              {c}
-                              {t.columnTypes?.[i] && (
-                                <span className="block text-[10px] font-normal text-quiet">{shortType(t.columnTypes[i])}</span>
-                              )}
-                            </th>
+                          {['Kolom', 'Tipe', 'Null', 'Default'].map((h) => (
+                            <th key={h} className="sticky top-0 z-10 whitespace-nowrap border border-edge bg-ink px-2 py-1.5 text-left font-medium text-body">{h}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
-                        {t.rows.map((row, i) => (
-                          <tr key={i}>
-                            {t.columns.map((c) => (
-                              <td key={c} className="max-w-[260px] break-words border border-edge px-2 py-1.5 align-top text-body">
-                                {row[c] ?? ''}
-                              </td>
-                            ))}
+                        {detail.columns.map((c) => (
+                          <tr key={c.name}>
+                            <td className="border border-edge px-2 py-1 font-mono text-body">{c.name}</td>
+                            <td className="border border-edge px-2 py-1 text-quiet">{c.type}</td>
+                            <td className="border border-edge px-2 py-1 text-quiet">{c.nullable ? 'Ya' : 'Tidak'}</td>
+                            <td className="max-w-[180px] border border-edge px-2 py-1">
+                              <span className="block max-w-[176px] truncate text-quiet" title={c.default ?? 'NULL'}>{c.default ?? 'NULL'}</span>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
-                    {t.total != null && t.total > t.rows.length && (
-                      <button
-                        onClick={() => void loadMore(t.name)}
-                        disabled={loadingMore === t.name}
-                        className="mt-2 border border-edge bg-ink px-3 py-1.5 text-[12px] text-body hover:text-accent disabled:opacity-50"
-                      >
-                        {loadingMore === t.name
-                          ? 'Memuat…'
-                          : `Tampilkan 50 baris berikutnya (${t.rows.length} dari ${t.total})`}
-                      </button>
-                    )}
-                    {moreErrors[t.name] && (
-                      <p className="mt-2 text-[11.5px] text-body">{moreErrors[t.name]}</p>
-                    )}
                   </div>
-                ) : (
-                  <div className="mt-2">
-                    <div className="flex flex-wrap gap-1.5">
-                      {t.columns.map((c, i) => (
-                        <span key={c} className="border border-edge bg-ink px-2 py-1 font-mono text-[11px] text-body">
-                          {c}
-                          {t.columnTypes?.[i] && <span className="text-quiet"> · {shortType(t.columnTypes[i])}</span>}
-                        </span>
-                      ))}
-                    </div>
-                    {t.note && <p className="mt-2 text-[11.5px] leading-relaxed text-quiet">{t.note}</p>}
-                  </div>
+                </>
+              )}
+            </div>
+          )}
+          {mode === 'Export' && (
+            <div>
+              <p className="mb-2 text-[11.5px] leading-relaxed text-quiet">
+                Dump SQL seluruh tabel (CREATE TABLE + INSERT) — bisa diimpor ke Postgres lain.
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={async () => {
+                    setExportBusy(true); setExportSql('')
+                    try {
+                      const r = await api.databaseExport(projectId)
+                      setExportSql(r.ok && r.sql ? r.sql : `Gagal: ${r.error ?? 'tidak ada data'}`)
+                    } catch (e) { setExportSql(`Gagal: ${(e as Error).message}`) }
+                    finally { setExportBusy(false) }
+                  }}
+                  disabled={exportBusy}
+                  className="h-7 border border-accent bg-accent px-2.5 text-[11px] text-on-accent disabled:opacity-40"
+                >
+                  {exportBusy ? 'Menyiapkan…' : 'Buat dump SQL'}
+                </button>
+                {exportSql && !exportSql.startsWith('Gagal') && (
+                  <a
+                    href={`data:text/plain;charset=utf-8,${encodeURIComponent(exportSql)}`}
+                    download={`${databaseLabel || 'database'}.sql`}
+                    className="h-7 border border-edge px-2.5 text-[11px] leading-7 text-body hover:border-accent"
+                  >
+                    Unduh .sql
+                  </a>
                 )}
-              </section>
-            ))}
+              </div>
+              {exportSql && (
+                <textarea
+                  readOnly
+                  value={exportSql}
+                  aria-label="Hasil dump SQL"
+                  className="vb-scroll mt-2 h-[36dvh] w-full resize-y border border-edge bg-ink px-2 py-1.5 font-mono text-[10.5px] leading-relaxed text-body outline-none"
+                />
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -675,8 +874,9 @@ export default function App() {
     navigate('/', { replace: true })
   }
 
-  const createProject = async (starter: 'blank' | 'lms' = 'blank') => {
-    const { project } = await api.createProject(starter === 'lms' ? 'LMS baru' : 'Proyek tanpa nama', '', starter)
+  const createProject = async (starter: 'blank' | 'lms' | 'tiket' = 'blank') => {
+    const name = starter === 'lms' ? 'LMS baru' : starter === 'tiket' ? 'Event & Tiket baru' : 'Proyek tanpa nama'
+    const { project } = await api.createProject(name, '', starter)
     setProjects((p) => [project, ...p])
     setShowStarters(false)
     navigate(`/proyek/${project.id}`)
@@ -851,7 +1051,7 @@ function HomePage({
 }: {
   projects: Project[]
   loading: boolean
-  onCreate: (starter?: 'blank' | 'lms') => void
+  onCreate: (starter?: 'blank' | 'lms' | 'tiket') => void
   onSelect: (id: string) => void
   user: User
   dark: boolean
@@ -866,11 +1066,11 @@ function HomePage({
   const working = projects.filter((p) => p.status === 'working').length
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-edge bg-ink px-3">
+      <header className="flex h-14 shrink-0 items-center gap-2 border-b border-edge bg-surface px-4 max-md:h-12">
         <button
           onClick={onMenu}
           aria-label="Buka menu"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-edge text-body hover:bg-surface max-md:h-11 max-md:w-11"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-edge text-body transition-colors hover:bg-surface-muted max-md:h-11 max-md:w-11"
         >
           <Icon name="back" size={15} />
         </button>
@@ -879,13 +1079,13 @@ function HomePage({
           <button
             onClick={onToggleTheme}
             aria-label={dark ? 'Mode terang' : 'Mode gelap'}
-            className="flex h-8 w-8 items-center justify-center rounded-full border border-edge text-quiet hover:text-body"
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-edge text-quiet transition-colors hover:bg-surface-muted hover:text-body"
           >
             <Icon name={dark ? 'sun' : 'moon'} size={13} />
           </button>
           <button
             onClick={onLogout}
-            className="flex h-8 items-center rounded-full border border-edge px-3 text-[11.5px] text-quiet hover:text-body"
+            className="vb-btn-ghost h-8 text-[11.5px] text-quiet"
           >
             Keluar
           </button>
@@ -900,38 +1100,42 @@ function HomePage({
           <div className="mt-5 flex flex-wrap gap-2">
             <button
               onClick={() => setShowStarters(!showStarters)}
-              className="flex h-9 max-md:h-11 items-center gap-2 bg-accent px-3 text-[12.5px] font-medium text-ink transition-opacity hover:opacity-90"
+              className="vb-btn-primary h-9 max-md:h-11"
             >
               <Icon name="plus" size={12} />
               Proyek baru
             </button>
             {showStarters && (
               <div className="mt-3 grid max-w-xl gap-3 sm:grid-cols-2" role="group" aria-label="Pilih starter proyek">
-                <button onClick={() => { setShowStarters(false); onCreate(); }} className="border border-edge bg-panel p-4 text-left hover:border-accent">
+                <button onClick={() => { setShowStarters(false); onCreate(); }} className="vb-card p-4 text-left transition-colors hover:border-accent">
                   <span className="block text-sm font-semibold text-body">Proyek kosong</span>
                   <span className="mt-1 block text-xs text-quiet">Template standar untuk mulai dari awal</span>
                 </button>
-                <button onClick={() => { setShowStarters(false); onCreate('lms'); }} className="border border-accent/50 bg-accent/5 p-4 text-left hover:bg-accent/10">
+                <button onClick={() => { setShowStarters(false); onCreate('lms'); }} className="vb-card border-accent/40 bg-accent-soft/60 p-4 text-left transition-colors hover:border-accent">
                   <span className="block text-sm font-semibold text-body">Starter LMS</span>
                   <span className="mt-1 block text-xs text-quiet">Kursus, materi, enrollment, tugas, dan penilaian</span>
+                </button>
+                <button onClick={() => { setShowStarters(false); onCreate('tiket'); }} className="vb-card p-4 text-left transition-colors hover:border-accent">
+                  <span className="block text-sm font-semibold text-body">Starter Event & Tiket</span>
+                  <span className="mt-1 block text-xs text-quiet">Event, tiket, pesanan, promo, dan check-in</span>
                 </button>
               </div>
             )}
             <a
               href="/profil"
-              className="flex h-9 max-md:h-11 items-center border border-edge px-3 text-[12.5px] text-body hover:bg-surface"
+              className="vb-btn-ghost h-9 max-md:h-11"
             >
               Profil akun
             </a>
             <a
               href="/marketplace"
-              className="flex h-9 max-md:h-11 items-center border border-edge px-3 text-[12.5px] text-body hover:bg-surface"
+              className="vb-btn-ghost h-9 max-md:h-11"
             >
               Marketplace
             </a>
           </div>
 
-          <div className="mt-8 grid grid-cols-3 gap-3 max-sm:grid-cols-1">
+          <div className="vb-grid-3 mt-8 max-sm:grid-cols-1">
             <StatCard label="Total proyek" value={String(projects.length)} />
             <StatCard label="Sedang jalan" value={String(working)} />
             <StatCard label="Selesai" value={String(projects.filter((p) => p.status === 'idle').length)} />
@@ -945,12 +1149,12 @@ function HomePage({
               Belum ada proyek. Tekan Proyek baru untuk memulai yang pertama.
             </p>
           ) : (
-            <ul className="mt-3 divide-y divide-edge border border-edge bg-surface">
+            <ul className="vb-card mt-3 divide-y divide-edge overflow-hidden">
               {projects.map((p) => (
                 <li key={p.id}>
                   <button
                     onClick={() => onSelect(p.id)}
-                    className="flex min-h-[52px] w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-ink"
+                    className="vb-link-row"
                   >
                     <StatusMark status={p.status} />
                     <span className="min-w-0 flex-1 truncate text-[13px] text-body">{p.name}</span>
@@ -970,9 +1174,9 @@ function HomePage({
 
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="border border-edge bg-surface px-4 py-3">
-      <p className="text-[10.5px] uppercase tracking-wide text-quiet">{label}</p>
-      <p className="mt-1 font-display text-[22px] text-body">{value}</p>
+    <div className="vb-card px-4 py-3.5">
+      <p className="vb-eyebrow">{label}</p>
+      <p className="mt-1 font-display text-[22px] leading-tight text-body">{value}</p>
     </div>
   )
 }
@@ -1022,11 +1226,11 @@ function ProfilePage({
 }) {
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-edge bg-ink px-3">
+      <header className="flex h-14 shrink-0 items-center gap-2 border-b border-edge bg-surface px-4 max-md:h-12">
         <button
           onClick={onMenu}
           aria-label="Buka menu"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-edge text-body hover:bg-surface max-md:h-11 max-md:w-11"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-edge text-body transition-colors hover:bg-surface-muted max-md:h-11 max-md:w-11"
         >
           <Icon name="back" size={15} />
         </button>
@@ -1035,13 +1239,13 @@ function ProfilePage({
           <button
             onClick={onToggleTheme}
             aria-label={dark ? 'Mode terang' : 'Mode gelap'}
-            className="flex h-8 w-8 items-center justify-center rounded-full border border-edge text-quiet hover:text-body"
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-edge text-quiet transition-colors hover:bg-surface-muted hover:text-body"
           >
             <Icon name={dark ? 'sun' : 'moon'} size={13} />
           </button>
           <button
             onClick={onLogout}
-            className="flex h-8 items-center rounded-full border border-edge px-3 text-[11.5px] text-quiet hover:text-body"
+            className="vb-btn-ghost h-8 text-[11.5px] text-quiet"
           >
             Keluar
           </button>
@@ -1049,24 +1253,18 @@ function ProfilePage({
       </header>
       <div className="flex-1 overflow-y-auto px-5 py-8 max-md:px-4 max-md:py-6">
         <div className="mx-auto max-w-2xl">
-          <div className="border border-edge bg-surface px-4 py-4">
-            <p className="text-[10.5px] uppercase tracking-wide text-quiet">Akun</p>
-            <p className="mt-1 text-[15px] font-medium text-body">{user.name || 'Tanpa nama'}</p>
+          <div className="vb-card p-5">
+            <p className="vb-eyebrow">Akun</p>
+            <p className="mt-1 text-[17px] font-semibold text-body">{user.name || 'Tanpa nama'}</p>
             <p className="text-[12.5px] text-quiet">{user.email}</p>
-            <button
-              onClick={onLogout}
-              className="mt-4 flex h-8 items-center border border-edge px-3 text-[11.5px] text-body hover:bg-ink"
-            >
+            <button onClick={onLogout} className="vb-btn-ghost mt-4 h-8">
               Keluar dari akun
             </button>
           </div>
 
-          <div className="mt-6 border border-edge bg-surface px-4 py-4">
-            <p className="text-[10.5px] uppercase tracking-wide text-quiet">Tema</p>
-            <button
-              onClick={onToggleTheme}
-              className="mt-2 flex h-8 items-center gap-2 border border-edge px-3 text-[12px] text-body hover:bg-ink"
-            >
+          <div className="vb-card mt-4 p-5">
+            <p className="vb-eyebrow">Tema</p>
+            <button onClick={onToggleTheme} className="vb-btn-ghost mt-3 h-8 text-[12px]">
               <Icon name={dark ? 'sun' : 'moon'} size={12} />
               {dark ? 'Aktifkan mode terang' : 'Aktifkan mode gelap'}
             </button>
@@ -1083,12 +1281,12 @@ function ProfilePage({
             {!projects.length ? (
               <p className="mt-3 text-[12.5px] text-quiet">Belum ada proyek.</p>
             ) : (
-              <ul className="mt-3 divide-y divide-edge border border-edge bg-surface">
+              <ul className="vb-card mt-3 divide-y divide-edge overflow-hidden">
                 {projects.map((p) => (
                   <li key={p.id}>
                     <button
                       onClick={() => onSelect(p.id)}
-                      className="flex min-h-[48px] w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-ink"
+                      className="vb-link-row min-h-[48px] py-2.5"
                     >
                       <StatusMark status={p.status} />
                       <span className="min-w-0 flex-1 truncate text-[12.5px] text-body">{p.name}</span>
@@ -1256,7 +1454,7 @@ function Sidebar({
 
         <a
           href="/admin/settings"
-          className="flex min-h-[38px] max-md:min-h-[44px] items-center gap-2 border-t border-edge px-3 py-2 text-[12.5px] text-body transition-colors hover:bg-ink"
+          className="flex min-h-[38px] max-md:min-h-[44px] items-center gap-2 border-t border-edge px-3 py-2 text-[12.5px] text-body transition-colors hover:bg-surface-muted"
           title="Pengaturan admin — API key, model, pembayaran"
         >
           <Icon name="gear" size={13} className="text-quiet" />
@@ -1289,7 +1487,7 @@ function StatusMark({ status }: { status: string }) {
   return <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 ${color}`} />
 }
 
-function EmptyState({ onCreate, showStarters, setShowStarters }: { onCreate: (starter?: 'blank' | 'lms') => void; showStarters: boolean; setShowStarters: (show: boolean) => void }) {
+function EmptyState({ onCreate, showStarters, setShowStarters }: { onCreate: (starter?: 'blank' | 'lms' | 'tiket') => void; showStarters: boolean; setShowStarters: (show: boolean) => void }) {
   return (
     <div className="flex flex-1 items-center justify-center px-6">
       <div className="max-w-[44ch]">
@@ -1297,25 +1495,29 @@ function EmptyState({ onCreate, showStarters, setShowStarters }: { onCreate: (st
           Satu ruang kerja untuk menulis dan menjalankan aplikasi
         </h1>
         <p className="mt-3 text-[13px] leading-relaxed text-quiet">
-          Pilih proyek kosong atau mulai dari starter LMS yang sudah memiliki alur kursus, siswa, guru, materi, tugas, dan penilaian.
+          Pilih proyek kosong, starter LMS (kursus, materi, tugas, penilaian), atau starter Event & Tiket (event, pesanan, promo, check-in).
         </p>
         {!showStarters ? (
           <button
             onClick={() => setShowStarters(true)}
-            className="mt-6 flex h-9 max-md:h-11 items-center gap-2 bg-accent px-3 text-[12.5px] font-medium text-ink transition-opacity hover:opacity-90"
+            className="vb-btn-primary mt-6 max-md:h-11"
           >
             <Icon name="plus" size={12} />
             Buat proyek pertama
           </button>
         ) : (
           <div className="mt-6 grid gap-3 sm:grid-cols-2">
-            <button onClick={() => onCreate('blank')} className="border border-edge bg-panel p-4 text-left transition hover:border-accent">
+            <button onClick={() => onCreate('blank')} className="vb-card p-4 text-left transition-colors hover:border-accent">
               <span className="block text-sm font-semibold text-body">Proyek kosong</span>
               <span className="mt-1 block text-xs text-quiet">Mulai dari template standar</span>
             </button>
-            <button onClick={() => onCreate('lms')} className="border border-accent/50 bg-accent/5 p-4 text-left transition hover:bg-accent/10">
+            <button onClick={() => onCreate('lms')} className="vb-card border-accent/40 bg-accent-soft p-4 text-left transition-colors hover:border-accent">
               <span className="block text-sm font-semibold text-body">Starter LMS</span>
               <span className="mt-1 block text-xs text-quiet">Kursus, materi, enrollment, tugas & grading</span>
+            </button>
+            <button onClick={() => onCreate('tiket')} className="vb-card p-4 text-left transition-colors hover:border-accent">
+              <span className="block text-sm font-semibold text-body">Starter Event & Tiket</span>
+              <span className="mt-1 block text-xs text-quiet">Event, tiket, pesanan, promo & check-in</span>
             </button>
           </div>
         )}
@@ -1392,10 +1594,16 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
   const { entries: activity, push: pushActivity, reset: resetActivity } = useActivity()
   const abortRef = useRef<AbortController | null>(null)
 
+  /* Muat daftar file sekali saat workspace dipasang. State `filesReady`
+     membedakan "belum selesai dimuat" dari "benar-benar kosong": panel Kode
+     tidak boleh berbohong "Belum ada file" hanya karena request masih
+     berjalan (endpoint bisa memakan beberapa detik). */
+  const [filesReady, setFilesReady] = useState(false)
   const load = async () => {
     const d = await api.getProject(projectId)
     setMessages(d.messages.map((m) => ({ role: m.role, content: m.content, id: m.id })))
     setFiles(d.files.map((f) => ({ path: f.path })))
+    setFilesReady(true)
     setName(d.project.name)
     setPreviewPort(d.previewPort)
     setSlug(d.project.slug ?? null)
@@ -1575,6 +1783,22 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
     }
   }
 
+  /* Visual edit: klik elemen di preview → agent menerima selector + teks +
+     posisi, lalu mengubah file yang menaungi komponen tersebut. */
+  const pickElement = (t: VisualTarget) => {
+    if (sending) return
+    const prompt = [
+      'Ubah elemen yang saya pilih di preview.',
+      `Tag: <${t.tag}>`,
+      `Teks: ${t.label || '(tanpa teks)'}`,
+      `Selector CSS: ${t.selector}`,
+      `Posisi: x=${t.x} y=${t.y} ukuran=${t.width}x${t.height}`,
+      'Cari komponen/file yang menaungi elemen ini (cocokkan teks/selector), lalu ubah hanya bagian yang diminta. Jawab singkat file apa yang diubah.',
+    ].join('\n')
+    setMessages((m) => [...m, { role: 'user', content: `🎯 ${t.label || t.tag} — ${t.selector}` }])
+    void send(prompt)
+  }
+
   const confirmPlanAndRun = async () => {
     if (!pendingPlan || sending) return
     const prompt = pendingPlan.prompt
@@ -1680,11 +1904,11 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-edge bg-ink px-3">
+      <header className="flex h-14 shrink-0 items-center gap-2 border-b border-edge bg-surface px-4 max-md:h-12">
         <button
           onClick={() => navigate(`/proyek/${projectId}/chat`)}
           aria-label="Kembali ke chat"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-edge text-body hover:bg-surface max-md:h-11 max-md:w-11"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-edge text-body transition-colors hover:bg-surface-muted max-md:h-11 max-md:w-11"
         >
           <Icon name="back" size={15} />
         </button>
@@ -1751,6 +1975,8 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
             <PreviewPane
               previewOn={previewOn}
               previewPort={previewPort}
+              projectId={projectId}
+              onPick={pickElement}
               dirty={dirty}
               buildLog={buildLog}
               onRun={startPreview}
@@ -1760,6 +1986,7 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
           ) : routeTab === 'file' ? (
             <CodePane
               files={files}
+              filesReady={filesReady}
               openFile={openFile}
               content={fileContent}
               buildLog={buildLog}
@@ -1769,7 +1996,7 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
               onChange={setFileContent}
               onSave={saveFile}
               onBuild={startPreview}
-              onFilesRefresh={() => void api.files(projectId).then(({ files }) => setFiles(files.map((f) => ({ path: f.path }))))}
+              onFilesRefresh={() => void api.files(projectId).then(({ files }) => { setFiles(files.map((f) => ({ path: f.path }))); setFilesReady(true) })}
             />
           ) : routeTab === 'jalankan' ? (
             <RunPane running={booting} buildLog={buildLog} hasFiles={files.length > 0} dirty={dirty} onRun={() => void startPreview()} onBack={() => navigate(`/proyek/${projectId}/chat`)} />
@@ -1843,12 +2070,12 @@ function RunPane({ running, buildLog, hasFiles, dirty, onRun, onBack }: {
 }) {
   return (
     <PanelShell title="Jalankan proyek" note="Build kode lalu nyalakan preview. Perubahan yang belum disimpan akan ikut dibangun bila sudah ada di server.">
-      <button onClick={onRun} disabled={running || !hasFiles} className="flex h-10 items-center gap-2 bg-accent px-4 text-[12.5px] font-medium text-ink transition-opacity hover:opacity-90 disabled:opacity-50">
+      <button onClick={onRun} disabled={running || !hasFiles} className="vb-btn-primary h-10 px-4">
         <Icon name="run" size={13} /> {running ? 'Sedang build…' : 'Build & jalankan preview'}
       </button>
       {dirty && <p className="mt-3 border-l-2 border-accent pl-2 text-[11.5px] text-body">Ada file yang belum disimpan — simpan dulu di menu Lihat file agar hasil build sesuai editor.</p>}
       {buildLog && (
-        <pre className="vb-scroll mt-4 max-h-[320px] overflow-auto border border-edge bg-ink p-3 font-mono text-[11px] leading-relaxed text-body">{buildLog.log}</pre>
+        <pre className="vb-scroll mt-4 max-h-[320px] overflow-auto rounded-lg border border-edge bg-surface-muted p-3 font-mono text-[11px] leading-relaxed text-body">{buildLog.log}</pre>
       )}
       <button onClick={onBack} className="mt-4 text-[12px] text-quiet underline hover:text-body">Kembali ke chat</button>
     </PanelShell>
@@ -1865,12 +2092,12 @@ function PublishPane({ slug, pubUrl, publishing, publishMsg, canPublish, onPubli
         <>
           <p className="text-[12.5px] text-body">Sudah tayang di <a href={pubUrl ?? '#'} target="_blank" rel="noreferrer" className="text-accent underline">{slug}.clidi.net</a></p>
           <div className="mt-4 flex flex-wrap gap-2">
-            <button onClick={() => void onPublish()} disabled={publishing || !canPublish} className="flex h-10 items-center gap-2 bg-accent px-4 text-[12.5px] font-medium text-ink disabled:opacity-50">Perbarui publikasi</button>
-            <button onClick={onUnpublish} disabled={publishing} className="flex h-10 items-center gap-2 border border-edge px-4 text-[12.5px] text-body disabled:opacity-50">Tarik publikasi</button>
+            <button onClick={() => void onPublish()} disabled={publishing || !canPublish} className="vb-btn-primary h-10 px-4 disabled:opacity-50">Perbarui publikasi</button>
+            <button onClick={onUnpublish} disabled={publishing} className="vb-btn-ghost h-10 px-4 disabled:opacity-50">Tarik publikasi</button>
           </div>
         </>
       ) : (
-        <button onClick={() => void onPublish()} disabled={publishing || !canPublish} className="flex h-10 items-center gap-2 bg-accent px-4 text-[12.5px] font-medium text-ink disabled:opacity-50">
+        <button onClick={() => void onPublish()} disabled={publishing || !canPublish} className="vb-btn-primary h-10 px-4 disabled:opacity-50">
           <Icon name="check" size={13} /> {publishing ? 'Menerbitkan…' : 'Terbitkan sekarang'}
         </button>
       )}
@@ -1884,7 +2111,7 @@ function PublishPane({ slug, pubUrl, publishing, publishMsg, canPublish, onPubli
 function ExportPane({ canExport, onExport, onBack }: { canExport: boolean; onExport: () => void; onBack: () => void }) {
   return (
     <PanelShell title="Export ZIP" note="Unduh seluruh file proyek sebagai arsip ZIP. Proyek lain tidak ikut terunduh.">
-      <button onClick={onExport} disabled={!canExport} className="flex h-10 items-center gap-2 bg-accent px-4 text-[12.5px] font-medium text-ink disabled:opacity-50">
+      <button onClick={onExport} disabled={!canExport} className="vb-btn-primary h-10 px-4 disabled:opacity-50">
         <Icon name="download" size={13} /> Unduh ZIP proyek
       </button>
       {!canExport && <p className="mt-3 text-[11.5px] text-quiet">Belum ada file untuk diexport.</p>}
@@ -1897,10 +2124,10 @@ function AppearancePane({ dark, onToggle, onBack }: { dark: boolean; onToggle: (
   return (
     <PanelShell title="Mode tampilan" note="Pilih tema editor. Pengaturan ini tersimpan di perangkat ini dan tidak mengubah website yang kamu bangun.">
       <div className="grid gap-2 sm:grid-cols-2">
-        <button onClick={() => { if (dark) onToggle() }} aria-pressed={!dark} className={`border px-4 py-3 text-left text-[12.5px] ${!dark ? 'border-accent bg-ink text-body' : 'border-edge text-quiet'}`}>
+        <button onClick={() => { if (dark) onToggle() }} aria-pressed={!dark} className={`vb-card p-4 text-left text-[12.5px] transition-colors ${!dark ? 'border-accent bg-accent-soft text-body' : 'text-quiet'}`}>
           Terang {!dark && '· aktif'}
         </button>
-        <button onClick={() => { if (!dark) onToggle() }} aria-pressed={dark} className={`border px-4 py-3 text-left text-[12.5px] ${dark ? 'border-accent bg-ink text-body' : 'border-edge text-quiet'}`}>
+        <button onClick={() => { if (!dark) onToggle() }} aria-pressed={dark} className={`vb-card p-4 text-left text-[12.5px] transition-colors ${dark ? 'border-accent bg-accent-soft text-body' : 'text-quiet'}`}>
           Gelap {dark && '· aktif'}
         </button>
       </div>
@@ -1916,7 +2143,7 @@ function TabBtn({ active, onClick, label }: { active: boolean; onClick: () => vo
       aria-pressed={active}
       size="sm"
       variant="ghost"
-      className={`h-7 max-md:h-11 ${active ? 'bg-accent text-ink' : 'text-quiet'}`}
+      className={`h-7 max-md:h-11 ${active ? 'bg-accent text-on-accent' : 'text-quiet'}`}
     >
       {label}
     </Button>

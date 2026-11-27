@@ -171,11 +171,11 @@ export function UsagePage({
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-edge bg-ink px-3">
+      <header className="flex h-14 shrink-0 items-center gap-2 border-b border-edge bg-surface px-4 max-md:h-12">
         <button
           onClick={onMenu}
           aria-label="Buka menu"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-edge text-body hover:bg-surface max-md:h-11 max-md:w-11"
+          className="vb-btn-ghost h-9 w-9 shrink-0 rounded-lg max-md:h-11 max-md:w-11"
         >
           <Icon name="back" size={15} />
         </button>
@@ -184,13 +184,13 @@ export function UsagePage({
           <button
             onClick={onToggleTheme}
             aria-label={dark ? 'Mode terang' : 'Mode gelap'}
-            className="flex h-8 w-8 items-center justify-center rounded-full border border-edge text-quiet hover:text-body"
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-edge text-quiet transition-colors hover:bg-surface-muted hover:text-body"
           >
             <Icon name={dark ? 'sun' : 'moon'} size={13} />
           </button>
           <button
             onClick={onLogout}
-            className="flex h-8 items-center rounded-full border border-edge px-3 text-[11.5px] text-quiet hover:text-body"
+            className="vb-btn-ghost h-8 text-[11.5px] text-quiet"
           >
             Keluar
           </button>
@@ -204,8 +204,8 @@ export function UsagePage({
             <p className="text-[13px] text-accent">Gagal memuat penggunaan: {error}</p>
           ) : (
             <>
-              <div className="border border-edge bg-surface px-4 py-4">
-                <p className="text-[10.5px] uppercase tracking-wide text-quiet">Saldo credit</p>
+              <div className="vb-card p-5">
+                <p className="vb-eyebrow">Saldo credit</p>
                 <p className="mt-1 font-display text-[28px] text-body">
                   {balance ? fmtCredit(balance.total) : '—'} <span className="text-[15px]">credit</span>
                 </p>
@@ -228,17 +228,17 @@ export function UsagePage({
                 )}
                 <a
                   href="/topup"
-                  className="mt-4 inline-flex h-9 items-center bg-accent px-4 text-[12.5px] font-medium text-ink transition-opacity hover:opacity-90"
+                  className="vb-btn-primary mt-4 h-9"
                 >
                   Top-up credit
                 </a>
               </div>
 
-              <h2 className="mt-8 text-[12.5px] font-medium text-body">Riwayat pemakaian</h2>
+              <h2 className="vb-eyebrow mt-8">Riwayat pemakaian</h2>
               {!usage.length ? (
                 <p className="mt-3 text-[12.5px] text-quiet">Belum ada pemakaian tercatat.</p>
               ) : (
-                <ul className="mt-3 divide-y divide-edge border border-edge bg-surface">
+                <ul className="vb-card mt-3 divide-y divide-edge overflow-hidden">
                   {usage.map((u, i) => (
                     <li key={`${u.createdAt}-${i}`} className="px-4 py-3">
                       <div className="flex items-baseline justify-between gap-2">
@@ -255,13 +255,13 @@ export function UsagePage({
                 </ul>
               )}
 
-              <h2 className="mt-8 text-[12.5px] font-medium text-body">Riwayat top-up</h2>
+              <h2 className="vb-eyebrow mt-8">Riwayat top-up</h2>
               {!orders.length ? (
                 <p className="mt-3 text-[12.5px] text-quiet">
                   Belum ada top-up. <a href="/topup" className="text-accent">Top-up pertama</a> lewat QRIS.
                 </p>
               ) : (
-                <ul className="mt-3 divide-y divide-edge border border-edge bg-surface">
+                <ul className="vb-card mt-3 divide-y divide-edge overflow-hidden">
                   {orders.map((o) => (
                     <li key={o.orderId} className="px-4 py-3">
                       <div className="flex items-baseline justify-between gap-2">
@@ -275,9 +275,9 @@ export function UsagePage({
                         <span
                           className={
                             o.status === 'paid'
-                              ? 'text-emerald-500'
+                              ? 'text-success'
                               : o.status === 'pending'
-                                ? 'text-amber-500'
+                                ? 'text-warning'
                                 : 'text-quiet'
                           }
                         >

@@ -120,10 +120,20 @@ async function createProjectDatabase(admin: Pool, role: string, database: string
 /** Koneksi pool untuk proyek (server-side). Cache untuk reuse. */
 export async function projectDbPool(projectId: string): Promise<{ pool: Pool; database: string }> {
   const cached = poolCache.get(projectId)
-  if (cached) return { pool: cached.pool, database: dbName(projectId) }
+  // Pool bisa berakhir (di-end) oleh pemakai lain/pemanggilan lama; pool yang sudah
+  // di-end akan melempar "Cannot use a pool after calling end on the pool" ke semua
+  // pemanggil berikutnya. Buang dari cache agar dibuat ulang.
+  if (cached && !(cached.pool as unknown as { ended?: boolean }).ended) {
+    return { pool: cached.pool, database: dbName(projectId) }
+  }
+  if (cached) poolCache.delete(projectId)
   const { role, database, password } = await provisionProjectDb(projectId)
   const url = projectConnectionUrl(role, database, password)
   const pool = new Pool({ connectionString: url, max: 5, idleTimeoutMillis: 30_000 })
+  // Error pada client idle tidak boleh menjatuhkan proses platform.
+  pool.on('error', (err) => {
+    console.error('[managed-db] pool error', projectId, err.message)
+  })
   poolCache.set(projectId, { pool, password })
   return { pool, database }
 }
@@ -328,6 +338,45 @@ export async function execProjectSql(projectId: string, sql: string, kind: SqlKi
 }
 
 /** Hapus database + role proyek (dipakai saat proyek dihapus). */
+/** Ringkasan skema proyek untuk konteks agent: nama tabel + kolom + jumlah
+    baris. Sengaja ringkas (maksimal 24 tabel, 18 kolom/tabel, 8 sampel) agar
+    tidak membengkakkan system prompt. Mengembalikan null bila DB tidak aktif
+    atau belum bisa dibuka — agent tetap jalan tanpa konteks ini. */
+export async function projectSchemaBrief(projectId: string): Promise<string | null> {
+  if (!isManagedDbEnabled()) return null
+  let pool: import('pg').Pool | null = null
+  try {
+    const opened = await projectDbPool(projectId)
+    pool = opened.pool
+    const ts = await pool.query<{ table_name: string }>(
+      `SELECT table_name FROM information_schema.tables
+       WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+       ORDER BY table_name LIMIT 24`,
+    )
+    if (!ts.rows.length) return 'Belum ada tabel di database proyek.'
+    const parts: string[] = []
+    for (const t of ts.rows) {
+      const cols = await pool.query<{ column_name: string; data_type: string }>(
+        `SELECT column_name, data_type FROM information_schema.columns
+         WHERE table_schema = 'public' AND table_name = $1 ORDER BY ordinal_position LIMIT 18`,
+        [t.table_name],
+      )
+      let count = '?'
+      try {
+        const c = await pool.query<{ n: string }>(`SELECT COUNT(*)::text AS n FROM "${t.table_name.replace(/"/g, '""')}"`)
+        count = c.rows[0]?.n ?? '?'
+      } catch { /* tabel baru saja berubah — biarkan count tidak diketahui */ }
+      const colText = cols.rows.map((c) => `${c.column_name}:${c.data_type}`).join(', ')
+      parts.push(`${t.table_name} (${count} baris): ${colText}`)
+    }
+    return parts.join('\n')
+  } catch {
+    return null
+  } finally {
+    try { if (pool) await pool.end() } catch { /* abaikan */ }
+  }
+}
+
 export async function dropProjectDb(projectId: string): Promise<{ ok: boolean; error?: string }> {
   if (!ADMIN_URL) return { ok: false, error: 'VB_PG_URL kosong.' }
   const admin = await adminPool()

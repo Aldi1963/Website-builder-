@@ -4,13 +4,14 @@ import { createServerFn } from '@tanstack/react-start'
 import { getCookie } from '@tanstack/react-start/server'
 import { query } from '~/lib/db'
 import { requireRole, AUTH_COOKIE_NAME } from '~/lib/auth'
-import { ensureLmsSchema } from '~/lib/lms'
+import { ensureLmsSchema, createQuiz, deleteQuiz, addQuizQuestion } from '~/lib/lms'
 
 type ManageData = {
   course: { id: number; title: string; slug: string; description: string; published: boolean }
   lessons: { id: number; title: string; position: number }[]
   assignments: { id: number; title: string; due_at: string | null }[]
   submissions: { id: number; assignment_title: string; user_name: string; grade: number | null; submitted_at: string }[]
+  quizzes: { id: number; title: string; question_count: number }[]
 }
 
 const loadManage = createServerFn({ method: 'GET' })
@@ -41,7 +42,14 @@ const loadManage = createServerFn({ method: 'GET' })
       [c.id],
     )).rows;
 
-    return { course: c, lessons, assignments, submissions }
+    const quizzes = (await query<ManageData['quizzes'][number]>(
+      `select q.id, q.title,
+              (select count(*)::int from quiz_questions qq where qq.quiz_id=q.id) as question_count
+         from quizzes q where q.course_id=$1 order by q.id`,
+      [c.id],
+    )).rows
+
+    return { course: c, lessons, assignments, submissions, quizzes }
   })
 
 async function requireManageableCourse(courseId: number) {
@@ -97,6 +105,47 @@ const addAssignment = createServerFn({ method: 'POST' })
     return { ok: true }
   })
 
+const addQuiz = createServerFn({ method: 'POST' })
+  .validator((input: { courseId: number; title: string; description?: string }) => input)
+  .handler(async ({ data }) => {
+    await requireManageableCourse(data.courseId)
+    if (data.title.trim().length < 3) throw new Error('Judul kuis minimal 3 karakter.')
+    const id = await createQuiz(data.courseId, data.title, data.description ?? '')
+    return { ok: true, id }
+  })
+
+const deleteQuizFn = createServerFn({ method: 'POST' })
+  .validator((input: { quizId: number }) => input)
+  .handler(async ({ data }) => {
+    const manager = await requireRole(getCookie(AUTH_COOKIE_NAME), ['admin', 'guru'])
+    const r = await query(
+      `select q.id from quizzes q join courses c on c.id=q.course_id
+        where q.id=$1 and ($2::text='admin' or c.created_by=$3)`,
+      [data.quizId, manager.role, manager.id],
+    )
+    if (!r.rows.length) throw new Error('Kuis tidak ditemukan atau bukan milikmu.')
+    await deleteQuiz(data.quizId)
+    return { ok: true }
+  })
+
+const addQuestion = createServerFn({ method: 'POST' })
+  .validator((input: { quizId: number; question: string; options: { text: string; correct: boolean }[] }) => input)
+  .handler(async ({ data }) => {
+    const manager = await requireRole(getCookie(AUTH_COOKIE_NAME), ['admin', 'guru'])
+    const owned = await query(
+      `select q.id from quizzes q join courses c on c.id=q.course_id
+        where q.id=$1 and ($2::text='admin' or c.created_by=$3)`,
+      [data.quizId, manager.role, manager.id],
+    )
+    if (!owned.rows.length) throw new Error('Kuis tidak ditemukan atau bukan milikmu.')
+    if (data.question.trim().length < 5) throw new Error('Pertanyaan minimal 5 karakter.')
+    const opts = data.options.map((o) => ({ text: o.text.trim(), correct: Boolean(o.correct) })).filter((o) => o.text.length > 0)
+    if (opts.length < 2) throw new Error('Isi minimal 2 pilihan jawaban.')
+    if (opts.filter((o) => o.correct).length !== 1) throw new Error('Tandai tepat satu jawaban benar.')
+    await addQuizQuestion(data.quizId, data.question, opts)
+    return { ok: true }
+  })
+
 export const Route = createFileRoute('/courses/$slug_/manage')({
   loader: ({ params }) => loadManage({ data: { slug: params.slug } }),
   component: ManageCoursePage,
@@ -110,6 +159,12 @@ function ManageCoursePage() {
   const [lVideo, setLVideo] = useState('')
   const [aTitle, setATitle] = useState('')
   const [aDesc, setADesc] = useState('')
+  const [qTitle, setQTitle] = useState('')
+  const [qDesc, setQDesc] = useState('')
+  const [quizId, setQuizId] = useState<string>(data.quizzes[0] ? String(data.quizzes[0].id) : '')
+  const [qText, setQText] = useState('')
+  const [qOpts, setQOpts] = useState<string[]>(['', '', '', ''])
+  const [qCorrect, setQCorrect] = useState(0)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -185,6 +240,104 @@ function ManageCoursePage() {
               <button className="btn-primary" disabled={busy || aTitle.trim().length < 2}>Simpan tugas</button>
             </div>
           </form>
+        </div>
+
+        <div className="mt-8 grid gap-8 lg:grid-cols-2">
+          <form
+            className="card p-5"
+            onSubmit={(e: FormEvent) => {
+              e.preventDefault()
+              void act(() => addQuiz({ data: { courseId: data.course.id, title: qTitle, description: qDesc } })).then(() => {
+                setQTitle('')
+                setQDesc('')
+              })
+            }}
+          >
+            <h2 className="font-semibold text-white">Buat Kuis</h2>
+            <p className="mt-1 text-xs text-slate-400">Skor dihitung otomatis saat siswa mengumpulkan.</p>
+            <div className="mt-4 space-y-3">
+              <input className="input" placeholder="Judul kuis" value={qTitle} onInput={(e) => setQTitle((e.target as HTMLInputElement).value)} />
+              <input className="input" placeholder="Deskripsi singkat (opsional)" value={qDesc} onInput={(e) => setQDesc((e.target as HTMLInputElement).value)} />
+              <button className="btn-primary" disabled={busy || qTitle.trim().length < 3}>Simpan kuis</button>
+            </div>
+          </form>
+
+          <form
+            className="card p-5"
+            onSubmit={(e: FormEvent) => {
+              e.preventDefault()
+              if (!quizId) return
+              void act(() =>
+                addQuestion({
+                  data: {
+                    quizId: Number(quizId),
+                    question: qText,
+                    options: qOpts.map((text, i) => ({ text, correct: i === qCorrect })),
+                  },
+                }),
+              ).then(() => {
+                setQText('')
+                setQOpts(['', '', '', ''])
+                setQCorrect(0)
+              })
+            }}
+          >
+            <h2 className="font-semibold text-white">Tambah Soal</h2>
+            <div className="mt-4 space-y-3">
+              <select className="input" value={quizId} onChange={(e) => setQuizId((e.target as HTMLSelectElement).value)} aria-label="Pilih kuis">
+                <option value="">Pilih kuis…</option>
+                {data.quizzes.map((q) => (
+                  <option key={q.id} value={q.id}>
+                    {q.title}
+                  </option>
+                ))}
+              </select>
+              <input className="input" placeholder="Pertanyaan" value={qText} onInput={(e) => setQText((e.target as HTMLInputElement).value)} />
+              <p className="text-xs text-slate-400">Tandai satu jawaban benar:</p>
+              {[0, 1, 2, 3].map((i) => (
+                <div key={i} className="flex items-center gap-3">
+                  <input
+                    type="radio"
+                    name="jawaban-benar"
+                    className="h-4 w-4 accent-emerald-400"
+                    checked={qCorrect === i}
+                    onChange={() => setQCorrect(i)}
+                    aria-label={`Pilihan ${i + 1} adalah jawaban benar`}
+                  />
+                  <input
+                    className="input"
+                    placeholder={`Pilihan ${i + 1}`}
+                    value={qOpts[i]}
+                    onInput={(e) => {
+                      const v = (e.target as HTMLInputElement).value
+                      setQOpts((prev) => prev.map((o, idx) => (idx === i ? v : o)))
+                    }}
+                  />
+                </div>
+              ))}
+              <button className="btn-primary" disabled={busy || !quizId || qText.trim().length < 5}>Simpan soal</button>
+            </div>
+          </form>
+        </div>
+
+        <div className="card mt-8 p-5">
+          <h2 className="font-semibold text-white">Daftar Kuis ({data.quizzes.length})</h2>
+          {data.quizzes.length === 0 ? (
+            <p className="mt-3 text-sm text-slate-400">Belum ada kuis. Buat kuis dulu, lalu tambahkan soalnya.</p>
+          ) : (
+            <ul className="mt-3 divide-y divide-white/10 text-sm">
+              {data.quizzes.map((q) => (
+                <li key={q.id} className="flex items-center justify-between py-2.5">
+                  <span className="text-slate-200">
+                    {q.title} <span className="text-slate-500">· {q.question_count} soal</span>
+                  </span>
+                  <button className="text-xs text-red-400 underline" disabled={busy} onClick={() => act(() => deleteQuizFn({ data: { quizId: q.id } }))}>
+                    Hapus
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
         <div className="mt-8 grid gap-8 lg:grid-cols-2">

@@ -84,7 +84,7 @@ export function ActivityFeed({ entries }: { entries: ActivityEntry[] }) {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         title={open ? 'Sembunyikan langkah-langkah' : 'Lihat semua langkah'}
-        className="flex w-full items-center gap-2 rounded-md px-1 py-0.5 text-left text-[11.5px] text-quiet hover:bg-ink"
+        className="flex w-full items-center gap-2 rounded-md px-1 py-0.5 text-left text-[11.5px] text-quiet hover:bg-surface-muted"
       >
         <span className="inline-block h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-accent" aria-hidden="true" />
         <span className="shrink-0 font-mono text-[10.5px] text-quiet">{current.label}</span>

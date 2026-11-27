@@ -65,6 +65,7 @@ const PATHS: Record<string, string> = {
   stop: 'M6 6h12v12H6z',
   trash: 'M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13',
   file: 'M6 3h8l5 5v13H6zM14 3v5h5',
+  folder: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
   rule: 'M4 6h16M4 12h10M4 18h16',
   run: 'M7 4l13 8-13 8V4Z',
   reload: 'M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6',

@@ -18,7 +18,8 @@ mock.module('../src/workspace.ts', { exports: {
 mock.module('../src/managed-db.ts', { exports: {
   async provisionProjectDb() { calls.push(['database']); return {} },
   isManagedDbEnabled() { return true }, async dropProjectDb() {}, async projectDbPool() {},
-  async projectDbUrl() {}, async execProjectSql() {}, validateSql() {},
+  async projectDbUrl() {}, async execProjectSql() {}, validateProjectSql() { return { ok: true, sql: '' } },
+  async projectSchemaBrief() { return null },
 } })
 const { app } = await import('../src/app.ts')
 const { createUser, createSession, SESSION_COOKIE } = await import('../src/auth.ts')

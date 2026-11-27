@@ -4,7 +4,7 @@ import { createServerFn } from '@tanstack/react-start'
 import { getCookie } from '@tanstack/react-start/server'
 import { query } from '~/lib/db'
 import { getCurrentUser, AUTH_COOKIE_NAME } from '~/lib/auth'
-import { ensureLmsSchema, coursePermissions } from '~/lib/lms'
+import { ensureLmsSchema, coursePermissions, listQuizzes, quizForAttempt, scoreQuiz, type QuizSummary, type QuizQuestionForStudent } from '~/lib/lms'
 
 type Lesson = { id: number; title: string; content: string; video_url: string | null; position: number; done: boolean }
 type Assignment = { id: number; title: string; description: string; due_at: string | null }
@@ -21,6 +21,8 @@ type Detail = {
   canViewContent: boolean
   progress: number
   myGrades: GradeItem[]
+  quizzes: QuizSummary[]
+  quizForms: Record<string, QuizQuestionForStudent[]>
 }
 
 const loadCourse = createServerFn({ method: 'GET' })
@@ -87,7 +89,13 @@ const loadCourse = createServerFn({ method: 'GET' })
         ).rows
       : []
 
-    return { course, lessons, assignments, discussions, user, enrolled, progress, myGrades, canManage, canViewContent }
+    const quizzes = canViewContent ? await listQuizzes(course.id, user?.id ?? null) : []
+    const quizForms: Record<string, QuizQuestionForStudent[]> = {}
+    if (canViewContent) {
+      for (const q of quizzes) quizForms[String(q.id)] = await quizForAttempt(q.id)
+    }
+
+    return { course, lessons, assignments, discussions, user, enrolled, progress, myGrades, canManage, canViewContent, quizzes, quizForms }
   })
 
 const enroll = createServerFn({ method: 'POST' })
@@ -154,6 +162,29 @@ const postDiscussion = createServerFn({ method: 'POST' })
     return { ok: true }
   })
 
+const submitQuiz = createServerFn({ method: 'POST' })
+  .validator((input: { quizId: number; answers: Record<string, number> }) => input)
+  .handler(async ({ data }) => {
+    const user = await getCurrentUser(getCookie(AUTH_COOKIE_NAME))
+    if (!user) throw new Error('Silakan masuk terlebih dahulu.')
+    const q = (await query<{ course_id: number }>(`select course_id from quizzes where id=$1`, [data.quizId])).rows[0]
+    if (!q) throw new Error('Kuis tidak ditemukan.')
+    const c = (await query<{ id: number; created_by: number | null }>(
+      `select id, created_by from courses where id=$1`,
+      [q.course_id],
+    )).rows[0]
+    if (!c || !(await coursePermissions(c, user)).canViewContent) {
+      throw new Error('Akses ditolak: kamu bukan anggota kursus ini.')
+    }
+    const { score, total } = await scoreQuiz(data.quizId, data.answers)
+    if (total === 0) throw new Error('Kuis ini belum punya soal.')
+    await query(
+      `insert into quiz_attempts (quiz_id, user_id, score, total, answers) values ($1,$2,$3,$4,$5::jsonb)`,
+      [data.quizId, user.id, score, total, JSON.stringify(data.answers)],
+    )
+    return { ok: true, score, total }
+  })
+
 export const Route = createFileRoute('/courses/$slug')({
   loader: ({ params }) => loadCourse({ data: { slug: params.slug } }),
   component: CoursePage,
@@ -166,6 +197,8 @@ function CoursePage() {
   const [busy, setBusy] = useState(false)
   const [answer, setAnswer] = useState<Record<number, string>>({})
   const [message, setMessage] = useState('')
+  const [quizAns, setQuizAns] = useState<Record<number, Record<number, number>>>({})
+  const [quizMsg, setQuizMsg] = useState('')
 
   async function act(fn: () => Promise<unknown>) {
     setBusy(true)
@@ -224,7 +257,11 @@ function CoursePage() {
         <div className="mt-10 grid gap-8 lg:grid-cols-[1.6fr_1fr]">
           <div>
             <h2 className="text-xl font-semibold text-white">Materi</h2>
-            {data.lessons.length === 0 && <p className="mt-3 text-sm text-slate-400">Belum ada materi.</p>}
+            {data.lessons.length === 0 && (
+              <p className="mt-3 text-sm text-slate-400">
+                {data.canViewContent ? 'Belum ada materi yang diunggah.' : 'Daftar di kursus ini untuk membuka materi.'}
+              </p>
+            )}
             <div className="mt-4 space-y-3">
               {data.lessons.map((l) => (
                 <article key={l.id} className="card p-5">
@@ -354,6 +391,82 @@ function CoursePage() {
             )}
           </aside>
         </div>
+
+        {data.canViewContent && data.quizzes.length > 0 && (
+          <div className="card mt-10 p-6">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h2 className="text-xl font-semibold text-white">Kuis</h2>
+              <span className="text-xs text-slate-400">Skor dihitung otomatis setelah jawaban dikumpulkan.</span>
+            </div>
+            {quizMsg && <p className="mt-3 rounded-xl border border-emerald-400/30 bg-emerald-400/10 p-3 text-sm text-emerald-200">{quizMsg}</p>}
+            <div className="mt-6 space-y-8">
+              {data.quizzes.map((q) => {
+                const questions = data.quizForms[String(q.id)] ?? []
+                return (
+                  <div key={q.id} className="rounded-2xl border border-white/10 p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <h3 className="font-semibold text-white">{q.title}</h3>
+                        {q.description && <p className="mt-1 text-sm text-slate-400">{q.description}</p>}
+                      </div>
+                      <span className="badge">
+                        {q.last_score != null ? `Skor terakhir ${q.last_score}/${q.last_total}` : 'Belum dikerjakan'}
+                      </span>
+                    </div>
+
+                    {questions.length === 0 ? (
+                      <p className="mt-4 text-sm text-slate-400">Guru belum menambahkan soal ke kuis ini.</p>
+                    ) : (
+                      <>
+                        {questions.map((qq, qi) => (
+                          <fieldset key={qq.id} className="mt-5">
+                            <legend className="text-sm font-medium text-slate-200">
+                              {qi + 1}. {qq.question}
+                            </legend>
+                            <div className="mt-2 space-y-2">
+                              {qq.options.map((o) => (
+                                <label key={o.id} className="flex cursor-pointer items-center gap-3 text-sm text-slate-300">
+                                  <input
+                                    type="radio"
+                                    className="h-4 w-4 accent-emerald-400"
+                                    name={`quiz-${q.id}-soal-${qq.id}`}
+                                    checked={quizAns[q.id]?.[qq.id] === o.id}
+                                    onChange={() =>
+                                      setQuizAns((prev) => ({
+                                        ...prev,
+                                        [q.id]: { ...(prev[q.id] ?? {}), [qq.id]: o.id },
+                                      }))
+                                    }
+                                  />
+                                  {o.text}
+                                </label>
+                              ))}
+                            </div>
+                          </fieldset>
+                        ))}
+                        <button
+                          className="btn-primary mt-5"
+                          disabled={busy || Object.keys(quizAns[q.id] ?? {}).length < questions.length}
+                          onClick={() =>
+                            void act(async () => {
+                              const r = (await submitQuiz({ data: { quizId: q.id, answers: quizAns[q.id] ?? {} } })) as {
+                                score: number
+                                total: number
+                              }
+                              setQuizMsg(`${q.title}: skor ${r.score} dari ${r.total}.`)
+                            })
+                          }
+                        >
+                          Kumpulkan jawaban
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
       </section>
     </main>
   )

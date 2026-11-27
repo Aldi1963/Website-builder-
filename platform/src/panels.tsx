@@ -5,7 +5,7 @@ import { Switch } from '@cloudflare/kumo/components/switch'
 import { Badge } from '@cloudflare/kumo/components/badge'
 import { Tabs } from '@cloudflare/kumo/components/tabs'
 import { Dialog } from '@cloudflare/kumo/components/dialog'
-import { Icon, Activity, useAutoScroll, useCopy } from './ui'
+import { Icon, Activity, Spinner, useAutoScroll, useCopy } from './ui'
 import { ActivityFeed, TerminalBlock, type ActivityEntry } from './activity'
 import { api, type AuditFinding, type PlanStep, type ProjectSettings } from './api'
 import {
@@ -241,7 +241,7 @@ export function SettingsSheet({
     <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/55" onClick={onClose} role="dialog" aria-label="Pengaturan sesi">
       <div
         onClick={(e) => e.stopPropagation()}
-        className="vb-enter flex max-h-[86dvh] w-full max-w-[420px] flex-col border border-edge bg-surface px-4 pb-6 pt-4 max-md:px-3"
+        className="vb-enter vb-card flex max-h-[86dvh] w-full max-w-[420px] flex-col px-4 pb-6 pt-4 max-md:px-3"
       >
         <div className="mb-2 flex items-center justify-between">
           {back ? (
@@ -262,7 +262,7 @@ export function SettingsSheet({
         {section === 'menu' && (
           <div className="flex flex-col">
             <div className="border-b border-edge py-2">
-              <p className="px-3 text-[11px] font-medium text-accent">SCREENSHOT</p>
+              <p className="vb-eyebrow px-3">SCREENSHOT</p>
               <button
                 onClick={async () => {
                   setMsg('')
@@ -273,7 +273,7 @@ export function SettingsSheet({
                     setMsg((e as Error).message)
                   }
                 }}
-                className="mt-1 flex min-h-[44px] w-full items-center justify-between px-3 text-left transition-colors hover:bg-ink"
+                className="mt-1 flex min-h-[44px] w-full items-center justify-between px-3 text-left transition-colors hover:bg-surface-muted"
               >
                 <span>
                   <span className="block text-[12.5px] text-body">Ambil screenshot preview</span>
@@ -321,7 +321,7 @@ export function SettingsSheet({
                       setSection('menu')
                     }}
                     className={`flex min-h-[52px] items-center justify-between border-b border-edge py-2 text-left transition-colors ${
-                      disabled ? 'cursor-not-allowed opacity-40' : 'hover:bg-ink'
+                      disabled ? 'cursor-not-allowed opacity-40' : 'hover:bg-surface-muted'
                     }`}
                   >
                     <span>
@@ -487,7 +487,7 @@ const PUBLIC_HINT = typeof import.meta.env.VITE_PUBLIC_ORIGIN === 'string' && im
 
 function MenuRow({ label, sub, onClick }: { label: string; sub: string; onClick: () => void }) {
   return (
-    <button onClick={onClick} className="flex min-h-[48px] items-center justify-between border-b border-edge py-2 text-left transition-colors hover:bg-ink">
+    <button onClick={onClick} className="flex min-h-[48px] items-center justify-between border-b border-edge py-2 text-left transition-colors hover:bg-surface-muted">
       <span>
         <span className="block text-[12.5px] text-body">{label}</span>
         <span className="block text-[11px] text-quiet">{sub}</span>
@@ -675,7 +675,7 @@ export function ChatPanel({
                   <button
                     type="button"
                     onClick={onCancelPlan}
-                    className="rounded-md border border-edge px-3 py-1.5 text-[12px] font-medium text-body transition-colors hover:bg-ink"
+                    className="rounded-md border border-edge px-3 py-1.5 text-[12px] font-medium text-body transition-colors hover:bg-surface-muted"
                   >
                     Batalkan
                   </button>
@@ -730,14 +730,14 @@ export function ChatPanel({
             <input ref={fileRef} type="file" multiple hidden accept=".txt,.md,.mdx,.json,.csv,.ts,.tsx,.js,.jsx,.css,.html,.xml,.yaml,.yml,.sql,.py,.go,.rs,.sh,.toml,.env,.log" onChange={(e) => { void addFiles(e.currentTarget.files); e.currentTarget.value = '' }} />
             <div className="flex items-center justify-between gap-2 px-2.5 pb-2.5">
               <div className="flex items-center gap-0.5">
-                <button type="button" onClick={() => fileRef.current?.click()} disabled={sending || attached.length >= 5} aria-label="Lampirkan file teks atau kode" title="Lampirkan file teks/kode (maks. 5 file, 256 KB per file)" className="flex h-9 w-9 items-center justify-center rounded-full text-quiet hover:bg-ink hover:text-body disabled:opacity-40"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m8 12.5 6.2-6.2a3.2 3.2 0 0 1 4.5 4.5l-8.4 8.4a5 5 0 0 1-7.1-7.1l8.3-8.3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg></button>
-                <button type="button" onClick={onOpenSettings} aria-label="Setelan sesi dan model" title="Setelan sesi dan model" className="flex h-9 w-9 items-center justify-center rounded-full text-quiet hover:bg-ink hover:text-body"><Icon name="rule" size={15} /></button>
-                <button type="button" onClick={() => setExpanded((v) => !v)} aria-expanded={expanded} aria-label={expanded ? 'Ciutkan composer' : 'Perluas composer'} title={expanded ? 'Ciutkan' : 'Perluas'} className="flex h-9 w-9 items-center justify-center rounded-full text-quiet hover:bg-ink hover:text-body">
+                <button type="button" onClick={() => fileRef.current?.click()} disabled={sending || attached.length >= 5} aria-label="Lampirkan file teks atau kode" title="Lampirkan file teks/kode (maks. 5 file, 256 KB per file)" className="flex h-9 w-9 items-center justify-center rounded-full text-quiet hover:bg-surface-muted hover:text-body disabled:opacity-40"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m8 12.5 6.2-6.2a3.2 3.2 0 0 1 4.5 4.5l-8.4 8.4a5 5 0 0 1-7.1-7.1l8.3-8.3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg></button>
+                <button type="button" onClick={onOpenSettings} aria-label="Setelan sesi dan model" title="Setelan sesi dan model" className="flex h-9 w-9 items-center justify-center rounded-full text-quiet hover:bg-surface-muted hover:text-body"><Icon name="rule" size={15} /></button>
+                <button type="button" onClick={() => setExpanded((v) => !v)} aria-expanded={expanded} aria-label={expanded ? 'Ciutkan composer' : 'Perluas composer'} title={expanded ? 'Ciutkan' : 'Perluas'} className="flex h-9 w-9 items-center justify-center rounded-full text-quiet hover:bg-surface-muted hover:text-body">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d={expanded ? 'M8 3v5H3M16 21v-5h5M21 8h-5V3M3 16h5v5' : 'M8 3H3v5M16 3h5v5M21 16v5h-5M3 16v5h5'} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
                 </button>
               </div>
               <div className="flex items-center gap-1.5">
-                <button type="button" onClick={toggleVoice} disabled={sending || !(('SpeechRecognition' in window) || ('webkitSpeechRecognition' in window))} aria-label={recording ? 'Hentikan dikte' : 'Dikte suara'} title={(('SpeechRecognition' in window) || ('webkitSpeechRecognition' in window)) ? (recording ? 'Hentikan dikte' : 'Dikte suara') : 'Dikte suara tidak didukung browser ini'} className={`flex h-9 w-9 items-center justify-center rounded-full text-quiet hover:bg-ink hover:text-body disabled:opacity-35 ${recording ? 'bg-red-50 text-red-600' : ''}`}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="9" y="3" width="6" height="12" rx="3" stroke="currentColor" strokeWidth="1.8"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 18v3m-4 0h8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg></button>
+                <button type="button" onClick={toggleVoice} disabled={sending || !(('SpeechRecognition' in window) || ('webkitSpeechRecognition' in window))} aria-label={recording ? 'Hentikan dikte' : 'Dikte suara'} title={(('SpeechRecognition' in window) || ('webkitSpeechRecognition' in window)) ? (recording ? 'Hentikan dikte' : 'Dikte suara') : 'Dikte suara tidak didukung browser ini'} className={`flex h-9 w-9 items-center justify-center rounded-full text-quiet hover:bg-surface-muted hover:text-body disabled:opacity-35 ${recording ? 'bg-red-50 text-red-600' : ''}`}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="9" y="3" width="6" height="12" rx="3" stroke="currentColor" strokeWidth="1.8"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 18v3m-4 0h8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg></button>
                 {sending ? (
                   <Button variant="outline" size="sm" onClick={onCancel} aria-label="Hentikan proses agent" className="h-9 rounded-full px-3"><Icon name="stop" size={10} /> Hentikan</Button>
                 ) : (
@@ -771,7 +771,7 @@ function SuggestionsCard({ audit, onSend }: { audit: ChatAudit; onSend: (text: s
               type="button"
               onClick={() => onSend(`Perbaiki: ${f.perbaikan} (${f.berkas}:${f.baris})`)}
               title="Kirim sebagai instruksi berikutnya"
-              className="flex w-full items-start gap-2 rounded-md px-1 py-1.5 text-left hover:bg-ink"
+              className="flex w-full items-start gap-2 rounded-md px-1 py-1.5 text-left hover:bg-surface-muted"
             >
               <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-edge text-[14px] leading-none text-accent" aria-hidden="true">+</span>
               <span className="min-w-0">
@@ -984,25 +984,63 @@ function Bubble({
   )
 }
 
+export type VisualTarget = {
+  tag: string
+  label: string
+  selector: string
+  text: string
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 export function PreviewPane({
   previewOn,
   previewPort,
+  projectId,
   dirty,
   buildLog,
   onRun,
   booting,
   hasFiles,
+  onPick,
 }: {
   previewOn: boolean
   previewPort: number
+  projectId: string
   dirty: boolean
   buildLog: { ok: boolean; log: string } | null
   onRun: () => void
   booting: boolean
   hasFiles: boolean
+  onPick: (target: VisualTarget) => void
 }) {
   const [reloadKey, setReloadKey] = useState(0)
-  const url = `http://127.0.0.1:${previewPort}/`
+  const [picking, setPicking] = useState(false)
+  const frameRef = useRef<HTMLIFrameElement | null>(null)
+  // Proxy same-origin: bridge bisa postMessage ke parent, dan preview tetap
+  // terlindungi ownership check. Query __vbEditor=1 menandai HTML editor.
+  const url = `/api/projects/${projectId}/live/?__vbEditor=1`
+
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      const data = e.data as { source?: string; type?: string; payload?: VisualTarget }
+      if (data?.source !== 'vb-visual-bridge' || data.type !== 'vb:pick' || !data.payload) return
+      if (e.source !== frameRef.current?.contentWindow) return
+      setPicking(false)
+      onPick(data.payload)
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [onPick])
+
+  const togglePick = () => {
+    const next = !picking
+    setPicking(next)
+    frameRef.current?.contentWindow?.postMessage(
+      { source: 'vb-editor', type: next ? 'vb:start-pick' : 'vb:stop-pick' }, '*')
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -1020,15 +1058,27 @@ export function PreviewPane({
         >
           <Icon name="reload" size={12} />
         </button>
+        <button
+          onClick={togglePick}
+          disabled={!previewOn}
+          aria-pressed={picking}
+          aria-label="Pilih elemen di preview"
+          className={`h-6 shrink-0 border px-2 text-[10.5px] transition-colors disabled:opacity-40 ${
+            picking ? 'border-accent bg-accent text-on-accent' : 'border-edge text-quiet hover:text-body'
+          }`}
+        >
+          {picking ? 'Klik elemen…' : 'Pilih elemen'}
+        </button>
       </div>
 
       <div className="relative min-h-0 flex-1 bg-ink">
         {previewOn ? (
           <iframe
+            ref={frameRef}
             key={reloadKey}
             src={url}
             title="Preview aplikasi yang dibangun"
-            className="h-full w-full border-0 bg-white"
+            className={`h-full w-full border-0 bg-white ${picking ? 'cursor-crosshair' : ''}`}
             sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
           />
         ) : (
@@ -1079,8 +1129,85 @@ export function PreviewPane({
   )
 }
 
+type TreeNode = { name: string; path: string; children: Map<string, TreeNode>; files: { path: string; name: string }[] }
+
+/* Susun daftar path datar dari tabel `files` menjadi pohon folder bertingkat. */
+function buildFileTree(paths: { path: string }[]): TreeNode {
+  const root: TreeNode = { name: '', path: '', children: new Map(), files: [] }
+  for (const { path } of paths) {
+    const parts = path.split('/').filter(Boolean)
+    let node = root
+    let prefix = ''
+    for (const part of parts.slice(0, -1)) {
+      prefix = prefix ? `${prefix}/${part}` : part
+      let child = node.children.get(part)
+      if (!child) {
+        child = { name: part, path: prefix, children: new Map(), files: [] }
+        node.children.set(part, child)
+      }
+      node = child
+    }
+    node.files.push({ path, name: parts.at(-1) ?? path })
+  }
+  return root
+}
+
+function FileTreeRow({
+  node,
+  depth,
+  openFile,
+  changedFiles,
+  onOpen,
+}: {
+  node: TreeNode
+  depth: number
+  openFile: string | null
+  changedFiles: string[]
+  onOpen: (p: string) => void
+}) {
+  const [open, setOpen] = useState(depth < 2)
+  const folders = [...node.children.values()].sort((a, b) => a.name.localeCompare(b.name))
+  const files = [...node.files].sort((a, b) => a.name.localeCompare(b.name))
+  return (
+    <>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex h-7 w-full items-center gap-1.5 border-l-2 border-l-transparent pr-2 text-left text-[11.5px] leading-none text-quiet transition-colors hover:bg-surface-muted hover:text-body"
+        style={{ paddingLeft: `${10 + depth * 8}px` }}
+      >
+        <span className={`shrink-0 transition-transform ${open ? 'rotate-90' : ''}`}><Icon name="arrow" size={9} /></span>
+        <Icon name="folder" size={12} />
+        <span className="truncate">{node.name}</span>
+      </button>
+      {open && <>
+        {folders.map((f) => <FileTreeRow key={f.path} node={f} depth={depth + 1} openFile={openFile} changedFiles={changedFiles} onOpen={onOpen} />)}
+        {files.map((f) => (
+          <button
+            key={f.path}
+            onClick={() => onOpen(f.path)}
+            aria-current={openFile === f.path ? 'true' : undefined}
+            className={`flex h-7 w-full items-center gap-1.5 border-l-2 pr-2 text-left text-[11.5px] leading-none transition-colors ${
+              openFile === f.path
+                ? 'border-l-accent bg-ink text-body'
+                : 'border-l-transparent text-quiet hover:bg-surface-muted hover:text-body'
+            }`}
+            style={{ paddingLeft: `${22 + depth * 8}px` }}
+            title={f.path}
+          >
+            <Icon name="file" size={11} />
+            <span className="truncate">{f.name}</span>
+            {changedFiles.includes(f.path) && <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-accent" title="berubah pada giliran ini" />}
+          </button>
+        ))}
+      </>}
+    </>
+  )
+}
+
 export function CodePane({
   files,
+  filesReady = true,
   openFile,
   content,
   buildLog,
@@ -1093,6 +1220,7 @@ export function CodePane({
   onFilesRefresh,
 }: {
   files: { path: string }[]
+  filesReady?: boolean
   openFile: string | null
   content: string
   buildLog: { ok: boolean; log: string } | null
@@ -1139,9 +1267,14 @@ export function CodePane({
     <div className="flex min-h-0 flex-1">
       <div className="vb-scroll w-[196px] max-md:w-[132px] shrink-0 overflow-y-auto border-r border-edge bg-surface">
         <p className="border-b border-edge px-3 py-2 text-[11px] text-quiet">
-          {files.length ? `${files.length} file` : 'file'}
+          {!filesReady ? 'Memuat file…' : files.length ? `${files.length} file` : 'file'}
         </p>
-        {!files.length && (
+        {!filesReady && (
+          <div className="flex items-center gap-2 px-3 py-3 text-[11.5px] text-quiet">
+            <Spinner /> Memuat daftar file…
+          </div>
+        )}
+        {filesReady && !files.length && (
           <div className="px-3 py-3">
             <p className="text-[11.5px] leading-relaxed text-body">Belum ada file</p>
             <p className="mt-1 text-[11px] leading-relaxed text-quiet">
@@ -1149,24 +1282,30 @@ export function CodePane({
             </p>
           </div>
         )}
-        {files.map((f) => (
-          <button
-            key={f.path}
-            onClick={() => onOpen(f.path)}
-            aria-current={openFile === f.path ? 'true' : undefined}
-            className={`flex min-h-[30px] max-md:min-h-[44px] w-full items-center gap-1.5 border-l-2 px-2.5 py-1 text-left text-[11.5px] transition-colors ${
-              openFile === f.path
-                ? 'border-l-accent bg-ink text-body'
-                : 'border-l-transparent text-quiet hover:bg-ink hover:text-body'
-            }`}
-            title={f.path}
-          >
-            <span className="truncate">{f.path.replace(/^src\//, '')}</span>
-            {changedFiles.includes(f.path) && (
-              <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-accent" title="berubah pada giliran ini" />
-            )}
-          </button>
-        ))}
+        {(() => {
+          const tree = buildFileTree(files)
+          return [...tree.children.values()].map((f) => (
+            <FileTreeRow key={f.path} node={f} depth={0} openFile={openFile} changedFiles={changedFiles} onOpen={onOpen} />
+          ))
+        })()}
+        {(() => {
+          const rootFiles = files.filter((f) => !f.path.includes('/'))
+          return rootFiles.map((f) => (
+            <button
+              key={f.path}
+              onClick={() => onOpen(f.path)}
+              aria-current={openFile === f.path ? 'true' : undefined}
+              className={`flex min-h-[28px] max-md:min-h-[40px] w-full items-center gap-1.5 border-l-2 px-2.5 py-1 text-left text-[11.5px] transition-colors ${
+                openFile === f.path ? 'border-l-accent bg-ink text-body' : 'border-l-transparent text-quiet hover:bg-surface-muted hover:text-body'
+              }`}
+              title={f.path}
+            >
+              <Icon name="file" size={11} />
+              <span className="truncate">{f.path}</span>
+              {changedFiles.includes(f.path) && <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-accent" title="berubah pada giliran ini" />}
+            </button>
+          ))
+        })()}
         {files.length > 0 && (
           <button
             onClick={restoreLatest}

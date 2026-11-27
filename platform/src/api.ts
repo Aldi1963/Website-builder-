@@ -91,7 +91,7 @@ export const auth = {
 export const api = {
   health: () => req<{ ok: boolean; model: string; uptime: number }>('/api/health'),
   listProjects: () => req<{ projects: Project[] }>('/api/projects'),
-  createProject: (name: string, prompt = '', starter: 'blank' | 'lms' = 'blank') =>
+  createProject: (name: string, prompt = '', starter: 'blank' | 'lms' | 'tiket' = 'blank') =>
     req<{ project: Project }>('/api/projects', { method: 'POST', body: JSON.stringify({ name, prompt, starter }) }),
   getProject: (id: string) =>
     req<{ project: Project; messages: Message[]; files: FileEntry[]; previewPort: number; pendingPlan: PendingPlan | null }>(`/api/projects/${id}`),
@@ -102,9 +102,24 @@ export const api = {
   files: (id: string) => req<{ files: FileEntry[] }>(`/api/projects/${id}/files`),
   file: (id: string, path: string) =>
     req<{ path: string; content: string }>(`/api/projects/${id}/file?path=${encodeURIComponent(path)}`),
-  database: (id: string, offset = 0) =>
+  database: (id: string) =>
     req<{ managed: boolean; engine?: string; database?: string; tables: DbTable[]; error?: string; note?: string }>(
-      `/api/projects/${id}/database${offset > 0 ? `?offset=${offset}` : ''}`,
+      `/api/projects/${id}/database`,
+    ),
+  dbQuery: (id: string, sql: string, limit = 100) =>
+    req<{ ok: boolean; columns?: string[]; rows?: Record<string, unknown>[]; rowCount?: number; truncated?: boolean; error?: string }>(
+      `/api/projects/${id}/database/query`,
+      { method: 'POST', body: JSON.stringify({ sql, limit }) },
+    ),
+  databaseTable: (id: string, name: string, search = '', page = 0, perPage = 25) =>
+    req<{ ok: boolean; table?: string; page?: number; perPage?: number; total?: number; pageCount?: number;
+      columns?: Array<{ name: string; type: string; nullable: boolean; default: string | null }>;
+      rows?: Record<string, unknown>[]; error?: string }>(
+      `/api/projects/${id}/database/table?name=${encodeURIComponent(name)}&search=${encodeURIComponent(search)}&page=${page}&perPage=${perPage}`,
+    ),
+  databaseExport: (id: string) =>
+    req<{ ok: boolean; sql?: string; tables?: number; error?: string }>(
+      `/api/projects/${id}/database/export`,
     ),
   saveFile: (id: string, path: string, content: string) =>
     req<{ ok: boolean; path: string }>(`/api/projects/${id}/file`, {
@@ -187,9 +202,7 @@ export type ProjectSettings = {
 export type DbTable = {
   name: string
   columns: string[]
-  columnTypes?: string[]
   rows: Record<string, string | number | boolean>[]
-  total?: number
   note?: string
 }
 

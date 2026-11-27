@@ -48,7 +48,7 @@ import {
   projectDir,
 } from './workspace.ts'
 import { captureScreenshot, listScreenshots, readScreenshot } from './screenshots.ts'
-import { dropProjectDb, projectDbPool, isManagedDbEnabled, provisionProjectDb } from './managed-db.ts'
+import { dropProjectDb, projectDbPool, isManagedDbEnabled, provisionProjectDb, validateProjectSql } from './managed-db.ts'
 import {
   SESSION_COOKIE,
   sessionCookie,
@@ -326,56 +326,158 @@ app.get('/api/projects/:id/database', async (c) => {
   if (!isManagedDbEnabled()) {
     return c.json({ managed: false, tables: [], note: 'Database terkelola belum aktif.' })
   }
-  // Paginasi sederhana per tabel: LIMIT 50, OFFSET dari query (?offset=N).
-  // Offset yang sama dipakai untuk semua tabel; panel hanya memakai baris
-  // tabel yang diminta saat memuat halaman berikutnya.
-  const rawOffset = Number(c.req.query('offset') ?? 0)
-  const offset = Number.isFinite(rawOffset) ? Math.max(0, Math.min(100000, Math.floor(rawOffset))) : 0
-  const LIMIT = 50
+  let pool: import('pg').Pool | null = null
   try {
     const opened = await projectDbPool(r.project.id)
-    const pool = opened.pool
+    pool = opened.pool
     const tablesRes = await pool.query<{ table_name: string }>(
       `SELECT table_name FROM information_schema.tables
        WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
        ORDER BY table_name`,
     )
-    const tables: Array<{ name: string; columns: string[]; columnTypes: string[]; rows: Record<string, unknown>[]; total: number; note: string }> = []
+    const tables: Array<{ name: string; columns: string[]; rows: Record<string, unknown>[]; note: string }> = []
     for (const t of tablesRes.rows) {
       const cols = await pool.query<{ column_name: string; data_type: string }>(
         `SELECT column_name, data_type FROM information_schema.columns
          WHERE table_schema = 'public' AND table_name = $1 ORDER BY ordinal_position`,
         [t.table_name],
       )
-      const q = `SELECT * FROM "${t.table_name.replace(/"/g, '""')}" LIMIT ${LIMIT} OFFSET ${offset}`
+      const q = `SELECT * FROM "${t.table_name.replace(/"/g, '""')}" LIMIT 20`
       const rowsRes = await pool.query<Record<string, unknown>>(q)
       const cnt = await pool.query<{ n: string }>(`SELECT COUNT(*)::text AS n FROM "${t.table_name.replace(/"/g, '""')}"`)
       const total = Number(cnt.rows[0]?.n ?? 0)
-      const shown = offset + rowsRes.rows.length
       tables.push({
         name: t.table_name,
         columns: cols.rows.map((c) => c.column_name),
-        columnTypes: cols.rows.map((c) => c.data_type),
-        rows: rowsRes.rows.slice(0, LIMIT).map((row) => {
+        rows: rowsRes.rows.slice(0, 20).map((row) => {
           const out: Record<string, unknown> = {}
           for (const [k, v] of Object.entries(row)) {
-            out[k] = v === null ? '' : v instanceof Date ? v.toISOString() : typeof v === 'object' ? JSON.stringify(v) : (v as string | number | boolean)
+            out[k] = v === null ? null : v instanceof Date ? v.toISOString() : typeof v === 'object' ? JSON.stringify(v) : (v as string | number | boolean)
           }
           return out
         }),
-        total,
-        note: `${cols.rows.length} kolom · ${total} baris${shown < total ? ` · menampilkan ${shown} dari ${total}` : ''}`,
+        note: `${cols.rows.length} kolom · ${total} baris${rowsRes.rows.length > 20 ? ' · menampilkan 20' : ''}`,
       })
     }
     return c.json({ managed: true, engine: 'postgres', database: opened.database, tables })
   } catch (err) {
     return c.json({ managed: true, engine: 'postgres', tables: [], error: (err as Error).message })
   }
-  // JANGAN panggil pool.end() di sini: pool di-cache per proyek oleh
-  // projectDbPool (managed-db.ts) dan dipakai ulang antar request; mengakhiri
-  // pool di finally membuat request berikutnya gagal ("Cannot use a pool
-  // after calling end on the pool"). Pool hanya di-end di dropProjectDb
-  // saat proyek dihapus.
+})
+
+/* SQL console panel Database: hanya SELECT/WITH, satu pernyataan, dibatasi.
+   Memakai validator yang sama dengan tool agent db_query — tokenisasi dulu,
+   sehingga kata terlarang di dalam literal tidak memicu false positive. */
+app.post('/api/projects/:id/database/query', async (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  if (!isManagedDbEnabled()) return c.json({ ok: false, error: 'Database terkelola belum aktif.' }, 503)
+  const body = (await c.req.json().catch(() => ({}))) as { sql?: string; limit?: number }
+  const checked = validateProjectSql('query', body.sql ?? '')
+  if (!checked.ok) return c.json({ ok: false, error: checked.error }, 400)
+  const first = checked.sql.trim().split(/\s+/)[0]?.toLowerCase()
+  if (first !== 'select' && first !== 'with') {
+    return c.json({ ok: false, error: 'Panel database hanya menjalankan query SELECT.' }, 400)
+  }
+  const limit = Math.min(Math.max(Number(body.limit) || 100, 1), 500)
+  try {
+    const { pool } = await projectDbPool(r.project.id)
+    const res = await pool.query(`SELECT * FROM (${checked.sql}) AS vb_q LIMIT $${1}`, [limit])
+    const cols = (res.fields ?? []).map((f) => f.name)
+    const rows = res.rows.slice(0, limit).map((row) => {
+      const out: Record<string, unknown> = {}
+      for (const [k, v] of Object.entries(row)) {
+        out[k] = v === null ? null : v instanceof Date ? v.toISOString() : typeof v === 'object' ? JSON.stringify(v) : (v as string | number | boolean)
+      }
+      return out
+    })
+    return c.json({ ok: true, columns: cols, rows, rowCount: rows.length, limit, truncated: res.rows.length > limit })
+  } catch (err) {
+    return c.json({ ok: false, error: (err as Error).message }, 400)
+  }
+})
+
+/* Mode database ala phpMyAdmin: nama tabel DIVALIDASI terhadap katalog dulu,
+   baru dipakai sebagai identifier. Filter/offset tetap parameterized. */
+async function safeTable(pool: import('pg').Pool, name: string): Promise<string | null> {
+  const found = await pool.query<{ table_name: string }>(
+    `SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE' AND table_name=$1`,
+    [name],
+  )
+  return found.rows[0]?.table_name ?? null
+}
+const quoteIdent = (name: string) => `"${name.replace(/"/g, '""')}"`
+
+app.get('/api/projects/:id/database/table', async (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  if (!isManagedDbEnabled()) return c.json({ ok: false, error: 'Database terkelola belum aktif.' }, 503)
+  const name = c.req.query('name') ?? ''
+  const search = (c.req.query('search') ?? '').slice(0, 120)
+  const page = Math.max(0, Number(c.req.query('page')) || 0)
+  const perPage = Math.min(Math.max(Number(c.req.query('perPage')) || 25, 1), 100)
+  try {
+    const { pool } = await projectDbPool(r.project.id)
+    const table = await safeTable(pool, name)
+    if (!table) return c.json({ ok: false, error: 'Tabel tidak ditemukan.' }, 404)
+    const cols = await pool.query<{ column_name: string; data_type: string; is_nullable: string; column_default: string | null }>(
+      `SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_schema='public' AND table_name=$1 ORDER BY ordinal_position`,
+      [table],
+    )
+    const where = search ? ` WHERE ${cols.rows.map((x, i) => `CAST(${quoteIdent(x.column_name)} AS text) ILIKE $${i + 1}`).join(' OR ')}` : ''
+    const params = search ? [...cols.rows.map(() => `%${search}%`)] : []
+    const cnt = await pool.query<{ n: string }>(`SELECT COUNT(*)::text AS n FROM ${quoteIdent(table)}${where}`, params)
+    const total = Number(cnt.rows[0]?.n ?? 0)
+    const dataParams = [...params, perPage, page * perPage]
+    const res = await pool.query<Record<string, unknown>>(
+      `SELECT * FROM ${quoteIdent(table)}${where} LIMIT $${dataParams.length - 1} OFFSET $${dataParams.length}`, dataParams,
+    )
+    const rows = res.rows.map((row) => {
+      const out: Record<string, unknown> = {}
+      for (const [k, v] of Object.entries(row)) out[k] = v === null ? null : v instanceof Date ? v.toISOString() : typeof v === 'object' ? JSON.stringify(v) : (v as string | number | boolean)
+      return out
+    })
+    return c.json({
+      ok: true, table, page, perPage, total, pageCount: Math.max(1, Math.ceil(total / perPage)),
+      columns: cols.rows.map((x) => ({ name: x.column_name, type: x.data_type, nullable: x.is_nullable === 'YES', default: x.column_default })),
+      rows,
+    })
+  } catch (err) { return c.json({ ok: false, error: (err as Error).message }, 400) }
+})
+
+app.get('/api/projects/:id/database/export', async (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  if (!isManagedDbEnabled()) return c.json({ ok: false, error: 'Database terkelola belum aktif.' }, 503)
+  try {
+    const { pool } = await projectDbPool(r.project.id)
+    const tabs = await pool.query<{ table_name: string }>(
+      `SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE' ORDER BY table_name`,
+    )
+    const chunks: string[] = ['-- Ekspor database VibeBuilder (Postgres)\n']
+    for (const t of tabs.rows) {
+      const name = await safeTable(pool, t.table_name)
+      if (!name) continue
+      const cols = await pool.query<{ column_name: string; data_type: string; is_nullable: string; column_default: string | null }>(
+        `SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_schema='public' AND table_name=$1 ORDER BY ordinal_position`, [name],
+      )
+      const defs = cols.rows.map((x) => `  ${quoteIdent(x.column_name)} ${x.data_type}${x.is_nullable === 'NO' ? ' NOT NULL' : ''}${x.column_default ? ` DEFAULT ${x.column_default}` : ''}`)
+      chunks.push(`CREATE TABLE IF NOT EXISTS ${quoteIdent(name)} (\n${defs.join(',\n')}\n);\n`)
+      const data = await pool.query<Record<string, unknown>>(`SELECT * FROM ${quoteIdent(name)}`)
+      for (const row of data.rows) {
+        const keys = cols.rows.map((x) => x.column_name)
+        const vals = keys.map((k) => {
+          const v = row[k]
+          if (v === null || v === undefined) return 'NULL'
+          if (typeof v === 'number' || typeof v === 'boolean') return String(v)
+          return `'${String(v).replace(/'/g, "''")}'`
+        })
+        chunks.push(`INSERT INTO ${quoteIdent(name)} (${keys.map(quoteIdent).join(', ')}) VALUES (${vals.join(', ')});\n`)
+      }
+      chunks.push('\n')
+    }
+    return c.json({ ok: true, sql: chunks.join(''), tables: tabs.rows.length })
+  } catch (err) { return c.json({ ok: false, error: (err as Error).message }, 400) }
 })
 
 /* ---------- GitHub sync ---------- */
@@ -433,18 +535,19 @@ app.get('/api/projects', (c) => c.json({ projects: listProjects(c.get('user').id
 
 app.post('/api/projects', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { name?: string; prompt?: string; starter?: string }
-  const starter = body.starter === 'lms' ? 'lms' : 'blank'
+  const starter = body.starter === 'lms' || body.starter === 'tiket' ? body.starter : 'blank'
   const id = randomBytes(5).toString('hex')
-  const defaultName = starter === 'lms' ? 'LMS baru' : 'Proyek tanpa nama'
+  const defaultName = starter === 'lms' ? 'LMS baru' : starter === 'tiket' ? 'Event & Tiket baru' : 'Proyek tanpa nama'
   const name = (body.name ?? body.prompt ?? defaultName).slice(0, 60)
   const project = createProject(id, name, body.prompt ?? '', c.get('user').id, starter)
   ensureWorkspace(id, starter)
-  if (starter === 'lms') {
+  if (starter === 'lms' || starter === 'tiket') {
     try {
       await provisionProjectDb(id)
     } catch {
       setStatus(id, 'error')
-      return c.json({ project: getProject(id), error: 'Database LMS belum siap. Periksa konfigurasi database terkelola lalu coba lagi.' }, 503)
+      const label = starter === 'lms' ? 'LMS' : 'tiketing'
+      return c.json({ project: getProject(id), error: `Database ${label} belum siap. Periksa konfigurasi database terkelola lalu coba lagi.` }, 503)
     }
   }
   return c.json({ project }, 201)
