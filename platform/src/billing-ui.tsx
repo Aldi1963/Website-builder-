@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Icon } from './ui'
-import { navigate } from './router'
+import { openTopupModal } from './topup-modal'
 import type { User } from './api'
 
 /* ---- UI credit VibeBuilder (fase 3) ----
@@ -105,15 +105,15 @@ function useBalance() {
 }
 
 /* Chip saldo — MENGGANTIKAN chip "N req" token server di header builder.
-   Klik -> halaman Penggunaan. */
+   Klik -> popup top-up ("popup saldo"). */
 export function CreditChip() {
   const { balance, error } = useBalance()
   const low = balance !== null && balance.total < 10
   return (
     <button
-      onClick={() => navigate('/penggunaan')}
-      aria-label="Saldo credit — buka halaman Penggunaan"
-      title={error || 'Saldo credit — klik untuk melihat Penggunaan'}
+      onClick={openTopupModal}
+      aria-label="Saldo credit — buka top-up"
+      title={error || 'Saldo credit — klik untuk top-up'}
       className={`flex h-8 items-center gap-1.5 rounded-full border px-3 text-[11.5px] font-semibold transition-opacity hover:opacity-85 max-md:h-10 ${
         low ? 'border-danger/50 bg-danger/10 text-danger' : 'border-edge bg-accent-soft text-accent'
       }`}
@@ -158,9 +158,9 @@ export function CreditMeter() {
       )}
       {error && <p className="mt-1.5 text-[11px] text-quiet">{error}</p>}
       <div className="mt-2 flex gap-2">
-        <a href="/topup" className="vb-btn-primary h-8 flex-1 text-[11.5px]">
+        <button type="button" onClick={openTopupModal} className="vb-btn-primary h-8 flex-1 text-[11.5px]">
           Top-up
-        </a>
+        </button>
         <a href="/penggunaan" className="vb-btn-ghost h-8 flex-1 text-[11.5px]">
           Penggunaan
         </a>
@@ -263,12 +263,9 @@ export function UsagePage({
                     <p className="pt-1 text-[11.5px]">1 credit = $0,001 biaya LLM · Minimal 10 credit untuk memakai AI.</p>
                   </div>
                 )}
-                <a
-                  href="/topup"
-                  className="vb-btn-primary mt-4 h-9"
-                >
+                <button type="button" onClick={openTopupModal} className="vb-btn-primary mt-4 h-9">
                   Top-up credit
-                </a>
+                </button>
               </div>
 
               <h2 className="vb-eyebrow mt-8">Riwayat pemakaian</h2>
@@ -295,7 +292,11 @@ export function UsagePage({
               <h2 className="vb-eyebrow mt-8">Riwayat top-up</h2>
               {!orders.length ? (
                 <p className="mt-3 text-[12.5px] text-quiet">
-                  Belum ada top-up. <a href="/topup" className="text-accent">Top-up pertama</a> lewat QRIS.
+                  Belum ada top-up.{' '}
+                  <button type="button" onClick={openTopupModal} className="cursor-pointer text-accent hover:underline">
+                    Top-up pertama
+                  </button>{' '}
+                  lewat QRIS.
                 </p>
               ) : (
                 <ul className="vb-card mt-3 divide-y divide-edge overflow-hidden">

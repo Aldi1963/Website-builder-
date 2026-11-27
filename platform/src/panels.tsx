@@ -6,6 +6,7 @@ import { Badge } from '@cloudflare/kumo/components/badge'
 import { Tabs } from '@cloudflare/kumo/components/tabs'
 import { Dialog } from '@cloudflare/kumo/components/dialog'
 import { Icon, Activity, Spinner, useAutoScroll, useCopy } from './ui'
+import { openTopupModal } from './topup-modal'
 import { ActivityFeed, TerminalBlock, type ActivityEntry } from './activity'
 import { api, type ActivityEvent, type AuditFinding, type PlanStep, type ProjectSettings } from './api'
 import {
@@ -1028,12 +1029,13 @@ function Bubble({
         <p className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-body">{content}</p>
         {info?.hint && <p className="mt-1 text-[12px] leading-relaxed text-quiet">{info.hint}</p>}
         {info?.action === 'topup' && (
-          <a
-            href="/topup"
+          <button
+            type="button"
+            onClick={openTopupModal}
             className="mt-2.5 inline-flex h-8 items-center gap-1.5 rounded-full bg-accent px-3.5 text-[12px] font-medium text-white transition-opacity hover:opacity-90"
           >
             Top-up credit
-          </a>
+          </button>
         )}
         {info?.action === 'settings' && onOpenSettings && (
           <button

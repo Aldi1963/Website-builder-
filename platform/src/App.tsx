@@ -11,6 +11,7 @@ import { MODEL_AUTO, getPickerModels, isSelectionAvailable, modelIdForServer } f
    (kotor, belum commit) — perubahan di bawah ini MINIMAL + aditif dan TIDAK
    di-commit oleh trek ini; komponennya sendiri ada di billing-ui.tsx. */
 import { CreditChip, CreditMeter, UsagePage, notifyBalanceChanged } from './billing-ui'
+import { TopupModal } from './topup-modal'
 import { MarketplacePage } from './marketplace-ui'
 import DatabasePage from './database-ui'
 
@@ -256,6 +257,7 @@ export default function App() {
           onMenu={() => setNavOpen(true)}
           onTitle={(name) => setProjects((p) => p.map((x) => (x.id === activeId ? { ...x, name } : x)))}
         />
+        <TopupModal />
       </div>
     )
   }
@@ -305,6 +307,7 @@ export default function App() {
           navOpen={navOpen}
           onCloseNav={() => setNavOpen(false)}
         />
+        <TopupModal />
       </div>
     )
   }
@@ -358,6 +361,7 @@ export default function App() {
         showStarters={showStarters}
         setShowStarters={setShowStarters}
       />
+      <TopupModal />
     </div>
   )
 }
