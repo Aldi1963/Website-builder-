@@ -25,14 +25,14 @@ const workspaceMock = {
   deleteProjectFile() {},
   newDirsForFile() { return [] },
 }
-mock.module('../src/workspace.ts', { exports: workspaceMock, namedExports: workspaceMock })
+mock.module('../src/workspace.ts', { namedExports: workspaceMock })
 const pathsMock = {
   ROOT: root, TEMPLATE_DIR: root, STARTERS_DIR: root,
   PROJECTS_DIR: join(root, 'projects'),
   PREVIEW_HOST: 'preview.localhost', PLATFORM_PORT: 3000,
   PREVIEW_PORT_BASE: 4100, MAX_PREVIEWS: 12,
 }
-mock.module('../src/paths.ts', { exports: pathsMock, namedExports: pathsMock })
+mock.module('../src/paths.ts', { namedExports: pathsMock })
 
 const { db } = await import('../src/db.ts')
 const { createUser } = await import('../src/auth.ts')

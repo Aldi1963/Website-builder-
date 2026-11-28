@@ -18,14 +18,14 @@ const workspaceMock = {
   projectDir() { return join(root, 'ws') }, newDirsForFile() { return [] }, deleteProjectFile(_id, path) { files.delete(path); globalThis.__removeFile?.(_id, path) },
 }
 const { mock } = await import('node:test')
-mock.module('../src/workspace.ts', { exports: workspaceMock, namedExports: workspaceMock })
+mock.module('../src/workspace.ts', { namedExports: workspaceMock })
 const managedDbMock = {
   async provisionProjectDb() { return {} }, isManagedDbEnabled() { return true },
   async dropProjectDb() {}, async projectDbPool() {}, async projectDbUrl() {},
   async execProjectSql() {}, validateProjectSql() { return { ok: true, sql: '' } },
   async projectSchemaBrief() { return null },
 }
-mock.module('../src/managed-db.ts', { exports: managedDbMock, namedExports: managedDbMock })
+mock.module('../src/managed-db.ts', { namedExports: managedDbMock })
 const { app } = await import('../src/app.ts')
 const { createUser, createSession, SESSION_COOKIE } = await import('../src/auth.ts')
 const { db, putFile, getFile, removeFile } = await import('../src/db.ts')
