@@ -705,6 +705,8 @@ export function ChatPanel({
   onConfirmPlan,
   onCancelPlan,
   awaitingConfirm,
+  pendingAnswer,
+  onAnswerQuestion,
   onOpenSettings,
   waitingForDiscovery,
   inlineEvents,
@@ -732,6 +734,8 @@ export function ChatPanel({
   onConfirmPlan?: () => void
   onCancelPlan?: () => void
   awaitingConfirm?: boolean
+  pendingAnswer?: { question: string; hint: string | null } | null
+  onAnswerQuestion?: (text: string) => void
   onOpenSettings: () => void
   waitingForDiscovery: boolean
   inlineEvents?: InlineEvent[]
@@ -897,23 +901,10 @@ export function ChatPanel({
             )}
             {sending && (
               <div className="vb-enter flex flex-col gap-2.5 text-[12px] text-quiet">
-                <PhaseStrip status={status ?? ''} active={sending} />
-                <ActivityFeed entries={activity ?? []} />
-                {!!contextPaths?.length && (
-                  <div className="flex flex-wrap items-center gap-1.5" title="File yang dibaca/dipakai agent pada permintaan ini">
-                    <span className="text-[10.5px] text-quiet">Konteks dibaca:</span>
-                    {contextPaths.slice(0, 6).map((p) => (
-                      <button key={p} type="button" onClick={() => onOpenFile?.(p)} className="max-w-[160px] truncate rounded-full border border-edge bg-surface px-2 py-0.5 font-mono text-[10px] text-quiet hover:border-quiet hover:text-body" title={p}>{p.split('/').pop()}</button>
-                    ))}
-                    {contextPaths.length > 6 && <span className="text-[10px] text-quiet">+{contextPaths.length - 6}</span>}
-                  </div>
-                )}
-                <InlineEvents events={inlineEvents ?? []} onOpenFile={onOpenFile} />
-                {status && (
-                  <div className="flex items-center gap-2"><Activity /><span>{status}</span></div>
-                )}
-                {plan && <PlanCard plan={plan} />}
-                {audit && <AuditCard audit={audit} />}
+                {/* Ala Emergent: SATU baris progres hidup yang merangkum kerja
+                    agent. Semua kartu detail disembunyikan di balik ketukan
+                    supaya layar ponsel tidak penuh sebelum jawaban selesai. */}
+                <RunningSummary status={status ?? ''} entries={activity ?? []} contextPaths={contextPaths ?? []} plan={plan ?? null} audit={audit ?? null} onOpenFile={onOpenFile} />
                 {streamText ? (
                   <div className="rounded-lg border border-edge bg-surface px-3.5 py-3 text-[13px] leading-relaxed text-body">
                     <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-quiet">VibeBuilder</p>
@@ -925,6 +916,9 @@ export function ChatPanel({
             {/* Gerbang konfirmasi di luar container `sending`: saat run berhenti
                 untuk menunggu persetujuan, sending=false lalu container tadi
                 di-unmount. Blok ini harus tetap hidup agar tombol tampil. */}
+            {!sending && pendingAnswer && (
+              <QuestionCard question={pendingAnswer.question} hint={pendingAnswer.hint} onSubmit={(t) => onAnswerQuestion?.(t)} />
+            )}
             {!sending && plan && awaitingConfirm && (
               <div className="vb-enter mx-auto flex max-w-[640px] flex-col gap-2.5">
                 <PlanCard plan={plan} />
@@ -1039,7 +1033,7 @@ export function ChatPanel({
               <div className="flex items-center gap-1.5">
                 <button type="button" onClick={toggleVoice} disabled={sending || !(('SpeechRecognition' in window) || ('webkitSpeechRecognition' in window))} aria-label={recording ? 'Hentikan dikte' : 'Dikte suara'} title={(('SpeechRecognition' in window) || ('webkitSpeechRecognition' in window)) ? (recording ? 'Hentikan dikte' : 'Dikte suara') : 'Dikte suara tidak didukung browser ini'} className={`flex h-9 w-9 items-center justify-center rounded-full text-quiet hover:bg-surface-muted hover:text-body disabled:opacity-35 ${recording ? 'bg-red-50 text-red-600' : ''}`}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="9" y="3" width="6" height="12" rx="3" stroke="currentColor" strokeWidth="1.8"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 18v3m-4 0h8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg></button>
                 {sending ? (
-                  <Button variant="outline" size="sm" onClick={onCancel} aria-label="Hentikan proses agent" className="h-9 rounded-full px-3"><Icon name="stop" size={10} /> Hentikan</Button>
+                  <Button variant="outline" size="sm" onClick={onCancel} aria-label="Hentikan proses agent" title="Hentikan proses agent" className="h-9 rounded-full border-red-300 bg-red-50 px-3 font-medium text-red-600 hover:bg-red-100 dark:border-red-800 dark:bg-red-950/40 dark:text-red-300"><Icon name="stop" size={10} /> Hentikan</Button>
                 ) : (
                   <Button variant="primary" size="sm" shape="circle" onClick={submit} disabled={(!input.trim() && !images.length && !attached.length && !pickedTarget) || imageBusy} aria-label="Kirim pesan" title="Kirim pesan" className="h-9 w-9 min-w-9 rounded-full p-0"><Icon name="arrow" size={15} /></Button>
                 )}
@@ -1083,6 +1077,87 @@ function SuggestionsCard({ audit, onSend }: { audit: ChatAudit;  onSend: (text: 
         ))}
       </ul>
     </section>
+  )
+}
+
+/* Ringkasan kerja agent ala Emergent: satu baris hidup yang merangkum tahap
+   dan status. Detail (langkah, file, konteks, tinjauan) dibuka sesuai needs. */
+function RunningSummary({ status, entries, contextPaths, plan, audit, onOpenFile }: { status: string; entries: ActivityEntry[]; contextPaths: string[]; plan: ChatPlan | null; audit: ChatAudit | null; onOpenFile?: (path: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const t = status.toLowerCase()
+  const phase = /ringkasan|menyusun jawaban|publik|audit/.test(t) ? 'Menyelesaikan'
+    : /menerapkan|install|menjalankan|memperbaiki|screenshot|build/.test(t) ? 'Membangun'
+    : /rencana|memeriksa proyek/.test(t) ? 'Merencana'
+    : /membaca|melihat daftar file|mencari kode|referensi/.test(t) ? 'Membaca'
+    : 'Memulai'
+  return (
+    <div className="flex flex-col gap-2">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        title={open ? 'Sembunyikan detail proses' : 'Lihat detail proses'}
+        className="flex w-full items-center gap-2 rounded-lg border border-edge bg-surface px-3 py-2 text-left hover:bg-surface-muted"
+      >
+        <span className="inline-block h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-accent" aria-hidden="true" />
+        <span className="shrink-0 font-mono text-[10.5px] font-medium text-body">{phase}</span>
+        <span className="min-w-0 flex-1 truncate text-[11.5px] text-quiet">{status}</span>
+        <span className="shrink-0 font-mono text-[10px] text-quiet">{entries.length} langkah{contextPaths.length ? ` · ${contextPaths.length} file` : ''}</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className={`shrink-0 text-quiet transition-transform ${open ? 'rotate-180' : ''}`}><path d="m6 9 6 6 6-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+      </button>
+      {open && (
+        <div className="vb-enter flex flex-col gap-2.5">
+          <ActivityFeed entries={entries} />
+          {!!contextPaths.length && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[10.5px] text-quiet">Konteks dibaca:</span>
+              {contextPaths.slice(0, 8).map((p) => (
+                <span key={p} className="max-w-[160px] truncate rounded-full border border-edge bg-surface px-2 py-0.5 font-mono text-[10px] text-quiet" title={p}>{p.split('/').pop()}</span>
+              ))}
+            </div>
+          )}
+          {plan && <PlanCard plan={plan} />}
+          {audit && <AuditCard audit={audit} />}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* Kartu pertanyaan agent: run dijeda sampai user mengisi jawaban. Input
+   lokal dipakai supaya tidak menyentuh composer utama. */
+function QuestionCard({ question, hint, onSubmit }: { question: string; hint: string | null; onSubmit: (text: string) => void }) {
+  const [value, setValue] = useState('')
+  return (
+    <div className="vb-enter mx-auto flex max-w-[640px] flex-col gap-2.5 rounded-xl border border-accent/40 bg-surface p-3.5">
+      <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-accent">
+        <span className="inline-block h-1.5 w-1.5 rounded-full bg-accent" />
+        Agent butuh informasi
+      </div>
+      <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-body">{question}</p>
+      {hint ? <p className="text-[11.5px] leading-relaxed text-quiet">{hint}</p> : null}
+      <form
+        className="flex gap-2"
+        onSubmit={(e) => {
+          e.preventDefault()
+          const v = value.trim()
+          if (!v) return
+          onSubmit(v)
+          setValue('')
+        }}
+      >
+        <input
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder="Tulis jawabanmu…"
+          autoFocus
+          className="min-w-0 flex-1 rounded-lg border border-edge bg-ink px-3 py-2 text-[12px] text-body outline-none placeholder:text-quiet focus:border-accent"
+        />
+        <button type="submit" disabled={!value.trim()} className="rounded-lg bg-accent px-3.5 py-2 text-[12px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40">
+          Kirim
+        </button>
+      </form>
+    </div>
   )
 }
 

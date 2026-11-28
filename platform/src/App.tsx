@@ -1105,6 +1105,7 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
   const [planMode, setPlanMode] = useState(false)
   const [pendingPlan, setPendingPlan] = useState<{ prompt: string; imageIds: string[] } | null>(null)
   const [awaitingConfirm, setAwaitingConfirm] = useState(false)
+  const [pendingAnswer, setPendingAnswer] = useState<{ question: string; hint: string | null } | null>(null)
   const { entries: activity, push: pushActivity, reset: resetActivity } = useActivity()
   const abortRef = useRef<AbortController | null>(null)
 
@@ -1134,6 +1135,8 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
       setPendingPlan(null)
       setAwaitingConfirm(false)
     }
+    // Pertanyaan agent yang menunggu jawaban — tampilkan lagi setelah reload.
+    setPendingAnswer(d.pendingAnswer ? { question: d.pendingAnswer.question, hint: d.pendingAnswer.hint } : null)
     const st = await api.previewStatus(projectId)
     setPreviewOn(st.running)
     return d
@@ -1240,7 +1243,10 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
     setContextPaths([])
     setVersion(null)
     pushActivity({ kind: 'status', text: 'menyiapkan', at: Date.now() })
-    if (!optsConfirmed) setPendingPlan({ prompt: text, imageIds })
+    // Kirim sebagai jawaban atas pertanyaan agent bila sedang menunggu.
+    const answerOpts = pendingAnswer && !opts.confirmed ? { answer: text } : undefined
+    if (answerOpts) setPendingAnswer(null)
+    if (!optsConfirmed && !answerOpts) setPendingPlan({ prompt: text, imageIds })
     else setPendingPlan(null)
     setAwaitingConfirm(false)
     // Run konfirmasi = lanjutan dari prompt yang sama; jangan tampilkan bubble user dua kali.
@@ -1288,6 +1294,12 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
       onAssistant: (t) => {
         setStreamText('')
         setMessages((m) => [...m, { role: 'assistant', content: t, created_at: Date.now() }])
+      },
+      onAwaitingAnswer: (question, hint) => {
+        didAwaitConfirm = true
+        setStatus('')
+        setPendingAnswer({ question, hint })
+        setMessages((m) => [...m, { role: 'assistant', content: question, created_at: Date.now() }])
       },
       onAwaitingConfirmation: () => {
         // Gerbang konfirmasi: rencana sudah tampil di chat; tunggu tombol "Setujui".
@@ -1362,7 +1374,7 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
       /* Wire ke server HANYA bare model id (auto → undefined = default
          server). Prefix provider dari pilihan dilepas di sini — server
          belum punya format wire untuk provider (lihat models.ts). */
-      await chatStream(projectId, text, handlers, ctrl.signal, { model: modelIdForServer(model), planMode: opts.noPlan ? false : planMode, confirmPlan: opts.noPlan ? false : true, confirmed: optsConfirmed, imageIds })
+      await chatStream(projectId, text, handlers, ctrl.signal, { model: modelIdForServer(model), planMode: opts.noPlan ? false : planMode, confirmPlan: opts.noPlan ? false : true, confirmed: optsConfirmed, imageIds, answer: answerOpts?.answer })
     } catch (err) {
       setMessages((m) => [...m, { role: 'error', content: (err as Error).message, created_at: Date.now() }])
     } finally {
@@ -1381,6 +1393,14 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
        natural, lalu konteks selector disisipkan otomatis saat kirim. */
     setPickedTarget(t)
     navigate(`/proyek/${projectId}/chat`)
+  }
+
+  /* Jawaban atas pertanyaan agent: lanjutkan run tanpa menyusun ulang rencana
+     (konteks sudah ada di server dari run yang dijeda). */
+  const answerQuestion = async (text: string) => {
+    if (sending || !pendingAnswer) return
+    setPendingAnswer(null)
+    await send(text, false, [], { noPlan: true })
   }
 
   const confirmPlanAndRun = async () => {
@@ -1613,6 +1633,8 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
             onConfirmPlan={confirmPlanAndRun}
             onCancelPlan={cancelPlan}
             awaitingConfirm={awaitingConfirm}
+            pendingAnswer={pendingAnswer}
+            onAnswerQuestion={answerQuestion}
             onOpenSettings={() => setSettingsOpen(true)}
             waitingForDiscovery={!!pendingDiscovery}
             inlineEvents={inlineEvents}

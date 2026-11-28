@@ -121,6 +121,7 @@ export const api = {
     req<{ project: Project }>(`/api/projects/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
   deleteProject: (id: string) => req<{ ok: boolean }>(`/api/projects/${id}`, { method: 'DELETE' }),
   cancelPendingPlan: (id: string) => req<{ ok: boolean }>(`/api/projects/${id}/pending-plan`, { method: 'DELETE' }),
+  cancelPendingAnswer: (id: string) => req<{ ok: boolean }>(`/api/projects/${id}/pending-answer`, { method: 'DELETE' }),
   files: (id: string) => req<{ files: FileEntry[] }>(`/api/projects/${id}/files`),
   file: (id: string, path: string) =>
     req<{ path: string; content: string }>(`/api/projects/${id}/file?path=${encodeURIComponent(path)}`),
@@ -309,6 +310,7 @@ export type ChatHandlers = {
   onAssistant?: (text: string) => void
   onScreenshot?: (url: string, name: string) => void
   onAwaitingConfirmation?: (ringkasan: string) => void
+  onAwaitingAnswer?: (question: string, hint: string | null) => void
   onError?: (text: string) => void
   onPublished?: (slug: string, url: string) => void
   onDone?: () => void
@@ -341,12 +343,12 @@ export async function chatStream(
   message: string,
   h: ChatHandlers,
   signal?: AbortSignal,
-  opts?: { model?: string; planMode?: boolean; confirmPlan?: boolean; confirmed?: boolean; imageIds?: string[] },
+  opts?: { model?: string; planMode?: boolean; confirmPlan?: boolean; confirmed?: boolean; imageIds?: string[]; answer?: string },
 ) {
   const res = await fetch(`/api/projects/${projectId}/chat`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ message, model: opts?.model, planMode: opts?.planMode, confirmPlan: opts?.confirmPlan, confirmed: opts?.confirmed, imageIds: opts?.imageIds }),
+    body: JSON.stringify({ message, model: opts?.model, planMode: opts?.planMode, confirmPlan: opts?.confirmPlan, confirmed: opts?.confirmed, imageIds: opts?.imageIds, answer: opts?.answer }),
     signal,
   })
   if (!res.ok || !res.body) throw new Error(`chat gagal: ${res.status}`)
@@ -386,6 +388,7 @@ export async function chatStream(
       else if (event === 'assistant') h.onAssistant?.(payload.text)
       else if (event === 'screenshot') h.onScreenshot?.(payload.url, payload.name)
       else if (event === 'awaiting_confirmation') h.onAwaitingConfirmation?.(payload.ringkasan)
+      else if (event === 'awaiting_answer') h.onAwaitingAnswer?.(payload.question, payload.hint)
       else if (event === 'published') h.onPublished?.(payload.slug, payload.url)
       else if (event === 'error') h.onError?.(payload.text)
       else if (event === 'done') h.onDone?.()

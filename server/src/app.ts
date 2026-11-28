@@ -36,6 +36,7 @@ import {
 import { db } from './db.ts'
 import type { Project } from './db.ts'
 import { getPendingPlan, clearPendingPlan } from './pending-plan.ts'
+import { getPendingAnswer, clearPendingAnswer } from './pending-answer.ts'
 import { saveReferenceImage, listReferenceImages, readReferenceImage, deleteReferenceImage } from './reference-images.ts'
 import { listVersions, getVersionDiff, restoreVersion, snapshotVersion, diffLines } from './versions.ts'
 import { PROJECTS_DIR } from './paths.ts'
@@ -694,6 +695,7 @@ app.get('/api/projects/:id', (c) => {
     build: lastBuild(p.id) ?? null,
     previewPort: previewPort(p.id),
     pendingPlan: getPendingPlan(p.id) ?? null,
+    pendingAnswer: getPendingAnswer(p.id) ?? null,
   })
 })
 
@@ -713,6 +715,14 @@ app.delete('/api/projects/:id', async (c) => {
   // Hapus folder file fisik proyek (source, node_modules, dist, dsb.) dari VPS.
   try { rmSync(projectDir(r.project.id), { recursive: true, force: true }) } catch { /* folder mungkin tak ada */ }
   deleteProject(r.project.id)
+  return c.json({ ok: true })
+})
+
+/* Pertanyaan agent yang menunggu jawaban user. */
+app.delete('/api/projects/:id/pending-answer', (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  clearPendingAnswer(r.project.id)
   return c.json({ ok: true })
 })
 
@@ -1014,9 +1024,14 @@ app.post('/api/projects/:id/chat', async (c) => {
   if (limited) return limited
   const id = r.project.id
 
-  const body = (await c.req.json().catch(() => ({}))) as { message?: string; model?: string; planMode?: boolean; confirmPlan?: boolean; confirmed?: boolean; imageIds?: string[] }
+  const body = (await c.req.json().catch(() => ({}))) as { message?: string; model?: string; planMode?: boolean; confirmPlan?: boolean; confirmed?: boolean; imageIds?: string[]; answer?: string }
   const message = (body.message ?? '').trim()
   if (!message) return c.json({ error: 'message kosong' }, 400)
+  // Balasan atas pertanyaan agent: pakai pesan pending bila user tidak mengisi
+  // (misalnya hanya menekan kirim), lalu habiskan pertanyaan tersebut.
+  const pendingAnswer = getPendingAnswer(id)
+  const answer = typeof body.answer === 'string' && body.answer.trim() ? body.answer.trim() : (pendingAnswer && !body.confirmed ? message : undefined)
+  if (answer) clearPendingAnswer(id)
   const pendingPlan = getPendingPlan(id)
   const imageIds = (body.confirmed && pendingPlan?.plan.imageIds?.length ? pendingPlan.plan.imageIds : body.imageIds ?? [])
     .filter((x: unknown): x is string => typeof x === 'string' && /^[a-f0-9]{10}$/.test(x)).slice(0, 3)
@@ -1065,12 +1080,13 @@ app.post('/api/projects/:id/chat', async (c) => {
       else if (e.type === 'assistant') await send('assistant', e)
       else if (e.type === 'screenshot') await send('screenshot', e)
       else if (e.type === 'awaiting_confirmation') await send('awaiting_confirmation', e)
+      else if (e.type === 'awaiting_answer') await send('awaiting_answer', e)
       else await send('error', e)
     }
 
     let agentFailed = false
     try {
-      await runAgent(id, message, onEvent, body.model, body.planMode, { userId: c.get('user').id, confirmPlan: body.confirmPlan === true, confirmed: body.confirmed === true, imageIds })
+      await runAgent(id, message, onEvent, body.model, body.planMode, { userId: c.get('user').id, confirmPlan: body.confirmPlan === true, confirmed: body.confirmed === true, imageIds, answer })
       dbg(`agent resolved at ${(Date.now() - t0) / 1000}s`)
       setStatus(id, 'idle')
     } catch (err) {

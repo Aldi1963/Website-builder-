@@ -125,6 +125,21 @@ export const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'ask_user',
+      description: 'TANYA ke user lalu HENTIKAN run sampai user menjawab di chat. Pakai HANYA bila kamu benar-benar membutuhkan informasi yang tidak bisa kamu keputuskan sendiri dan mengubah hasil — misalnya kredensial/login web yang akan kamu isi sendiri di preview, atau pilihan alur yang menentukan struktur data. JANGAN dipakai untuk warna/font/selera atau hal yang bisa kamu asumsikan. Setelah user menjawab, run dilanjutkan otomatis dengan jawabannya.',
+      parameters: {
+        type: 'object',
+        properties: {
+          question: { type: 'string', description: 'Pertanyaan singkat, jelas, dalam bahasa user. Contoh: "Email dan password apa yang harus saya pakai untuk masuk ke web ini?"' },
+          hint: { type: 'string', description: 'Petunjuk opsional: format yang diharapkan atau kenapa kamu bertanya. Contoh: "Saya akan mengisinya di form login preview untuk memverifikasi alur."' },
+        },
+        required: ['question'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'set_secret',
       description: 'Simpan kredensial/rahasia proyek (token API, password, kunci) sebagai environment variable HANYA di server preview — tidak pernah ditulis ke file proyek atau terkirim ke client. Nilai hanya bisa ditulis, tidak bisa dibaca kembali. Contoh: WA_SESSION_TOKEN, API_KEY.',
       parameters: {

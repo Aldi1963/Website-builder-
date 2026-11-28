@@ -13,6 +13,7 @@ import {
 } from './workspace.ts'
 import { putFile, removeFile, listFiles, addMessage, listMessages, setSetting as setSettingFromAgent } from './db.ts'
 import { savePendingPlan, clearPendingPlan, type PendingPlanData } from './pending-plan.ts'
+import { savePendingAnswer, clearPendingAnswer } from './pending-answer.ts'
 import { readReferenceImage } from './reference-images.ts'
 import { snapshotVersion, restoreVersion, listVersions } from './versions.ts'
 import { captureScreenshot, captureForReview } from './screenshots.ts'
@@ -31,6 +32,7 @@ export type AgentEvent =
   | { type: 'assistant'; text: string }
   | { type: 'screenshot'; url: string; name: string }
   | { type: 'awaiting_confirmation'; ringkasan: string }
+  | { type: 'awaiting_answer'; question: string; hint: string | null }
   | { type: 'done' }
   | { type: 'error'; text: string }
 
@@ -42,7 +44,7 @@ export async function runAgent(
   emit: (e: AgentEvent) => void | Promise<void>,
   model?: string,
   forcePlanMode?: boolean,
-  opts?: { userId?: string; confirmed?: boolean; confirmPlan?: boolean; imageIds?: string[] },
+  opts?: { userId?: string; confirmed?: boolean; confirmPlan?: boolean; imageIds?: string[]; answer?: string },
 ): Promise<void> {
   ensureWorkspace(projectId)
   // Run baru menggantikan rencana lama yang belum disetujui (atau menghabiskan
@@ -80,6 +82,11 @@ export async function runAgent(
     { role: 'system', content: `${BASE_SYSTEM}${designContext}${ctx.text}\n\nWorkspace saat ini:\n${fileIndex(projectId)}${dbContext}` },
     ...history.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
   ]
+  if (opts?.answer) {
+    // Lanjutan setelah user menjawab pertanyaan agent: jawaban menjadi pesan
+    // user agar model melanjutkan kerja dengan konteks yang sama.
+    messages.push({ role: 'user', content: `Jawaban user untuk pertanyaanmu: ${opts.answer}\n\nLanjutkan pekerjaan dari tempat kamu berhenti. Pakai jawaban ini bila kamu butuh mengisi form/login di preview, lalu verifikasi dengan build + check_preview.` })
+  }
 
   /* Referensi gambar dari user: dimuat dari .references, dikirim sekali di awal
      sebagai pesan user multimodal. Bersifat referensi visual, bukan screenshot
@@ -301,6 +308,7 @@ let pendingPreviewDefects: string[] = []
   }
   } // end else (full pipeline)
 
+  let askedUser = false
   let auditCompleted = false
   let auditFixRequested = false
   let didWrite = false
@@ -612,6 +620,18 @@ let pendingPreviewDefects: string[] = []
         const r = await installDeps(projectId, packages)
         await emit({ type: 'install', ok: r.code === 0, log: r.output.slice(-4000) })
         result = `exit=${r.code}\n${r.output.slice(-2500)}`
+      } else if (name === 'ask_user') {
+        const question = String(args.question ?? '').trim().slice(0, 500)
+        const hint = String(args.hint ?? '').trim().slice(0, 300) || null
+        if (!question) {
+          result = 'ERROR: pertanyaan tidak boleh kosong.'
+        } else {
+          savePendingAnswer(projectId, question, hint ?? undefined)
+          addMessage(projectId, 'assistant', `${question}${hint ? `\n\n${hint}` : ''}`)
+          await emit({ type: 'awaiting_answer', question, hint })
+          result = 'MENUNGGU_JAWABAN_USER: run dihentikan. Jangan lanjutkan atau merangkum sampai user menjawab.'
+          askedUser = true
+        }
       } else if (name === 'set_secret') {
         const key = String(args.key ?? '').trim()
         const value = String(args.value ?? '')
@@ -633,6 +653,7 @@ let pendingPreviewDefects: string[] = []
       }
 
       messages.push({ role: 'tool', tool_call_id: call.id, name, content: result.slice(0, 12_000) })
+      if (askedUser) break
     }
 
     // Auto-fix build: setelah giliran menulis file, bila build terakhir gagal, suruh agent memperbaiki sendiri.
@@ -650,6 +671,17 @@ let pendingPreviewDefects: string[] = []
 
     if (!quickEdit && didWrite && !auditCompleted && step === 0) {
       messages.push({ role: 'user', content: 'Sebelum ringkasan akhir, panggil tool audit satu kali.' })
+    }
+
+    if (askedUser) {
+      // Simpan percakapan parsial supaya run lanjutan tidak kehilangan jejak
+      // (rencana, tool call, hasil sebelumnya). Jawaban user disuntikkan di
+      // awal run berikutnya lewat opts.answer.
+      for (const m of messages.slice(1)) {
+        if (m.role === 'assistant' && m.content && typeof m.content === 'string' && !m.tool_calls) addMessage(projectId, 'assistant', m.content)
+      }
+      await emit({ type: 'done' })
+      return
     }
   }
 
