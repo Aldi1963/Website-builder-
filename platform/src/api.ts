@@ -350,6 +350,12 @@ export type VersionChanges = {
   changes: VersionChange[]
 }
 
+/** Daftar checkpoint versi proyek (terbaru lebih dulu). */
+export type ProjectVersion = { id: number; label: string; created_at: number; files: number }
+export function listProjectVersions(projectId: string) {
+  return req<{ versions: ProjectVersion[] }>(`/api/projects/${projectId}/versions`)
+}
+
 /** Diff ringkas antara snapshot 'sebelum' dengan file proyek saat ini. */
 export function versionChanges(projectId: string, versionId: number) {
   return req<VersionChanges>(`/api/projects/${projectId}/versions/${versionId}/changes`)

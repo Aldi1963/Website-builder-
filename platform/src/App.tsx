@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '@cloudflare/kumo/components/button'
 import { Icon, ProjectThumb, Spinner, StatusBadge, Wordmark } from './ui'
-import { api, auth, ChatHandlers, chatStream, Project, exportProjectZip, type ActivityEvent, type User } from './api'
+import { api, auth, ChatHandlers, chatStream, Project, exportProjectZip, listProjectVersions, restoreProjectVersion, type ActivityEvent, type ProjectVersion, type User } from './api'
 import { AuthGate, UserBar } from './auth'
 import { matchPath, navigate, usePath } from './router'
 import { ChatPanel, CodePane, PreviewPane, SettingsSheet, type ChatAudit, type ChatPlan, type InlineEvent, type VisualTarget, type VersionInfo } from './panels'
@@ -1034,6 +1034,8 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
   const [publishing, setPublishing] = useState(false)
   const [publishMsg, setPublishMsg] = useState('')
   const [pubUrl, setPubUrl] = useState<string | null>(null)
+  const [versions, setVersions] = useState<ProjectVersion[] | null>(null)
+  const [restoringVersion, setRestoringVersion] = useState<number | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [usage, setUsage] = useState<{ requests: number; promptTokens: number; completionTokens: number } | null>(null)
   const [model, setModel] = useState(() => localStorage.getItem('vb-model') ?? 'auto')
@@ -1067,6 +1069,18 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
     setTab(routeTab === 'file' ? 'code' : 'chat')
     if (routeTab === 'file' && openFile) saveView(projectId, { tab: 'code', file: openFile })
   }, [routeTab, projectId, openFile])
+
+  /* Riwayat versi dimuat saat tab Terbitkan dibuka, supaya tombol rollback
+     selalu menampilkan checkpoint terbaru setelah agent selesai bekerja. */
+  useEffect(() => {
+    if (routeTab !== 'terbitkan') return
+    let alive = true
+    setVersions(null)
+    listProjectVersions(projectId)
+      .then((r) => { if (alive) setVersions(r.versions) })
+      .catch(() => { if (alive) setVersions([]) })
+    return () => { alive = false }
+  }, [routeTab, projectId])
 
   const [planMode, setPlanMode] = useState(false)
   const [pendingPlan, setPendingPlan] = useState<{ prompt: string; imageIds: string[] } | null>(null)
@@ -1418,6 +1432,23 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
     setSlug(null)
   }
 
+  const rollbackTo = async (versionId: number) => {
+    setRestoringVersion(versionId)
+    setPublishMsg('')
+    try {
+      const r = await restoreProjectVersion(projectId, versionId)
+      if (!r.ok) throw new Error('Pulihkan versi gagal')
+      setPublishMsg(`Versi ${versionId} dipulihkan (${r.restored} file, build ${r.buildOk ? 'OK' : 'gagal'}). Klik Perbarui publikasi untuk tayangkan.`)
+      setDirty(true)
+      const fresh = await listProjectVersions(projectId)
+      setVersions(fresh.versions)
+    } catch (err) {
+      setPublishMsg((err as Error).message)
+    } finally {
+      setRestoringVersion(null)
+    }
+  }
+
   const reloadPreview = async () => {
     try {
       const p = await api.preview(projectId)
@@ -1569,7 +1600,7 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
           ) : routeTab === 'jalankan' ? (
             <RunPane running={booting} buildLog={buildLog} hasFiles={files.length > 0} dirty={dirty} onRun={() => void startPreview()} onBack={() => navigate(`/proyek/${projectId}/chat`)} />
           ) : routeTab === 'terbitkan' ? (
-            <PublishPane slug={slug} pubUrl={pubUrl} publishing={publishing} publishMsg={publishMsg} canPublish={files.length > 0} onPublish={publish} onUnpublish={() => void unpublish()} onBack={() => navigate(`/proyek/${projectId}/chat`)} />
+            <PublishPane slug={slug} pubUrl={pubUrl} publishing={publishing} publishMsg={publishMsg} canPublish={files.length > 0} versions={versions} restoringVersion={restoringVersion} onRollback={(v) => void rollbackTo(v)} onPublish={publish} onUnpublish={() => void unpublish()} onBack={() => navigate(`/proyek/${projectId}/chat`)} />
           ) : routeTab === 'export' ? (
             <ExportPane canExport={files.length > 0} onExport={() => void exportProjectZip(projectId).catch(() => {})} onBack={() => navigate(`/proyek/${projectId}/chat`)} />
           ) : routeTab === 'tampilan' ? (
@@ -1643,8 +1674,9 @@ function RunPane({ running, buildLog, hasFiles, dirty, onRun, onBack }: {
   )
 }
 
-function PublishPane({ slug, pubUrl, publishing, publishMsg, canPublish, onPublish, onUnpublish, onBack }: {
+function PublishPane({ slug, pubUrl, publishing, publishMsg, canPublish, versions, restoringVersion, onRollback, onPublish, onUnpublish, onBack }: {
   slug: string | null; pubUrl: string | null; publishing: boolean; publishMsg: string; canPublish: boolean
+  versions: ProjectVersion[] | null; restoringVersion: number | null; onRollback: (v: number) => void
   onPublish: () => void; onUnpublish: () => void; onBack: () => void
 }) {
   return (
@@ -1664,6 +1696,27 @@ function PublishPane({ slug, pubUrl, publishing, publishMsg, canPublish, onPubli
       )}
       {!canPublish && <p className="mt-3 text-[11.5px] text-quiet">Build proyek dulu sebelum menerbitkan.</p>}
       {publishMsg && <p className="mt-3 border-l-2 border-accent pl-2 text-[12px] text-body">{publishMsg}</p>}
+      <div className="mt-5">
+        <h3 className="mb-2 text-[12px] font-semibold text-body">Riwayat versi</h3>
+        {versions === null && <p className="text-[11.5px] text-quiet">Memuat versi…</p>}
+        {versions?.length === 0 && <p className="text-[11.5px] text-quiet">Belum ada checkpoint. Versi dibuat otomatis setiap kali agent selesai mengubah file.</p>}
+        {versions && versions.length > 0 && (
+          <ul className="space-y-1.5">
+            {versions.slice(0, 12).map((v) => (
+              <li key={v.id} className="vb-card flex items-center justify-between gap-3 px-3 py-2">
+                <div className="min-w-0">
+                  <p className="truncate text-[12px] text-body">v{v.id} · {v.label || 'Checkpoint'}</p>
+                  <p className="text-[10.5px] text-quiet">{v.files} file · {new Date(v.created_at).toLocaleString('id-ID')}</p>
+                </div>
+                <button onClick={() => onRollback(v.id)} disabled={restoringVersion !== null || publishing}
+                  className="vb-btn-ghost h-8 shrink-0 px-3 text-[11px] disabled:opacity-50">
+                  {restoringVersion === v.id ? 'Memulihkan…' : 'Pulihkan'}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
       <button onClick={onBack} className="mt-4 text-[12px] text-quiet underline hover:text-body">Kembali ke chat</button>
     </PanelShell>
   )
