@@ -4,7 +4,7 @@ import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync } from 
 import { join } from 'node:path'
 import { PROJECTS_DIR } from './paths.ts'
 import { listFiles, getFile } from './db.ts'
-import { writeProjectFile } from './workspace.ts'
+import { deleteProjectFile, writeProjectFile } from './workspace.ts'
 
 export type VersionSnapshot = {
   id: number
@@ -51,9 +51,18 @@ export function restoreVersion(projectId: string, versionId: number): { ok: bool
   if (!existsSync(file)) return { ok: false, restored: 0 }
   const snap = JSON.parse(readFileSync(file, 'utf8')) as VersionSnapshot
   let restored = 0
+  const keep = new Set(snap.files.map((f) => f.path))
   for (const f of snap.files) {
     writeProjectFile(projectId, f.path, f.content)
     restored++
+  }
+  // Restore penuh: hapus file yang dibuat setelah snapshot agar benar-benar
+  // kembali ke kondisi sebelum perubahan (checkpoint gaya Lovable).
+  for (const f of listFiles(projectId)) {
+    if (!keep.has(f.path)) {
+      deleteProjectFile(projectId, f.path)
+      restored++
+    }
   }
   return { ok: true, restored }
 }

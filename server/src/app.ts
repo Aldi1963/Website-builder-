@@ -3,7 +3,8 @@ import { serveStatic } from '@hono/node-server/serve-static'
 import { streamSSE } from 'hono/streaming'
 import { cors } from 'hono/cors'
 import { randomBytes } from 'node:crypto'
-import { appendFileSync, rmSync } from 'node:fs'
+import { appendFileSync, rmSync, existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import {
   createProject,
   getProject,
@@ -37,6 +38,7 @@ import type { Project } from './db.ts'
 import { getPendingPlan, clearPendingPlan } from './pending-plan.ts'
 import { saveReferenceImage, listReferenceImages, readReferenceImage, deleteReferenceImage } from './reference-images.ts'
 import { listVersions, getVersionDiff, restoreVersion, snapshotVersion, diffLines } from './versions.ts'
+import { PROJECTS_DIR } from './paths.ts'
 import { projectZip } from './export.ts'
 import { syncToGitHub, saveGitHubConfig } from './github-sync.ts'
 import {
@@ -995,6 +997,17 @@ app.post('/api/projects/:id/chat', async (c) => {
         dbg(`auto-publish gagal: ${(err as Error).message}`)
       }
     }
+    // Checkpoint dikirim terlepas dari hasil audit: selama file berubah,
+    // pengguna tetap perlu tombol Undo gaya Lovable.
+    try {
+      const vs = listVersions(id)
+      const before = [...vs].reverse().find((v) => v.label.startsWith('sebelum:'))
+      if (before) {
+        const diff = getVersionDiff(id, before.id)
+        const changed = diff?.changed ?? []
+        if (changed.length) await send('version', { before: before.id, after: before.id + 1, changed })
+      }
+    } catch { /* event version opsional */ }
     await send('done', { ok: true })
     dbg(`done sent at ${(Date.now() - t0) / 1000}s`)
   })
@@ -1021,6 +1034,29 @@ app.get('/api/projects/:id/versions/:vid', (c) => {
   const diff = getVersionDiff(r.project.id, vid)
   if (!diff) return c.json({ error: 'versi tidak ditemukan' }, 404)
   return c.json(diff)
+})
+
+app.get('/api/projects/:id/versions/:vid/changes', (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  const vid = Number(c.req.param('vid'))
+  const dir = join(PROJECTS_DIR, r.project.id, '.versions')
+  const file = join(dir, `v${vid}.json`)
+  if (!existsSync(file)) return c.json({ error: 'versi tidak ditemukan' }, 404)
+  let snap: { id: number; label: string; created_at: number; files: { path: string; content: string }[] }
+  try { snap = JSON.parse(readFileSync(file, 'utf8')) } catch { return c.json({ error: 'versi rusak' }, 400) }
+  const before = new Map(snap.files.map((f) => [f.path, f.content]))
+  const current = new Map(listFiles(r.project.id).map((f) => [f.path, getFile(r.project.id, f.path) ?? '']))
+  const paths = new Set([...before.keys(), ...current.keys()])
+  const changes: { path: string; kind: 'added' | 'removed' | 'modified'; diff: string[] }[] = []
+  for (const path of paths) {
+    const a = before.get(path)
+    const b = current.get(path)
+    const kind = a === undefined ? 'added' : b === undefined ? 'removed' : a === b ? null : 'modified'
+    if (!kind) continue
+    changes.push({ path, kind, diff: diffLines(a ?? '', b ?? '').slice(0, 120) })
+  }
+  return c.json({ version: snap.id, label: snap.label, created_at: snap.created_at, changes })
 })
 
 app.post('/api/projects/:id/versions/:vid/restore', async (c) => {

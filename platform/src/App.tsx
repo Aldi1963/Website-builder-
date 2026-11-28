@@ -4,7 +4,7 @@ import { Icon, ProjectThumb, Spinner, StatusBadge, Wordmark } from './ui'
 import { api, auth, ChatHandlers, chatStream, Project, exportProjectZip, type ActivityEvent, type User } from './api'
 import { AuthGate, UserBar } from './auth'
 import { matchPath, navigate, usePath } from './router'
-import { ChatPanel, CodePane, PreviewPane, SettingsSheet, type ChatAudit, type ChatPlan, type InlineEvent, type VisualTarget } from './panels'
+import { ChatPanel, CodePane, PreviewPane, SettingsSheet, type ChatAudit, type ChatPlan, type InlineEvent, type VisualTarget, type VersionInfo } from './panels'
 import { useActivity } from './activity'
 import { MODEL_AUTO, getPickerModels, isSelectionAvailable, modelIdForServer } from './models'
 /* Fase 3 (UI credit): chip saldo + halaman Penggunaan. File ini milik Hermes
@@ -1017,6 +1017,7 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
   const [previewOn, setPreviewOn] = useState(false)
   const [inlineEvents, setInlineEvents] = useState<InlineEvent[]>([])
   const [contextPaths, setContextPaths] = useState<string[]>([])
+  const [version, setVersion] = useState<VersionInfo | null>(null)
   const [booting, setBooting] = useState(false)
   const [status, setStatus] = useState('')
   const [plan, setPlan] = useState<ChatPlan | null>(null)
@@ -1202,6 +1203,7 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
     setInlineEvents([])
     resetActivity()
     setContextPaths([])
+    setVersion(null)
     pushActivity({ kind: 'status', text: 'menyiapkan', at: Date.now() })
     if (!optsConfirmed) setPendingPlan({ prompt: text, imageIds })
     else setPendingPlan(null)
@@ -1219,6 +1221,7 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
         pushActivity({ kind: 'status', text: t, at: Date.now() })
       },
       onPlan: (event) => setPlan(event),
+      onVersion: (v) => setVersion({ before: v.before, after: v.after, changed: v.changed }),
       onAudit: (event) => setAudit(event),
       onFile: async (path, action) => {
         pushActivity({ kind: 'file', path, action, at: Date.now() })
@@ -1520,6 +1523,7 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
             waitingForDiscovery={!!pendingDiscovery}
             inlineEvents={inlineEvents}
             contextPaths={contextPaths}
+            version={version}
             events={events}
             onOpenFile={(path) => {
               navigate(`/proyek/${projectId}/file`)

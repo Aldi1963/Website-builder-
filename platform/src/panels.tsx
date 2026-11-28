@@ -8,7 +8,7 @@ import { Dialog } from '@cloudflare/kumo/components/dialog'
 import { Icon, Activity, Spinner, useAutoScroll, useCopy } from './ui'
 import { openTopupModal } from './topup-modal'
 import { ActivityFeed, PhaseStrip, TerminalBlock, type ActivityEntry } from './activity'
-import { api, type ActivityEvent, type AuditFinding, type PlanStep, type ProjectSettings } from './api'
+import { api, versionChanges, restoreProjectVersion, type ActivityEvent, type AuditFinding, type PlanStep, type ProjectSettings, type VersionChanges } from './api'
 import {
   FALLBACK_MODEL_CATALOG,
   MODEL_AUTO,
@@ -550,6 +550,97 @@ function ToggleRow({
   )
 }
 
+/* Kartu ringkas "N file berubah" di bawah jawaban agent. Klik untuk
+   melihat diff ringkas; tombol Undo mengembalikan project ke snapshot
+   sebelum giliran chat ini (Lovable-style checkpoint per pesan). */
+export type VersionInfo = {
+  before: number
+  after: number
+  changed: { path: string; kind: 'added' | 'removed' | 'modified' }[]
+}
+
+export function VersionCard({ projectId, version, onRestored }: {
+  projectId: string
+  version: VersionInfo
+  onRestored?: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [data, setData] = useState<VersionChanges | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState('')
+  const [undoOpen, setUndoOpen] = useState(false)
+
+  const toggle = async () => {
+    const next = !open
+    setOpen(next)
+    if (next && !data) {
+      try { setData(await versionChanges(projectId, version.before)) }
+      catch (err) { setMsg((err as Error).message || 'Gagal memuat diff') }
+    }
+  }
+
+  const undo = async () => {
+    setBusy(true)
+    setMsg('')
+    try {
+      const res = await restoreProjectVersion(projectId, version.before)
+      setMsg(res.ok ? `Dipulihkan ke sebelum perubahan (${res.restored} file).${res.buildOk ? ' Build OK.' : ' Build gagal — cek tab Kode.'}` : 'Restore gagal.')
+      setData(null)
+      setUndoOpen(false)
+      onRestored?.()
+    } catch (err) {
+      setMsg((err as Error).message || 'Restore gagal')
+    } finally { setBusy(false) }
+  }
+
+  const modified = version.changed.filter((c) => c.kind === 'modified').length
+  const added = version.changed.filter((c) => c.kind === 'added').length
+  const removed = version.changed.filter((c) => c.kind === 'removed').length
+  return (
+    <div className="vb-enter overflow-hidden rounded-lg border border-edge bg-surface">
+      <div className="flex flex-wrap items-center gap-2 px-3 py-2.5">
+        <Icon name="file" size={12} className="shrink-0 text-quiet" />
+        <button type="button" onClick={toggle} aria-expanded={open} className="min-w-0 flex-1 text-left text-[11.5px] text-body hover:underline" title="Lihat perubahan file">
+          <span className="font-semibold">{version.changed.length} file berubah</span>
+          <span className="ml-1.5 text-quiet">{modified} diubah · {added} baru · {removed} dihapus</span>
+        </button>
+        <button type="button" onClick={() => setUndoOpen((v) => !v)} disabled={busy} className="rounded-md border border-edge px-2 py-1 text-[10.5px] text-quiet hover:border-quiet hover:text-body disabled:opacity-50" title="Kembalikan proyek ke kondisi sebelum pesan ini">
+          Undo perubahan
+        </button>
+      </div>
+      {undoOpen && !open && (
+        <div className="flex items-center gap-2 border-t border-edge bg-surface-muted px-3 py-2 text-[11px] text-quiet">
+          <span className="min-w-0 flex-1">Kembalikan {version.changed.length} file ke sebelum perubahan ini? Build ulang akan dijalankan.</span>
+          <button type="button" onClick={() => setUndoOpen(false)} className="rounded-md px-2 py-1 hover:text-body">Batal</button>
+          <button type="button" onClick={undo} disabled={busy} className="rounded-md border border-danger/50 px-2 py-1 text-danger hover:bg-danger/10 disabled:opacity-50">{busy ? 'Memulihkan…' : 'Ya, undo'}</button>
+        </div>
+      )}
+      {open && (
+        <div className="vb-scroll max-h-[300px] overflow-auto border-t border-edge px-3 py-2.5">
+          {!data ? <div className="text-[11px] text-quiet">Memuat diff…</div> : data.changes.length === 0 ? (
+            <div className="text-[11px] text-quiet">Tidak ada perubahan tersisa dibanding snapshot ini.</div>
+          ) : data.changes.map((c) => (
+            <div key={c.path} className="mb-2.5">
+              <div className="mb-1 flex items-center gap-2 font-mono text-[10.5px]">
+                <span className={`uppercase ${c.kind === 'added' ? 'text-success' : c.kind === 'removed' ? 'text-danger' : 'text-accent'}`}>{c.kind}</span>
+                <span className="min-w-0 truncate text-body" title={c.path}>{c.path}</span>
+              </div>
+              {!!c.diff.length && (
+                <pre className="vb-scroll overflow-auto rounded-md border border-edge bg-ink px-2 py-1.5 font-mono text-[10.5px] leading-relaxed">
+                  {c.diff.map((line, idx) => (
+                    <div key={idx} className={line.startsWith('+') ? 'text-success' : line.startsWith('-') ? 'text-danger' : 'text-quiet'}>{line}</div>
+                  ))}
+                </pre>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {msg && <div className="border-t border-edge px-3 py-2 text-[11px] text-quiet">{msg}</div>}
+    </div>
+  )
+}
+
 export function ChatPanel({
   projectId,
   messages,
@@ -569,6 +660,7 @@ export function ChatPanel({
   inlineEvents,
   events,
   contextPaths,
+  version,
   onOpenFile,
   previewOpen,
   previewUrl,
@@ -590,6 +682,7 @@ export function ChatPanel({
   waitingForDiscovery: boolean
   inlineEvents?: InlineEvent[]
   contextPaths?: string[]
+  version?: VersionInfo | null
   /* Kartu aktivitas PERSISTEN dari server (bukan feed live): dirender di
      dalam transcript, kronologis terhadap bubble pesan. */
   events?: ActivityEvent[]
@@ -734,6 +827,9 @@ export function ChatPanel({
                   onOpenFile={onOpenFile}
                 />
               ),
+            )}
+            {!sending && version && !!version.changed.length && (
+              <VersionCard projectId={projectId} version={version} onRestored={() => setInlineEvents([])} />
             )}
             {sending && (
               <div className="vb-enter flex flex-col gap-2.5 text-[12px] text-quiet">

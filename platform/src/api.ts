@@ -253,6 +253,7 @@ export type ChatHandlers = {
   onBuild?: (ok: boolean, log: string) => void
   onInstall?: (ok: boolean, log: string) => void
   onContext?: (paths: string[]) => void
+  onVersion?: (v: Extract<AgentEvent, { type: 'version' }>) => void
   onAssistantDelta?: (text: string) => void
   onAssistant?: (text: string) => void
   onScreenshot?: (url: string, name: string) => void
@@ -329,6 +330,7 @@ export async function chatStream(
       else if (event === 'build') h.onBuild?.(payload.ok, payload.log)
       else if (event === 'install') h.onInstall?.(payload.ok, payload.log)
       else if (event === 'context') h.onContext?.(payload.paths)
+      else if (event === 'version') h.onVersion?.(payload)
       else if (event === 'assistant_delta') h.onAssistantDelta?.(payload.text)
       else if (event === 'assistant') h.onAssistant?.(payload.text)
       else if (event === 'screenshot') h.onScreenshot?.(payload.url, payload.name)
@@ -338,6 +340,27 @@ export async function chatStream(
       else if (event === 'done') h.onDone?.()
     }
   }
+}
+
+export type VersionChange = { path: string; kind: 'added' | 'removed' | 'modified'; diff: string[] }
+export type VersionChanges = {
+  version: number
+  label: string
+  created_at: number
+  changes: VersionChange[]
+}
+
+/** Diff ringkas antara snapshot 'sebelum' dengan file proyek saat ini. */
+export function versionChanges(projectId: string, versionId: number) {
+  return req<VersionChanges>(`/api/projects/${projectId}/versions/${versionId}/changes`)
+}
+
+/** Kembalikan seluruh file proyek ke snapshot dan bangun ulang. */
+export function restoreProjectVersion(projectId: string, versionId: number) {
+  return req<{ ok: boolean; restored: number; buildOk: boolean }>(
+    `/api/projects/${projectId}/versions/${versionId}/restore`,
+    { method: 'POST' },
+  )
 }
 
 export function formatTime(ts: number) {
