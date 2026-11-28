@@ -61,6 +61,33 @@ async function tryStatic(pathname) {
   }
 }
 
+/* ---------- Integrations: write-only secret proxy ----------
+   Form admin di aplikasi hasil generate memanggil endpoint ini. Nilai secret
+   diteruskan ke platform VibeBuilder memakai cookie sesi yang sama, lalu
+   disimpan sebagai env var write-only. Nilai TIDAK PERNAH dikembalikan, tidak
+   ditulis ke disk workspace, dan tidak masuk bundle client. */
+const PLATFORM_ORIGIN = process.env.VB_PLATFORM_ORIGIN ?? 'http://127.0.0.1:3000'
+const PROJECT_ID = process.env.VB_PROJECT_ID ?? ''
+async function integrationProxy(req, pathname) {
+  if (!PROJECT_ID) return new Response(JSON.stringify({ error: 'Project tidak dikenal.' }), { status: 503, headers: { 'content-type': 'application/json' } })
+  const url = `${PLATFORM_ORIGIN}/api/projects/${encodeURIComponent(PROJECT_ID)}${pathname}`
+  const headers = new Headers()
+  const cookie = req.headers.get('cookie')
+  if (cookie) headers.set('cookie', cookie)
+  const method = req.method
+  if (method !== 'GET') headers.set('content-type', 'application/json')
+  let body
+  if (method !== 'GET' && method !== 'HEAD') body = await req.text()
+  try {
+    const res = await fetch(url, { method, headers, body, signal: AbortSignal.timeout(8000) })
+    const text = await res.text()
+    // Platform mengembalikan {ok:true,key} — aman diteruskan (tanpa nilai).
+    return new Response(text, { status: res.status, headers: { 'content-type': 'application/json' } })
+  } catch {
+    return new Response(JSON.stringify({ error: 'Gagal menghubungi platform.' }), { status: 502, headers: { 'content-type': 'application/json' } })
+  }
+}
+
 const ssr = (req) => (typeof handler?.fetch === 'function' ? handler.fetch(req) : handler(req))
 
 /* ---------- LLM proxy: POST /api/chat ----------
@@ -246,6 +273,11 @@ await serve({
     if (pathname === '/api/embed') {
       if (request.method !== 'POST') return jsonError(405, 'Gunakan POST.')
       return handleEmbed(request)
+    }
+    if (pathname === '/api/integrations/secret' || pathname === '/api/integrations/keys') {
+      if (pathname.endsWith('/keys') && request.method !== 'GET') return jsonError(405, 'Gunakan GET.')
+      if (pathname.endsWith('/secret') && request.method !== 'PUT') return jsonError(405, 'Gunakan PUT.')
+      return integrationProxy(request, pathname === '/api/integrations/keys' ? '/secret-keys' : '/secrets')
     }
     const hit = await tryStatic(pathname)
     if (hit) return hit

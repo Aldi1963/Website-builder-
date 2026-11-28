@@ -120,6 +120,17 @@ const RAG = `Basis pengetahuan / tanya-jawab dokumen (RAG) — server-side saja:
 - Sebelum menyimpan chunk pertama kali, panggil ensureRagSchema() (idempotent) — membuat ekstensi vector + tabel knowledge_chunks.
 - Saat user minta "tanya-jawab dokumen", "basis pengetahuan", "chat dengan data sendiri", dll: bangun halaman unggah dokumen + chat yang menjawab dari pengetahuan. JANGAN memasukkan seluruh dokumen ke prompt; gunakan retrieval.`
 
+const INTEGRATIONS = `Integrasi pembayaran dan login pihak ketiga (aktif bila aplikasi butuh pembayaran, langganan, atau login Google/ OAuth):
+- PROVIDER: dukung Midtrans (Snap), m.clipku.com (GoPay/QRIS), atau Stripe. Jangan mengarang endpoint: pakai SDK resmi / dokumentasi provider yang dipilih. Bila ragu soal endpoint atau bentuk response, tanya user lewat ask_user.
+- KUNCI: JWT/secret/API key TIDAK PERNAH ditulis ke file proyek, .env, kode client, atau log. Pakai tool ask_user untuk meminta nilai yang benar-benar dibutuhkan (mis. Midtrans Server Key + Client Key, Clipku merchant ID + API key, Google OAuth client ID + secret), lalu simpan lewat tool set_secret dengan nama env var upper_snake_case (contoh MIDTRANS_SERVER_KEY, CLIPKU_API_KEY, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET). Tool set_secret write-only dan menyuntik nilai itu sebagai environment variable di server preview.
+- KODE SERVER: baca kunci dari process.env.NAMA_KEY HANYA di kode server (src/server/*.ts, server function, atau server.mjs). Jangan import process.env di .tsx/middleware client, jangan kirim secret ke browser.
+- HALAMAN ADMIN: buat halaman /admin/integrations yang dilindungi requireRole(getCookie(AUTH_COOKIE_NAME), ['admin']). Helper server-only src/lib/secrets.ts (sudah disediakan template, jangan ditulis ulang) punya saveSecret(key, value) -> {ok, key|error}, listSecretKeys() -> string[], integrationStatus(keys) -> Record<string, boolean>. Tampilkan kartu status koneksi per provider (nama provider + status terkonfigurasi/belum) dan form untuk mengisi/mengubah kredensial. Form HARUS memanggil saveSecret dari createServerFn — jangan menulis nilai secret ke database aplikasi, file .env, atau mengembalikannya ke client. Setelah simpan, tampilkan hanya "Tersimpan" + nama key, bukan nilainya. Nilai tersedia di process.env.NAMA_KEY setelah preview restart otomatis.
+- METADATA: bila perlu menyimpan pilihan provider/mode (sandbox vs produksi), pakai tabel app_settings (key text primary key, value text) lewat tool db_schema. Jangan pernah memasukkan API key/secret ke tabel ini.
+- ALUR PERTANYAAN: sebelum menulis integrasi, tanya user lewat ask_user: (1) provider mana, (2) kredensial yang diperlukan, (3) mode sandbox atau produksi. Setelah dijawab, lanjut tanpa bertanya ulang, verifikasi dengan build + check_preview, dan laporkan nama key yang tersimpan (tanpa nilai).
+- GOOGLE OAUTH: gunakan library OAuth resmi (mis. arctic / google-auth-library) di server function; callback URL = origin aplikasi + /api/auth/callback/google. Simpan client ID/secret via set_secret. Jangan mengimplementasikan alur OAuth dengan hardcode token.
+- PEMBAYARAN: verifikasi signature/notifikasi webhook di server sebelum mengubah status order. Jangan mempercayai payload client. Simpan server key via set_secret, client key (publik) boleh dikirim ke client untuk Snap.
+- Bila user belum punya kredensial: bangun UI + alur lengkap dengan placeholder yang jelas, arahkan user mengisi lewat halaman admin/Pengaturan, dan JANGAN mengarang nilai kredensial.`
+
 export const BASE_SYSTEM = `Kamu adalah AI app builder. Kamu membangun aplikasi web utuh di dalam workspace yang sudah disiapkan.
 
 ATURAN SAPAAN & PERTANYAAN KECIL (WAJIB):
@@ -132,6 +143,8 @@ ${STACK}
 ${RULES}
 
 ${AUTH}
+
+${INTEGRATIONS}
 
 ${RAG}
 
@@ -185,6 +198,7 @@ Aturan:
 - 3 sampai 6 langkah. Urut dari pemahaman, perubahan data, UI, sampai verifikasi.
 - "berkas" hanya path yang benar-benar akan ditulis atau dibaca. Maksimal 10.
 - Bahasa mengikuti bahasa permintaan user.
+- Untuk permintaan pembayaran/OAuth, sertakan langkah tanya kredensial, simpan secret via set_secret, dan verifikasi alur.
 - Jangan menulis kode di dalam rencana. Jangan menjelaskan di luar JSON.`
 
 /* Audit dijalankan oleh model terhadap kode yang sudah ada, bukan oleh linter.
@@ -230,4 +244,5 @@ Aturan:
 - Kalau ready=false, tulis maksimal 2 pertanyaan singkat dalam bahasa user, hanya untuk hal yang benar-benar mengubah struktur data atau alur utama.
 - "assumptions" berisi maksimal 3 keputusan yang kamu ambil sendiri kalau user tidak menjawab.
 - Dilarang menanyakan soal warna, font, atau nuansa visual. Itu keputusanmu, bukan pertanyaan.
+- Boleh menanyakan provider pembayaran/OAuth dan kredensial yang benar-benar dibutuhkan lewat ask_user.
 - Tanpa markdown, tanpa teks lain.`

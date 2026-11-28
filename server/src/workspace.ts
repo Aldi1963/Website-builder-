@@ -287,6 +287,14 @@ export async function startPreview(projectId: string): Promise<number> {
   // boleh membuat server WebSocket/webhook/worker yang tidak boleh ditimpa.
   const serverFile = join(TEMPLATE_DIR, 'server.mjs')
   if (!hasCustomServer(dir) && existsSync(serverFile)) cpSync(serverFile, join(dir, 'server.mjs'))
+  // Helper integrasi (secret proxy) tersedia juga untuk project lama: salin
+  // bila belum ada, tanpa pernah menimpa file yang sudah ditulis agent.
+  const secretsHelper = join(TEMPLATE_DIR, 'src', 'lib', 'secrets.ts')
+  const secretsTarget = join(dir, 'src', 'lib', 'secrets.ts')
+  if (existsSync(secretsHelper) && !existsSync(secretsTarget)) {
+    mkdirSync(join(dir, 'src', 'lib'), { recursive: true })
+    cpSync(secretsHelper, secretsTarget)
+  }
   const port = previewPort(projectId)
   // Settings stored per project are injected as env so generated apps can read
   // their own configuration without touching the platform's process env.
@@ -298,6 +306,10 @@ export async function startPreview(projectId: string): Promise<number> {
   // memakai VB_BASE untuk mengupas prefix dari aset statis & route /api lokal,
   // sementara SSR TanStack mengetahui basepath dari bundle hasil build.
   env.VB_BASE = `${previewPrefix(projectId)}/`
+  // Project ID dipakai server preview untuk memanggil proxy secret platform.
+  // Token sesi TIDAK disimpan di env/disk: browser mengirim cookie vb_session
+  // yang sama ke prefix preview, lalu server.mjs meneruskannya ke platform.
+  env.VB_PROJECT_ID = projectId
   env.TSS_ROUTER_BASEPATH = previewPrefix(projectId)
   // Database terkelola (Postgres per-proyek): suntik koneksi ke env supaya app
   // hasil generate bisa memakai DB permanen tanpa mengelola kredensial sendiri.

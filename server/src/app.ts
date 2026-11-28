@@ -400,6 +400,19 @@ app.put('/api/projects/:id/domain', async (c) => {
   return c.json({ ok: true, customDomain: domain })
 })
 
+/* Daftar NAMA kunci secret yang sudah tersimpan (tanpa nilai). Dipakai
+   halaman integrasi di aplikasi hasil generate untuk menampilkan status
+   koneksi tanpa pernah membaca/mengirim nilai rahasia. */
+app.get('/api/projects/:id/secret-keys', (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  const keys = listSettings(r.project.id)
+    .filter((s) => s.key.startsWith('secret_'))
+    .map((s) => s.key.slice(7))
+    .sort()
+  return c.json({ keys })
+})
+
 app.put('/api/projects/:id/secrets', async (c) => {
   const r = owned(c)
   if ('error' in r) return c.json({ error: r.error }, r.status)
