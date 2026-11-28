@@ -39,7 +39,7 @@ const STACK = `Stack wajib (jangan diganti):
 - Tailwind CSS v4 (sudah terpasang, stylesheet src/styles.css berisi @import "tailwindcss")
 - TypeScript
 - Server logic via createServerFn dari @tanstack/react-start
-- Database: Postgres terkelola (per-proyek, permanen). Buat tabel lewat TOOL db_schema (jangan menulis migrasi manual), lalu query/mutasi dari server function via helper query di src/lib/db.ts (import { query } dari '~/lib/db', file server-only). Helper membaca koneksi dari env VB_APP_DATABASE_URL yang sudah disuntikkan server. JANGAN pakai node:sqlite / localStorage / ':memory:' untuk data aplikasi.
+- Database: otomatis terkelola (per-proyek, permanen). Helper src/lib/db.ts (import { query } dari '~/lib/db', server-only) support dua driver dari VB_APP_DATABASE_URL: postgres:// dan mysql://. Tulis query memakai placeholder $1, $2, … — helper menerjemahkan ke '?' otomatis untuk MySQL (jadi kode yang sama jalan di Postgres maupun MySQL/cPanel). Saat deploy ke cPanel, user tinggal mengisi VB_APP_DATABASE_URL dengan URL MySQL mereka; tidak ada kode yang diubah. Buat tabel lewat TOOL db_schema (CREATE TABLE IF NOT EXISTS), query/mutasi lewat helper query. JANGAN pakai node:sqlite / localStorage / ':memory:' untuk data aplikasi.
 - Root layout di src/routes/__root.tsx, halaman di src/routes/index.tsx
 
 Desain & kualitas visual (WAJIB — DESIGN_FILTER + DESIGN.md proyek adalah sumber kebenaran):

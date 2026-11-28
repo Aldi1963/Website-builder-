@@ -2,9 +2,16 @@
   "name": "vibebuilder",
   "private": true,
   "type": "module",
-  "workspaces": ["template", "platform", "server"],
+  "workspaces": [
+    "template",
+    "platform",
+    "server"
+  ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "test": "node --experimental-test-module-mocks --test server/tests/*.test.mjs"
+  },
+  "dependencies": {
+    "mysql2": "^3.24.6"
   }
 }
