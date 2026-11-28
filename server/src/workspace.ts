@@ -105,13 +105,16 @@ export function run(
   cwd: string,
   timeoutMs = 180_000,
   extraEnv: Record<string, string> = {},
+  onChunk?: (text: string) => void,
 ): Promise<RunResult> {
   return new Promise((resolve) => {
     const child = spawn(cmd, args, { cwd, env: { ...process.env, CI: '1', ...extraEnv }, stdio: ['ignore', 'pipe', 'pipe'] })
     let out = ''
     const push = (b: Buffer) => {
-      out += b.toString('utf8')
+      const text = b.toString('utf8')
+      out += text
       if (out.length > 40_000) out = out.slice(-40_000)
+      onChunk?.(text)
     }
     child.stdout.on('data', push)
     child.stderr.on('data', push)
@@ -176,7 +179,7 @@ function ensurePreviewBuildConfig(projectId: string, dir: string) {
   if (existsSync(canonical)) writeFileSync(cfgPath, readFileSync(canonical, 'utf8'))
 }
 
-export async function buildProject(projectId: string) {
+export async function buildProject(projectId: string, onChunk?: (text: string) => void) {
   const dir = ensureWorkspace(projectId)
   ensurePreviewBuildConfig(projectId, dir)
   // Preview disajikan publik di /api/projects/<id>/live/, jadi bundle harus
@@ -186,7 +189,7 @@ export async function buildProject(projectId: string) {
   const r = await run('npm', ['run', 'build'], dir, 240_000, {
     VB_BASE: base,
     TSS_ROUTER_BASEPATH: base.slice(0, -1),
-  })
+  }, onChunk)
   if (r.code === 0) {
     reconcileAssets(dir)
     // A fresh build emits new content-hashed assets. A running SSR preview still

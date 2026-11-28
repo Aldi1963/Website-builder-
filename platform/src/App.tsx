@@ -1024,6 +1024,7 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
   const [plan, setPlan] = useState<ChatPlan | null>(null)
   const [audit, setAudit] = useState<ChatAudit | null>(null)
   const [buildLog, setBuildLog] = useState<{ ok: boolean; log: string } | null>(null)
+  const [buildPhase, setBuildPhase] = useState('')
   const [openFile, setOpenFile] = useState<string | null>(() => loadView(projectId).file)
   const [fileContent, setFileContent] = useState('')
   const [savedContent, setSavedContent] = useState('')
@@ -1392,11 +1393,16 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
 
   const startPreview = async () => {
     setBooting(true)
+    setBuildPhase('Menyiapkan…')
+    setBuildLog({ ok: true, log: '' })
     try {
-      const b = await api.build(projectId)
+      const b = await api.streamBuild(projectId, {
+        onLog: (text) => setBuildLog((cur) => ({ ok: cur?.ok ?? true, log: ((cur?.log ?? '') + text).slice(-12000) })),
+        onStatus: (message) => setBuildPhase(message),
+      })
+      setBuildPhase('')
       if (!b.ok) {
         setBuildLog({ ok: false, log: b.log })
-        navigate(`/proyek/${projectId}/file`)
         return
       }
       const p = await api.preview(projectId)
@@ -1407,6 +1413,7 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
       setBuildLog({ ok: false, log: (err as Error).message })
     } finally {
       setBooting(false)
+      setBuildPhase('')
     }
   }
 
@@ -1598,7 +1605,7 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
               onFilesRefresh={() => void api.files(projectId).then(({ files }) => { setFiles(files.map((f) => ({ path: f.path }))); setFilesReady(true) })}
             />
           ) : routeTab === 'jalankan' ? (
-            <RunPane running={booting} buildLog={buildLog} hasFiles={files.length > 0} dirty={dirty} onRun={() => void startPreview()} onBack={() => navigate(`/proyek/${projectId}/chat`)} />
+            <RunPane running={booting} phase={buildPhase} buildLog={buildLog} hasFiles={files.length > 0} dirty={dirty} onRun={() => void startPreview()} onBack={() => navigate(`/proyek/${projectId}/chat`)} />
           ) : routeTab === 'terbitkan' ? (
             <PublishPane slug={slug} pubUrl={pubUrl} publishing={publishing} publishMsg={publishMsg} canPublish={files.length > 0} versions={versions} restoringVersion={restoringVersion} onRollback={(v) => void rollbackTo(v)} onPublish={publish} onUnpublish={() => void unpublish()} onBack={() => navigate(`/proyek/${projectId}/chat`)} />
           ) : routeTab === 'export' ? (
@@ -1656,8 +1663,8 @@ function PanelShell({ title, note, children }: { title: string; note: string; ch
   )
 }
 
-function RunPane({ running, buildLog, hasFiles, dirty, onRun, onBack }: {
-  running: boolean; buildLog: { ok: boolean; log: string } | null; hasFiles: boolean; dirty: boolean
+function RunPane({ running, phase, buildLog, hasFiles, dirty, onRun, onBack }: {
+  running: boolean; phase: string; buildLog: { ok: boolean; log: string } | null; hasFiles: boolean; dirty: boolean
   onRun: () => void; onBack: () => void
 }) {
   return (
@@ -1666,8 +1673,9 @@ function RunPane({ running, buildLog, hasFiles, dirty, onRun, onBack }: {
         <Icon name="run" size={13} /> {running ? 'Sedang build…' : 'Build & jalankan preview'}
       </button>
       {dirty && <p className="mt-3 border-l-2 border-accent pl-2 text-[11.5px] text-body">Ada file yang belum disimpan — simpan dulu di menu Lihat file agar hasil build sesuai editor.</p>}
-      {buildLog && (
-        <pre className="vb-scroll mt-4 max-h-[320px] overflow-auto rounded-lg border border-edge bg-surface-muted p-3 font-mono text-[11px] leading-relaxed text-body">{buildLog.log}</pre>
+      {phase && <p className="mt-3 text-[12px] font-medium text-accent">● {phase}</p>}
+      {(buildLog || phase) && (
+        <pre className="vb-scroll mt-4 max-h-[320px] overflow-auto rounded-lg border border-edge bg-surface-muted p-3 font-mono text-[11px] leading-relaxed text-body">{buildLog?.log || 'Menunggu output build…'}</pre>
       )}
       <button onClick={onBack} className="mt-4 text-[12px] text-quiet underline hover:text-body">Kembali ke chat</button>
     </PanelShell>

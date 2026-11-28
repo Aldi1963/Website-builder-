@@ -153,6 +153,48 @@ export const api = {
     }),
   build: (id: string) =>
     req<{ ok: boolean; log: string }>(`/api/projects/${id}/build`, { method: 'POST' }),
+
+  /** Build dengan log real-time. `onLog` menerima potongan stdout/stderr npm
+     seketika proses menghasilkan output; `onStatus` menerima fase build. */
+  streamBuild: async (
+    id: string,
+    handlers: { onLog?: (text: string) => void; onStatus?: (message: string) => void },
+  ): Promise<{ ok: boolean; log: string }> => {
+    const res = await fetch(`/api/projects/${id}/build/stream`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+    })
+    if (!res.ok || !res.body) throw new Error(`Build gagal (${res.status})`)
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let result = { ok: false, log: '' }
+    while (true) {
+      const { value, done } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      // SSE events dipisah baris kosong.
+      let sep: number
+      while ((sep = buffer.indexOf('\n\n')) !== -1) {
+        const block = buffer.slice(0, sep)
+        buffer = buffer.slice(sep + 2)
+        const event = /^event: (.+)$/m.exec(block)?.[1] ?? 'message'
+        const raw = /^data: (.+)$/m.exec(block)?.[1]
+        if (!raw) continue
+        let payload: any
+        try { payload = JSON.parse(raw) } catch { continue }
+        if (event === 'log') {
+          handlers.onLog?.(payload.text ?? '')
+          result.log += payload.text ?? ''
+        } else if (event === 'status') {
+          handlers.onStatus?.(payload.message ?? '')
+        } else if (event === 'done') {
+          result = { ok: !!payload.ok, log: payload.log ?? result.log }
+        }
+      }
+    }
+    return result
+  },
   preview: (id: string) =>
     req<{ ok: boolean; port: number; url: string }>(`/api/projects/${id}/preview`, { method: 'POST' }),
   references: (id: string) => req<{ images: ReferenceImage[] }>(`/api/projects/${id}/references`),

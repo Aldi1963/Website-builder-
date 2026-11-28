@@ -761,6 +761,36 @@ app.post('/api/projects/:id/build', async (c) => {
   return c.json({ ok: build.code === 0, log: build.output.slice(-8000) })
 })
 
+/* Streaming build log: kirim potongan stdout/stderr npm langsung ke UI saat
+   tombol Build ditekan, supaya pengguna melihat progres nyata (gaya Lovable)
+   alih-alih menunggu satu respons besar di akhir build. */
+app.post('/api/projects/:id/build/stream', async (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  const id = r.project.id
+  return streamSSE(c, async (stream) => {
+    const send = (event: string, data: unknown) =>
+      stream.writeSSE({ event, data: JSON.stringify(data) }).catch(() => {})
+    await send('status', { phase: 'install', message: 'Menyiapkan dependensi…' })
+    setStatus(id, 'building')
+    const installed = await installDeps(id)
+    if (installed.code !== 0) {
+      recordBuild(id, false, installed.output)
+      setStatus(id, 'error')
+      await send('log', { text: installed.output.slice(-8000) })
+      await send('done', { ok: false, log: installed.output.slice(-8000) })
+      return
+    }
+    if (installed.output && installed.output !== 'deps cached') await send('log', { text: installed.output })
+    await send('status', { phase: 'build', message: 'Membangun aplikasi…' })
+    const build = await buildProject(id, (text) => void send('log', { text }))
+    const log = build.output.slice(-8000)
+    recordBuild(id, build.code === 0, build.output)
+    setStatus(id, build.code === 0 ? 'idle' : 'error')
+    await send('done', { ok: build.code === 0, log })
+  })
+})
+
 app.post('/api/projects/:id/install', async (c) => {
   const r = owned(c)
   if ('error' in r) return c.json({ error: r.error }, r.status)
