@@ -34,6 +34,7 @@ import {
   projectByDomain,
 } from './db.ts'
 import { db } from './db.ts'
+import { embedTexts, embedReady } from './embed.ts'
 import type { Project } from './db.ts'
 import { getPendingPlan, clearPendingPlan } from './pending-plan.ts'
 import { getPendingAnswer, clearPendingAnswer } from './pending-answer.ts'
@@ -664,6 +665,18 @@ app.delete('/api/projects/:id/secrets/:key', (c) => {
 /* ---------- health ---------- */
 
 app.get('/api/usage', (c) => c.json(llmUsage))
+
+app.post('/api/embed', async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({})) as { input?: string; inputs?: string[] }
+    const inputs = Array.isArray(body.inputs) ? body.inputs.slice(0, 16).map((x) => String(x).slice(0, 20000)) : [String(body.input ?? '').slice(0, 20000)]
+    if (!inputs.length || inputs.every((x) => !x.trim())) return c.json({ error: 'Teks input kosong.' }, 400)
+    const vectors = await embedTexts(inputs)
+    return c.json(Array.isArray(body.inputs) ? { embeddings: vectors } : { embedding: vectors[0] })
+  } catch (err) {
+    return c.json({ error: (err as Error).message || 'Embedding gagal.' }, 500)
+  }
+})
 
 app.get('/api/health', (c) =>
   c.json({

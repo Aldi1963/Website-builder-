@@ -1,4 +1,4 @@
-import { query } from './db'
+import { query, ensureTable, driverName } from './db'
 
 /**
  * RAG (Retrieval-Augmented Generation) bawaan — server-side saja.
@@ -24,13 +24,14 @@ const TOP_K = 4              // jumlah chunk yang diambil saat pencarian
 
 /** Lazily buat ekstensi vector + tabel pengetahuan (idempotent). */
 export async function ensureRagSchema(): Promise<void> {
-  await query('create extension if not exists vector')
-  await query(`
+  const pg = driverName() === 'postgres'
+  if (pg) await query('create extension if not exists vector')
+  await ensureTable(`
     create table if not exists knowledge_chunks (
       id serial primary key,
       source text not null,
       content text not null,
-      embedding vector(${EMBED_DIM}),
+      ${pg ? `embedding vector(${EMBED_DIM})` : 'embedding text'},
       created_at timestamptz default now()
     )
   `)
