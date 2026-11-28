@@ -70,7 +70,7 @@ const RULES = `Aturan teknis:
 9. Setelah selesai menulis, jalankan build. Kalau gagal, perbaiki dan build ulang.
 10. Ringkas hasil dalam 1-3 kalimat: apa yang dibangun dan apa yang bisa dicoba. Tanpa basa-basi.
 11. Database aplikasi = Postgres terkelola (permanen). Alur wajib saat butuh data: (a) panggil TOOL db_schema dengan pernyataan CREATE TABLE IF NOT EXISTS untuk tiap tabel (idempotent, satu pernyataan per panggilan), (b) tulis src/lib/db.ts yang sudah disediakan template (jangan diubah, isinya helper query Postgres), (c) tulis createServerFn di src/server/ yang memakai query(...) untuk baca/tulis. DILARANG memakai node:sqlite, localStorage, atau ':memory:' untuk data aplikasi. Setiap tabel punya kolom id (serial primary key).
-12. Butuh server khusus (WebSocket, webhook, background worker — misalnya gateway WhatsApp)? Server khusus HANYA diizinkan untuk akun admin: tulis file server.mjs kamu sendiri DAN file penanda vb.custom-server (isi bebas) lewat write_file. Platform TIDAK akan menimpa server.mjs-mu bila penanda itu ada. Untuk akun non-admin, penanda diabaikan dan platform memakai server template (server.mjs-mu diparkir ke server.mjs.nonaktif-custom, tidak dihapus). Pasang library yang diperlukan lewat tool install, dan kredensial lewat tool set_secret (dibaca dari process.env di server.mjs). Server harus tetap menyajikan SSR dari ./dist/server/server.js dan aset dari ./dist/client/ seperti template, lalu tambahkan route kamu sendiri.`
+12. Butuh server khusus (WebSocket, webhook, background worker — misalnya gateway WhatsApp)? Tulis file server.mjs kamu sendiri DAN file penanda vb.custom-server (isi bebas) lewat write_file. Platform TIDAK akan menimpa server.mjs-mu bila penanda itu ada. Pasang library yang diperlukan lewat tool install, dan kredensial lewat tool set_secret (dibaca dari process.env di server.mjs). Server harus tetap menyajikan SSR dari ./dist/server/server.js dan aset dari ./dist/client/ seperti template, lalu tambahkan route kamu sendiri.`
 
 /* Fitur AI di aplikasi hasil generate (web LLM): aplikasi yang kamu bangun
    bisa punya fitur AI (mis. halaman chatbot) lewat proxy LLM yang sudah
@@ -120,6 +120,11 @@ const RAG = `Basis pengetahuan / tanya-jawab dokumen (RAG) — server-side saja:
 - Sebelum menyimpan chunk pertama kali, panggil ensureRagSchema() (idempotent) — membuat ekstensi vector + tabel knowledge_chunks.
 - Saat user minta "tanya-jawab dokumen", "basis pengetahuan", "chat dengan data sendiri", dll: bangun halaman unggah dokumen + chat yang menjawab dari pengetahuan. JANGAN memasukkan seluruh dokumen ke prompt; gunakan retrieval.`
 
+const BROWSER_TOOLS = `Verifikasi nyata di browser dan shell (WAJIB dipakai bila aplikasi punya alur yang bisa diklik):
+- Tool interact_preview mengoperasikan browser preview sungguhan: action open/click/fill/select/press/text dengan selector CSS. Gunakan untuk MEMBUKTI alur login, checkout, dan form bekerja — terutama setelah ask_user memberi email/password. Isi form dengan kredensial itu lewat fill (nilai tidak pernah ditampilkan di ringkasan), klik submit, lalu baca teks halaman untuk memastikan berhasil. Jangan mengklaim "login berhasil" hanya dari build hijau.
+- Tool run menjalankan perintah whitelist di folder proyek (mis. npm test, node script.js). Pakai untuk verifikasi/testing, bukan untuk menulis file.
+- Setelah interaksi, perbaiki masalah yang ditemukan lewat write_file + build, lalu ulangi interact_preview sampai alur benar-benar berhasil.`
+
 const INTEGRATIONS = `Integrasi pembayaran dan login pihak ketiga (aktif bila aplikasi butuh pembayaran, langganan, atau login Google/ OAuth):
 - PROVIDER: dukung Midtrans (Snap), m.clipku.com (GoPay/QRIS), atau Stripe. Jangan mengarang endpoint: pakai SDK resmi / dokumentasi provider yang dipilih. Bila ragu soal endpoint atau bentuk response, tanya user lewat ask_user.
 - KUNCI: JWT/secret/API key TIDAK PERNAH ditulis ke file proyek, .env, kode client, atau log. Pakai tool ask_user untuk meminta nilai yang benar-benar dibutuhkan (mis. Midtrans Server Key + Client Key, Clipku merchant ID + API key, Google OAuth client ID + secret), lalu simpan lewat tool set_secret dengan nama env var upper_snake_case (contoh MIDTRANS_SERVER_KEY, CLIPKU_API_KEY, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET). Tool set_secret write-only dan menyuntik nilai itu sebagai environment variable di server preview.
@@ -145,6 +150,7 @@ ${RULES}
 ${AUTH}
 
 ${INTEGRATIONS}
+${BROWSER_TOOLS}
 
 ${RAG}
 

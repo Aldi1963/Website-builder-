@@ -84,8 +84,9 @@ import { proxyPreview, previewPrefix } from './preview-proxy.ts'
 import { rateLimit } from './rate-limit.ts'
 import { deliverResetLink } from './mail.ts'
 import { allowedOrigin } from './cors.ts'
+import { stripPlatformAuth, verifyPreviewToken } from './tenant.ts'
 
-type Env = { Variables: { user: User } }
+type Env = { Variables: { user: User; previewTokenProject?: string } }
 
 export const app = new Hono<Env>()
 
@@ -159,7 +160,10 @@ async function forward(port: number, request: Request): Promise<Response> {
   const target = `http://127.0.0.1:${port}${url.pathname}${url.search}`
   const method = request.method
   const hasBody = method !== 'GET' && method !== 'HEAD'
-  const headers = new Headers(request.headers)
+  /* JANGAN teruskan kredensial platform ke server tenant: cookie sesi
+     visitor + Authorization dibuang di sini (tenant.ts: stripPlatformAuth).
+     Server tenant memanggil secret proxy dengan token integrasi per-proyek. */
+  const headers = stripPlatformAuth(new Headers(request.headers), SESSION_COOKIE)
   headers.delete('host')
   headers.set('host', `127.0.0.1:${port}`)
   headers.set('x-forwarded-host', url.host)
@@ -269,6 +273,15 @@ function currentUser(c: { req: { header: (n: string) => string | undefined } }):
 /* Every /api/projects route is owner-scoped. A single gate keeps the rules in
    one place instead of trusting each handler to remember. */
 app.use('/api/projects/*', async (c, next) => {
+  /* Pengecualian: token integrasi preview (server tenant) boleh memanggil
+     endpoint secret proyek ITU SAJA tanpa sesi — lihat ownedOrToken().
+     Token diverifikasi di sini supaya handler lain tetap butuh sesi. */
+  const tokenProject = previewTokenProject(c)
+  if (tokenProject) {
+    c.set('previewTokenProject', tokenProject)
+    await next()
+    return
+  }
   const user = currentUser(c)
   if (!user) return c.json({ error: 'Belum masuk.' }, 401)
   c.set('user', user)
@@ -404,7 +417,7 @@ app.put('/api/projects/:id/domain', async (c) => {
    halaman integrasi di aplikasi hasil generate untuk menampilkan status
    koneksi tanpa pernah membaca/mengirim nilai rahasia. */
 app.get('/api/projects/:id/secret-keys', (c) => {
-  const r = owned(c)
+  const r = ownedOrToken(c)
   if ('error' in r) return c.json({ error: r.error }, r.status)
   const keys = listSettings(r.project.id)
     .filter((s) => s.key.startsWith('secret_'))
@@ -414,7 +427,7 @@ app.get('/api/projects/:id/secret-keys', (c) => {
 })
 
 app.put('/api/projects/:id/secrets', async (c) => {
-  const r = owned(c)
+  const r = ownedOrToken(c)
   if ('error' in r) return c.json({ error: r.error }, r.status)
   const body = (await c.req.json().catch(() => ({}))) as { key?: string; value?: string }
   const key = (body.key ?? '').trim()
@@ -642,7 +655,7 @@ app.post('/api/projects/:id/github/sync', async (c) => {
 })
 
 app.delete('/api/projects/:id/secrets/:key', (c) => {
-  const r = owned(c)
+  const r = ownedOrToken(c)
   if ('error' in r) return c.json({ error: r.error }, r.status)
   deleteSetting(r.project.id, `secret_${c.req.param('key')}`)
   return c.json({ ok: true })
@@ -694,6 +707,32 @@ function owned(c: { req: { param: (n: string) => string }; get: (k: 'user') => U
   if (!project) return { error: 'not found' as const, status: 404 as const }
   if (project.owner_id !== c.get('user').id) return { error: 'not found' as const, status: 404 as const }
   return { project }
+}
+
+/* Token integrasi preview: `Authorization: Bearer <64 hex>` yang dikeluarkan
+   saat preview dinyalakan (tenant.ts: mintPreviewToken). Hanya berlaku untuk
+   endpoint secret proyek itu (secret-keys / secrets / secrets/:key) — bukan
+   untuk route proyek lain. Dipakai middleware /api/projects/* untuk melewati
+   gerbang sesi bila token valid. */
+const SECRET_PATH_RE = /^\/api\/projects\/([^/]+)\/(secret-keys|secrets(?:\/.*)?)$/
+function previewTokenProject(c: Context): string | undefined {
+  const m = SECRET_PATH_RE.exec(new URL(c.req.url).pathname)
+  if (!m) return undefined
+  const token = /^Bearer\s+([0-9a-f]{64})$/i.exec(c.req.header('authorization') ?? '')?.[1]
+  if (!token) return undefined
+  return verifyPreviewToken(m[1], token) ? m[1] : undefined
+}
+
+/* Seperti owned(), tapi menerima token integrasi preview sebagai alternatif
+   sesi — hanya untuk endpoint secret (middleware sudah membatasi path-nya). */
+function ownedOrToken(c: Context<Env>) {
+  const id = c.req.param('id')
+  const tokenProject = c.get('previewTokenProject')
+  if (typeof tokenProject === 'string' && tokenProject === id) {
+    const project = getProject(id)
+    if (project) return { project }
+  }
+  return owned(c as Parameters<typeof owned>[0])
 }
 
 app.get('/api/projects/:id', (c) => {
@@ -1081,11 +1120,13 @@ app.post('/api/projects/:id/chat', async (c) => {
         if (e.type === 'file') addActivityEvent(id, { kind: 'file', label: e.path, action: e.action })
         else if (e.type === 'build') addActivityEvent(id, { kind: 'terminal', label: 'npm run build', detail: e.log, ok: e.ok })
         else if (e.type === 'install') addActivityEvent(id, { kind: 'terminal', label: 'npm install', detail: e.log, ok: e.ok })
+        else if (e.type === 'terminal') addActivityEvent(id, { kind: 'terminal', label: e.command, detail: e.log, ok: e.ok })
       } catch { /* abaikan */ }
       if (e.type === 'context') await send('context', e)
       else if (e.type === 'file') await send('file', e)
       else if (e.type === 'build') await send('build', e)
       else if (e.type === 'install') await send('install', e)
+      else if (e.type === 'terminal') await send('terminal', e)
       else if (e.type === 'status') await send('status', e)
       else if (e.type === 'plan') await send('plan', e)
       else if (e.type === 'audit') await send('audit', e)

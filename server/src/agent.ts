@@ -17,6 +17,8 @@ import { savePendingAnswer, clearPendingAnswer } from './pending-answer.ts'
 import { readReferenceImage } from './reference-images.ts'
 import { snapshotVersion, restoreVersion, listVersions } from './versions.ts'
 import { captureScreenshot, captureForReview } from './screenshots.ts'
+import { interactPreview, closePreviewSession } from './preview-interact.ts'
+import { runProjectCommand } from './run-command.ts'
 import { routePathFromFile } from './route-paths.ts'
 import { isManagedDbEnabled, execProjectSql, projectSchemaBrief } from './managed-db.ts'
 
@@ -28,6 +30,7 @@ export type AgentEvent =
   | { type: 'file'; path: string; action: 'write' | 'delete' | 'mkdir' }
   | { type: 'build'; ok: boolean; log: string }
   | { type: 'install'; ok: boolean; log: string }
+  | { type: 'terminal'; command: string; ok: boolean; log: string }
   | { type: 'assistant_delta'; text: string }
   | { type: 'assistant'; text: string }
   | { type: 'screenshot'; url: string; name: string }
@@ -641,6 +644,15 @@ let pendingPreviewDefects: string[] = []
           setSettingFromAgent(projectId, `secret_${key}`, value)
           result = `OK: ${key} tersimpan sebagai environment variable server preview (nilai tidak ditampilkan).`
         }
+      } else if (name === 'interact_preview') {
+        await emit({ type: 'status', text: 'Mengoperasikan browser preview…' })
+        const r = await interactPreview(projectId, args)
+        result = `${r.ok ? 'OK' : 'GAGAL'}: ${r.detail}\nURL: ${r.url}${r.text ? `\nTEKS HALAMAN:\n${r.text}` : ''}${r.runtimeErrors.length ? `\nError runtime: ${r.runtimeErrors.join(' | ')}` : ''}`
+      } else if (name === 'run') {
+        await emit({ type: 'status', text: 'Menjalankan perintah…' })
+        const r = await runProjectCommand(projectId, args)
+        await emit({ type: 'terminal', command: r.command, ok: r.ok, log: r.output.slice(-4000) })
+        result = `exit=${r.code}\n${r.output.slice(-8000)}`
       } else if (name === 'build') {
         await emit({ type: 'status', text: 'Build…' })
         const r = await buildProject(projectId)

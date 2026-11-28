@@ -140,6 +140,39 @@ export const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'interact_preview',
+      description: 'Kontrol browser preview NYATA: buka halaman, klik tombol, isi input (termasuk email/password yang user berikan lewat ask_user), pilih opsi, tekan Enter, atau baca teks. Pakai ini untuk MEMBUKTI alur login/checkout/form benar-benar jalan, bukan sekadar build hijau. Jangan pernah menampilkan nilai kredensial di ringkasan. Mulai dengan action open bila session baru.',
+      parameters: {
+        type: 'object',
+        properties: {
+          action: { type: 'string', enum: ['open', 'click', 'fill', 'select', 'press', 'text'], description: 'Aksi browser' },
+          path: { type: 'string', description: 'Path halaman untuk action open, mis. /login' },
+          selector: { type: 'string', description: 'CSS selector elemen (mis. input[type=email], button:has-text("Masuk"))' },
+          value: { type: 'string', description: 'Nilai untuk fill/select' },
+          key: { type: 'string', description: 'Tombol keyboard untuk press, default Enter' },
+        },
+        required: ['action'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'run',
+      description: 'Jalankan perintah di folder proyek untuk verifikasi/testing (mis. npm test, node script.js --help, git status). Hanya perintah whitelist yang diizinkan; timeout 2 menit. Jangan dipakai untuk mengubah file proyek — gunakan write_file.',
+      parameters: {
+        type: 'object',
+        properties: {
+          command: { type: 'string', description: 'Perintah whitelist, mis. npm test' },
+          argv: { type: 'array', items: { type: 'string' }, description: 'Alternatif: array argumen, mis. ["npm","test"]' },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'set_secret',
       description: 'Simpan kredensial/rahasia proyek (token API, password, kunci) sebagai environment variable HANYA di server preview — tidak pernah ditulis ke file proyek atau terkirim ke client. Nilai hanya bisa ditulis, tidak bisa dibaca kembali. Contoh: WA_SESSION_TOKEN, API_KEY.',
       parameters: {

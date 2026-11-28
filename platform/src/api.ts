@@ -304,6 +304,7 @@ export type ChatHandlers = {
   onFile?: (path: string, action: 'write' | 'delete' | 'mkdir') => void
   onBuild?: (ok: boolean, log: string) => void
   onInstall?: (ok: boolean, log: string) => void
+  onTerminal?: (command: string, ok: boolean, log: string) => void
   onContext?: (paths: string[]) => void
   onVersion?: (v: Extract<AgentEvent, { type: 'version' }>) => void
   onAssistantDelta?: (text: string) => void
@@ -382,6 +383,7 @@ export async function chatStream(
       else if (event === 'file') h.onFile?.(payload.path, payload.action)
       else if (event === 'build') h.onBuild?.(payload.ok, payload.log)
       else if (event === 'install') h.onInstall?.(payload.ok, payload.log)
+      else if (event === 'terminal') h.onTerminal?.(payload.command, payload.ok, payload.log)
       else if (event === 'context') h.onContext?.(payload.paths)
       else if (event === 'version') h.onVersion?.(payload)
       else if (event === 'assistant_delta') h.onAssistantDelta?.(payload.text)
