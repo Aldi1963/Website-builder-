@@ -114,13 +114,27 @@ async function captureNowWithErrors(projectId: string, target: string, opts?: Pr
       try {
         if (msg.type() === 'error') {
           const t = String(msg.text() ?? '').slice(0, 300)
-          if (t) runtimeErrors.push(`console.error: ${t}`)
+          // Info URL-nya diambil dari event `response` di bawah (lebih berguna).
+          if (t && !/Failed to load resource/i.test(t)) runtimeErrors.push(`console.error: ${t}`)
         }
       } catch { /* abaikan pesan console tak terbaca */ }
     })
     page.on('pageerror', (err: any) => {
       const t = String(err?.message ?? err ?? '').slice(0, 300)
       if (t) runtimeErrors.push(`pageerror: ${t}`)
+    })
+    /* Sertakan URL resource yang gagal (404/500). Tanpa ini console.error
+       hanya berkata "Failed to load resource: 404 ()" sehingga agent tidak
+       tahu aset mana yang harus diperbaiki. */
+    page.on('response', (res: any) => {
+      try {
+        const status = res.status?.() ?? 0
+        if (status < 400) return
+        let url = String(res.url?.() ?? '')
+        try { url = new URL(url).pathname } catch { /* biarkan apa adanya */ }
+        const t = `http-${status}: ${url}`.slice(0, 300)
+        if (t && !runtimeErrors.includes(t)) runtimeErrors.push(t)
+      } catch { /* abaikan respons tak terbaca */ }
     })
     await page.goto(target, { waitUntil: 'load', timeout: 15_000 })
     await page.waitForTimeout(1200)
