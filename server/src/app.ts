@@ -193,6 +193,37 @@ app.use('*', async (c, next) => {
 
 purgeExpiredSessions()
 
+/* Published apps must survive a platform restart. Preview processes live in an
+   in-memory Map, so every rebuild of the platform used to leave published URLs
+   returning 503 until someone opened the project and triggered a new run.
+   Rebuild the ones whose SSR bundle is missing, then warm their preview. */
+let publishedRestoreDone: Promise<void> | null = null
+export function ensurePublishedPreviews(): Promise<void> {
+  if (publishedRestoreDone) return publishedRestoreDone
+  publishedRestoreDone = (async () => {
+    const projects = db
+      .prepare(`SELECT id, slug FROM projects WHERE slug IS NOT NULL AND slug != ''`)
+      .all() as { id: string; slug: string }[]
+    for (const { id } of projects) {
+      const serverBundle = join(PROJECTS_DIR, id, 'dist', 'server', 'server.js')
+      try {
+        if (!existsSync(serverBundle)) {
+          const build = await buildProject(id)
+          if (build.code !== 0) {
+            console.warn(`[published-restore] build gagal untuk ${id}: ${build.output.slice(-200)}`)
+            continue
+          }
+        }
+        await startPreview(id)
+        console.log(`[published-restore] ${id} siap`)
+      } catch (err) {
+        console.warn(`[published-restore] ${id}: ${(err as Error).message}`)
+      }
+    }
+  })()
+  return publishedRestoreDone
+}
+
 /* ---------- on-demand TLS (Caddy) ----------
    Caddy menanyakan endpoint ini sebelum menerbitkan sertifikat untuk
    sebuah hostname custom domain. Balas 200 hanya jika hostname terdaftar
