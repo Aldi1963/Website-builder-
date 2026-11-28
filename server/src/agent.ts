@@ -155,6 +155,10 @@ export async function runAgent(
   let pendingPreviewErrors: string[] = []
 let pendingPreviewDefects: string[] = []
   let lastDefectCount = 0
+  /* Bukti terbaru: true hanya bila check_preview terakhir kembali BERSIH.
+     Dipakai supaya klaim model ("sudah diperbaiki") tidak diterima sebelum
+     render ulang benar-benar membuktikan cacat hilang. */
+  let defectsVerifiedClean = false
 
   /* Setelah perubahan UI selesai dan build lolos, ambil screenshot preview dan
      simpan sebagai pesan assistant. Kegagalan screenshot dilaporkan apa adanya. */
@@ -421,6 +425,16 @@ let pendingPreviewDefects: string[] = []
         messages.push({ role: 'user', content: `Jangan beri ringkasan akhir: probe visual masih menemukan ${lastDefectCount} cacat nyata:\n${list}\n\nPerbaiki SEMUanya lewat write_file, panggil build, lalu check_preview lagi. Jangan mengklaim selesai sebelum cacat hilang.` })
         continue
       }
+      /* Bukti > klaim: bila putaran terakhir masih membawa cacat dan model
+         hendak merangkum, paksa check_preview ULANG (bila ronde tersisa)
+         supaya perbaikan diverifikasi dari render nyata, bukan dari kata
+         model sendiri. */
+      if (!quickEdit && touchedUi && buildSucceeded && !defectsVerifiedClean && previewRounds > 0 && previewRounds < MAX_PREVIEW_ROUNDS) {
+        messages.push({ role: 'assistant', content: msg.content })
+        messages.push({ role: 'user', content: 'Sebelum merangkum, panggil check_preview SATU kali lagi untuk membuktikan cacat tadi benar-benar hilang pada render terbaru. Jangan mengklaim selesai hanya karena kamu menulis perbaikan.' })
+        previewRounds++
+        continue
+      }
       const clean = msg.content.trim()
       addMessage(projectId, 'assistant', clean)
       await emit({ type: 'assistant', text: clean })
@@ -563,6 +577,7 @@ let pendingPreviewDefects: string[] = []
             pendingPreviewErrors = cap.runtimeErrors
             pendingPreviewDefects = cap.defects
             lastDefectCount = cap.defects.length
+            defectsVerifiedClean = cap.defects.length === 0 && cap.runtimeErrors.length === 0
             if (cap.defects.length) {
               await emit({ type: 'status', text: `Ada ${cap.defects.length} masalah tampilan, memperbaiki otomatis…` })
             }
