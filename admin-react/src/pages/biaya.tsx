@@ -8,6 +8,7 @@ import { StatCard } from '../components/StatCard'
 import { Table, Th, Td, EmptyRow } from '../components/Table'
 import { btnOutlineDangerSm, btnOutlineLg, btnOutlineSm, btnPrimary } from '../components/DFormat'
 import { Spinner } from '../components/Spinner'
+import { BLineChart, CHART_COLORS } from '../components/BCharts'
 import { Alert } from '../components/Alert'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { Select } from '../components/Select'
@@ -42,6 +43,11 @@ interface UserRow {
   unpriced_tokens: number
 }
 
+interface UsageActivity {
+  daily: { date: string; messages: number; users: number; projects: number }[]
+  byUser: { email: string; name: string; messages: number }[]
+}
+
 interface CostData {
   days: number
   prices: Record<string, PriceEntry>
@@ -65,6 +71,7 @@ export default function BiayaPage({ embedded = false }: BiayaPageProps) {
   const toast = useToast()
   const [days, setDays] = useState(30)
   const [data, setData] = useState<CostData | null>(null)
+  const [usage, setUsage] = useState<UsageActivity | null>(null)
   const [prices, setPrices] = useState<Record<string, PriceEntry>>({})
   const [priceDialog, setPriceDialog] = useState<PriceDialog>(null)
   const [deleteModel, setDeleteModel] = useState<string | null>(null)
@@ -73,8 +80,12 @@ export default function BiayaPage({ embedded = false }: BiayaPageProps) {
 
   const load = useCallback(async () => {
     try {
-      const d = await api.get<CostData>(`/api/admin/cost?days=${days}`)
+      const [d, u] = await Promise.all([
+        api.get<CostData>(`/api/admin/cost?days=${days}`),
+        api.get<UsageActivity>('/api/admin/usage'),
+      ])
       setData(d)
+      setUsage(u)
       setPrices(d.prices || {})
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : 'Gagal memuat biaya.')
@@ -207,7 +218,7 @@ export default function BiayaPage({ embedded = false }: BiayaPageProps) {
             <StatCard label="Total Token" value={fmtNum(data.totals.total_tokens)} sub={rangeLabel} />
             <StatCard label="Permintaan LLM" value={fmtNum(data.totals.requests)} sub="dalam rentang yang dipilih" />
             <StatCard label="Perkiraan Biaya" value={fmtRp(data.totals.cost_idr)} sub="hanya model yang harganya sudah diisi" />
-            <StatCard label="Total Token (Semua)" value={fmtNum(data.allTime.total_tokens)} sub="sama dengan halaman Penggunaan" />
+            <StatCard label="Total Token (Semua)" value={fmtNum(data.allTime.total_tokens)} sub="semua riwayat" />
           </div>
 
           <Alert tone="info">
@@ -246,6 +257,47 @@ export default function BiayaPage({ embedded = false }: BiayaPageProps) {
               </tbody>
             </Table>
           </Card>
+
+          {usage !== null ? (
+            <div className="grid gap-4 lg:grid-cols-3">
+              <Card title="Aktivitas Harian" className="min-w-0 lg:col-span-2">
+                <BLineChart
+                  labels={usage.daily.map((d) => d.date.slice(5))}
+                  datasets={[
+                    { label: 'Pesan', data: usage.daily.map((d) => d.messages), color: CHART_COLORS.blue, fill: true },
+                    { label: 'Pengguna baru', data: usage.daily.map((d) => d.users), color: CHART_COLORS.teal },
+                    { label: 'Proyek baru', data: usage.daily.map((d) => d.projects), color: CHART_COLORS.green },
+                  ]}
+                />
+              </Card>
+              <Card title="Pesan per Pengguna">
+                <Table bare>
+                  <thead>
+                    <tr>
+                      <Th>Pengguna</Th>
+                      <Th>Pesan</Th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {usage.byUser.length ? (
+                      usage.byUser.map((u) => (
+                        <tr key={u.email}>
+                          <Td>
+                            {u.name || u.email}
+                            <br />
+                            <span className="text-xs text-muted">{u.email}</span>
+                          </Td>
+                          <Td>{fmtNum(u.messages)}</Td>
+                        </tr>
+                      ))
+                    ) : (
+                      <EmptyRow colSpan={2}>Belum ada data.</EmptyRow>
+                    )}
+                  </tbody>
+                </Table>
+              </Card>
+            </div>
+          ) : null}
 
           <Card title="Biaya per Pengguna">
             <p className="mb-3 text-sm text-muted">

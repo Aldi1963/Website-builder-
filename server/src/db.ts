@@ -376,6 +376,11 @@ export function projectBySlug(slug: string): Project | undefined {
   return db.prepare(`SELECT * FROM projects WHERE slug = ?`).get(slug) as Project | undefined
 }
 
+/* Sitemap: hanya app yang benar-benar terbit (slug tidak null). */
+export function listPublishedSlugs(): string[] {
+  return (db.prepare(`SELECT slug FROM projects WHERE slug IS NOT NULL AND slug != '' ORDER BY slug`).all() as { slug: string }[]).map((r) => r.slug)
+}
+
 export function deleteProject(id: string) {
   /* Hapus menyeluruh: semua record yang ber-relasi dengan proyek, lalu
      record proyeknya sendiri. Dipakai endpoint DELETE /api/projects/:id

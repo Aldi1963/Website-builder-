@@ -26,6 +26,7 @@ import {
 import { ROOT } from './paths.ts'
 import { registerBilling } from './billing.ts'
 import { isNeonConfigured, neonSettings } from './neon-db.ts'
+import { smtpConfigured, smtpSettingsView, sendMail } from './smtp.ts'
 import { registerProviderRoutes } from './providers.ts'
 import {
   getBalance,
@@ -892,6 +893,98 @@ export function registerAdmin(app: Hono<AdminEnv>) {
   /* panel (token tercatat per pengguna); chat belum dibatasi kuota.    */
   /* ---------------------------------------------------------------- */
 
+
+  /* ---------------------------------------------------------------- */
+  /* SMTP (panel admin) — kredensial relay email transaksional.        */
+  /* Hanya status yang dikembalikan; password tidak pernah muncul.     */
+  /* Pola `clear` eksplisit mengikuti endpoint Neon di atas: field      */
+  /* kosong = tidak berubah, penghapusan hanya lewat daftar `clear`.   */
+  /* ---------------------------------------------------------------- */
+
+  app.get('/api/admin/smtp', (c) => c.json(smtpSettingsView()))
+
+  app.put('/api/admin/smtp', async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
+    const FIELDS = {
+      host: 'smtp.host', port: 'smtp.port', user: 'smtp.user',
+      pass: 'smtp.pass', from: 'smtp.from', secure: 'smtp.secure',
+    } as const
+    const MAX = { host: 253, port: 5, user: 320, pass: 500, from: 320, secure: 1 } as const
+    const toWrite = []
+    const toClear = []
+    for (const [field, key] of Object.entries(FIELDS)) {
+      const v = body[field]
+      if (v === undefined) continue
+      let s: string
+      if (field === 'secure') {
+        if (typeof v !== 'boolean') return c.json({ error: 'Field secure harus boolean.' }, 400)
+        s = v ? '1' : '0'
+      } else {
+        if (typeof v !== 'string') return c.json({ error: `Field ${field} harus string.` }, 400)
+        s = v.trim()
+        if (s === '') continue
+        if (field === 'port' && (!/^\d+$/.test(s) || Number(s) < 1 || Number(s) > 65535)) {
+          return c.json({ error: 'Port harus angka 1–65535.' }, 400)
+        }
+        if (field === 'from' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s)) {
+          return c.json({ error: 'Alamat email pengirim tidak valid.' }, 400)
+        }
+      }
+      if (s.length > MAX[field]) return c.json({ error: `Field ${field} terlalu panjang.` }, 400)
+      toWrite.push({ key, value: s })
+    }
+    if (body.clear !== undefined) {
+      if (!Array.isArray(body.clear)) return c.json({ error: 'Field clear harus array.' }, 400)
+      for (const f of body.clear) {
+        if (typeof f !== 'string' || !(f in FIELDS)) return c.json({ error: `Field clear tidak dikenal: ${String(f)}.` }, 400)
+        toClear.push(FIELDS[f])
+      }
+    }
+    try {
+      db.exec('BEGIN IMMEDIATE')
+      try {
+        for (const { key, value } of toWrite) {
+          db.prepare(
+            `INSERT INTO admin_settings (key, value, updated_at) VALUES (?, ?, ?)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+          ).run(key, value, Date.now())
+        }
+        for (const key of toClear) db.prepare('DELETE FROM admin_settings WHERE key = ?').run(key)
+        db.exec('COMMIT')
+      } catch (err) {
+        try { db.exec('ROLLBACK') } catch { /* sudah rollback */ }
+        throw err
+      }
+    } catch (err) {
+      return c.json({ error: `Gagal menyimpan kredensial SMTP: ${(err as Error).message}` }, 500)
+    }
+    logAdmin(c, 'smtp_settings.update', 'smtp', 'settings', 'kredensial SMTP diperbarui')
+    return c.json({ ok: true, ...smtpSettingsView() })
+  })
+
+  /* Tes relay: kirim email uji ke alamat tertentu (BUKAN token reset). */
+  const smtpTestAttempts = new Map<string, number[]>()
+  app.post('/api/admin/smtp/test', async (c) => {
+    const me = currentAdminUser(c)
+    const who = me?.id ?? 'unknown'
+    const cutoff = Date.now() - 10 * 60_000
+    const hits = (smtpTestAttempts.get(who) ?? []).filter((t) => t > cutoff)
+    if (hits.length >= 5) return c.json({ ok: false, error: 'Terlalu banyak tes SMTP. Coba lagi nanti.' }, 429)
+    hits.push(Date.now())
+    smtpTestAttempts.set(who, hits)
+    if (!smtpConfigured()) return c.json({ ok: false, error: 'SMTP belum dikonfigurasi lengkap.' }, 400)
+    const body = (await c.req.json().catch(() => ({}))) as { to?: string }
+    const to = (body.to ?? '').trim()
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return c.json({ ok: false, error: 'Alamat tujuan tidak valid.' }, 400)
+    try {
+      await sendMail(to, 'Tes SMTP VibeBuilder', 'Ini email uji dari panel admin VibeBuilder.')
+      logAdmin(c, 'smtp_settings.test', 'smtp', 'settings', `tes terkirim ke ${to.slice(0, 60)}`)
+      return c.json({ ok: true, to: to.slice(0, 60) })
+    } catch (err) {
+      return c.json({ ok: false, error: (err as Error).message.slice(0, 300) }, 502)
+    }
+  })
+
   /* ---------------------------------------------------------------- */
   /* Pengaturan Neon serverless Postgres (DB per project).             */
   /* Panel admin hanya melihat STATUS; nilai rahasia tidak pernah      */
@@ -1059,29 +1152,6 @@ export function registerAdmin(app: Hono<AdminEnv>) {
     db.prepare(`DELETE FROM plans WHERE id = ?`).run(id)
     logAdmin(c, 'plan.delete', 'plan', id, row.name)
     return c.json({ ok: true })
-  })
-
-  app.post('/api/admin/users/:id/plan', async (c) => {
-    const id = c.req.param('id')
-    const target = db.prepare(`SELECT id FROM users WHERE id = ?`).get(id)
-    if (!target) return c.json({ error: 'Pengguna tidak ditemukan.' }, 404)
-    const body = (await c.req.json().catch(() => ({}))) as { planId?: string | null }
-    const planId = body.planId ?? null
-    if (planId !== null) {
-      const plan = db.prepare(`SELECT id FROM plans WHERE id = ?`).get(planId)
-      if (!plan) return c.json({ error: 'Plan tidak ditemukan.' }, 404)
-      db.prepare(
-        `INSERT INTO user_plans (user_id, plan_id, assigned_at) VALUES (?, ?, ?)
-         ON CONFLICT(user_id) DO UPDATE SET plan_id = excluded.plan_id, assigned_at = excluded.assigned_at`,
-      ).run(id, planId, now())
-    } else {
-      db.prepare(`DELETE FROM user_plans WHERE user_id = ?`).run(id)
-    }
-    /* Ganti plan = jatah plan baru langsung masuk: nolkan reset_at supaya
-       refill malas (credits.ts) mengisi ulang pada baca saldo berikutnya. */
-    db.prepare(`UPDATE credits SET plan_credits_reset_at = NULL WHERE user_id = ?`).run(id)
-    logAdmin(c, 'user.assign_plan', 'user', id, planId ? `plan ${planId}` : 'tanpa plan')
-    return c.json({ ok: true, planId })
   })
 
   /* ---------------------------------------------------------------- */
@@ -1312,123 +1382,6 @@ export function registerAdmin(app: Hono<AdminEnv>) {
   })
 
   /* ---------------------------------------------------------------- */
-  /* Fitur 4 — Pengumuman ke semua pengguna                            */
-  /* Satu pengumuman aktif dalam satu waktu; mengaktifkan satu         */
-  /* menonaktifkan yang lain. Banner di builder (platform/* +         */
-  /* endpoint publik) BELUM dipasang — lihat laporan.                  */
-  /* ---------------------------------------------------------------- */
-
-  app.get('/api/admin/announcements', (c) => {
-    const rows = db
-      .prepare(`SELECT id, title, body, active, created_at, updated_at FROM announcements ORDER BY created_at DESC, id DESC`)
-      .all()
-    return c.json({ announcements: rows })
-  })
-
-  app.post('/api/admin/announcements', async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { title?: string; body?: string }
-    const title = String(body.title ?? '').trim()
-    if (!title || title.length > 200) return c.json({ error: 'Judul wajib diisi (maks 200 karakter).' }, 400)
-    const text = String(body.body ?? '').slice(0, 5000)
-    const t = now()
-    const res = db
-      .prepare(`INSERT INTO announcements (title, body, active, created_at, updated_at) VALUES (?, ?, 0, ?, ?)`)
-      .run(title, text, t, t)
-    return c.json({ ok: true, id: Number(res.lastInsertRowid) })
-  })
-
-  app.put('/api/admin/announcements/:id', async (c) => {
-    const id = Number(c.req.param('id'))
-    if (!Number.isInteger(id)) return c.json({ error: 'ID tidak valid.' }, 400)
-    const row = db.prepare(`SELECT id FROM announcements WHERE id = ?`).get(id)
-    if (!row) return c.json({ error: 'Pengumuman tidak ditemukan.' }, 404)
-    const body = (await c.req.json().catch(() => ({}))) as { title?: string; body?: string }
-    const sets: string[] = []
-    const params: unknown[] = []
-    if (body.title !== undefined) {
-      const title = String(body.title).trim()
-      if (!title || title.length > 200) return c.json({ error: 'Judul wajib diisi (maks 200 karakter).' }, 400)
-      sets.push('title = ?')
-      params.push(title)
-    }
-    if (body.body !== undefined) {
-      sets.push('body = ?')
-      params.push(String(body.body).slice(0, 5000))
-    }
-    if (!sets.length) return c.json({ error: 'Tidak ada field yang diubah.' }, 400)
-    sets.push('updated_at = ?')
-    params.push(now())
-    db.prepare(`UPDATE announcements SET ${sets.join(', ')} WHERE id = ?`).run(...(params as never[]), id)
-    return c.json({ ok: true })
-  })
-
-  app.delete('/api/admin/announcements/:id', (c) => {
-    const id = Number(c.req.param('id'))
-    if (!Number.isInteger(id)) return c.json({ error: 'ID tidak valid.' }, 400)
-    const row = db.prepare(`SELECT id FROM announcements WHERE id = ?`).get(id)
-    if (!row) return c.json({ error: 'Pengumuman tidak ditemukan.' }, 404)
-    db.prepare(`DELETE FROM announcements WHERE id = ?`).run(id)
-    return c.json({ ok: true })
-  })
-
-  /* Aktifkan satu pengumuman (menonaktifkan semua yang lain). Body
-     opsional { active: false } untuk menonaktifkan tanpa pengganti. */
-  app.post('/api/admin/announcements/:id/activate', async (c) => {
-    const id = Number(c.req.param('id'))
-    if (!Number.isInteger(id)) return c.json({ error: 'ID tidak valid.' }, 400)
-    const row = db.prepare(`SELECT id FROM announcements WHERE id = ?`).get(id)
-    if (!row) return c.json({ error: 'Pengumuman tidak ditemukan.' }, 404)
-    const body = (await c.req.json().catch(() => ({}))) as { active?: boolean }
-    const active = body.active !== undefined ? !!body.active : true
-    const t = now()
-    if (active) {
-      db.prepare(`UPDATE announcements SET active = 0, updated_at = ?`).run(t)
-      db.prepare(`UPDATE announcements SET active = 1, updated_at = ? WHERE id = ?`).run(t, id)
-    } else {
-      db.prepare(`UPDATE announcements SET active = 0, updated_at = ? WHERE id = ?`).run(t, id)
-    }
-    return c.json({ ok: true, active })
-  })
-
-  /* ---------------------------------------------------------------- */
-  /* Fitur 8 — Mode pemeliharaan                                       */
-  /* Disimpan di admin_settings key maintenance_mode (JSON).            */
-  /* Halaman maintenance untuk pengunjung butuh middleware di app.ts   */
-  /* — BELUM dipasang, lihat laporan.                                  */
-  /* ---------------------------------------------------------------- */
-
-  function maintenanceView() {
-    const raw = adminSetting('maintenance_mode')
-    let parsed: { enabled?: boolean; message?: string; updated_at?: number } = {}
-    if (raw) {
-      try {
-        parsed = JSON.parse(raw)
-      } catch {
-        /* nilai rusak: anggap mati */
-      }
-    }
-    return {
-      enabled: parsed.enabled === true,
-      message: typeof parsed.message === 'string' ? parsed.message : '',
-      updated_at: typeof parsed.updated_at === 'number' ? parsed.updated_at : null,
-    }
-  }
-
-  app.get('/api/admin/maintenance', (c) => c.json(maintenanceView()))
-
-  app.put('/api/admin/maintenance', async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { enabled?: boolean; message?: string }
-    if (typeof body.enabled !== 'boolean') return c.json({ error: 'Field enabled wajib boolean.' }, 400)
-    const message = String(body.message ?? '').slice(0, 2000)
-    const value = JSON.stringify({ enabled: body.enabled, message, updated_at: now() })
-    db.prepare(
-      `INSERT INTO admin_settings (key, value, updated_at) VALUES (?, ?, ?)
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
-    ).run('maintenance_mode', value, now())
-    return c.json({ ok: true, ...maintenanceView() })
-  })
-
-  /* ---------------------------------------------------------------- */
   /* Build, Pesan, Sesi                                                */
   /* ---------------------------------------------------------------- */
 
@@ -1443,23 +1396,6 @@ export function registerAdmin(app: Hono<AdminEnv>) {
       )
       .all(limit)
     return c.json({ builds: rows })
-  })
-
-  app.get('/api/admin/messages', (c) => {
-    const limit = Math.min(200, Math.max(1, Number(c.req.query('limit') ?? 100) || 100))
-    const q = (c.req.query('q') ?? '').trim()
-    const where = q ? `WHERE m.content LIKE ?` : ''
-    const params: unknown[] = q ? [`%${q}%`, limit] : [limit]
-    const rows = db
-      .prepare(
-        `SELECT m.id, m.project_id, m.role, substr(m.content, 1, 300) AS excerpt, m.created_at,
-           p.name AS project_name, u.email AS owner_email
-         FROM messages m JOIN projects p ON p.id = m.project_id
-         LEFT JOIN users u ON u.id = p.owner_id
-         ${where} ORDER BY m.id DESC LIMIT ?`,
-      )
-      .all(...(params as never[]))
-    return c.json({ messages: rows })
   })
 
   app.get('/api/admin/sessions', (c) => {
@@ -1877,110 +1813,6 @@ export function registerAdmin(app: Hono<AdminEnv>) {
   })
 
   /* ---------------------------------------------------------------- */
-  /* FITUR 9 — Pembersihan Otomatis                                    */
-  /* Yang dibersihkan: baris builds lebih lama dari retensi, dan sesi */
-  /* login yang sudah kedaluwarsa. Preview TIDAK PERNAH dibunuh dari   */
-  /* sini: preview adalah proses anak yang sedang dipakai — halaman    */
-  /* hanya menampilkan jumlah preview yang berjalan (0 yang dihapus).  */
-  /* Pengaturan + hasil terakhir disimpan di admin_settings            */
-  /* (key cleanup_settings, JSON).                                     */
-  /* ---------------------------------------------------------------- */
-
-  type CleanupSettings = { retentionDays: number; auto: boolean; lastRunAt: number | null; lastRun: { at: number; builds: number; sessions: number; previews: number } | null }
-  const CLEANUP_DEFAULTS: CleanupSettings = { retentionDays: 30, auto: false, lastRunAt: null, lastRun: null }
-
-  function readCleanupSettings(): CleanupSettings {
-    try {
-      const raw = db.prepare(`SELECT value FROM admin_settings WHERE key = 'cleanup_settings'`).get() as { value: string } | undefined
-      if (!raw) return { ...CLEANUP_DEFAULTS }
-      const parsed = JSON.parse(raw.value) as Partial<CleanupSettings>
-      return {
-        retentionDays: Math.min(365, Math.max(1, Math.floor(Number(parsed.retentionDays) || 30))),
-        auto: parsed.auto === true,
-        lastRunAt: typeof parsed.lastRunAt === 'number' ? parsed.lastRunAt : null,
-        lastRun: parsed.lastRun ?? null,
-      }
-    } catch {
-      return { ...CLEANUP_DEFAULTS }
-    }
-  }
-
-  function writeCleanupSettings(s: CleanupSettings) {
-    db.prepare(
-      `INSERT INTO admin_settings (key, value, updated_at) VALUES ('cleanup_settings', ?, ?)
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
-    ).run(JSON.stringify(s), now())
-  }
-
-  function cleanupCounts(retentionDays: number) {
-    const cutoff = now() - retentionDays * DAY
-    return {
-      builds: count(`SELECT count(*) AS n FROM builds WHERE created_at < ?`, cutoff),
-      sessions: count(`SELECT count(*) AS n FROM sessions WHERE expires_at < ?`, now()),
-      previewsRunning: runningPreviews().length,
-    }
-  }
-
-  function runCleanup(retentionDays: number) {
-    const cutoff = now() - retentionDays * DAY
-    const builds = Number(db.prepare(`DELETE FROM builds WHERE created_at < ?`).run(cutoff).changes ?? 0)
-    const sessions = Number(db.prepare(`DELETE FROM sessions WHERE expires_at < ?`).run(now()).changes ?? 0)
-    return { builds, sessions, previews: 0, previewsRunning: runningPreviews().length }
-  }
-
-  app.get('/api/admin/cleanup', (c) => {
-    const settings = readCleanupSettings()
-    return c.json({ settings, counts: cleanupCounts(settings.retentionDays), lastRun: settings.lastRun })
-  })
-
-  app.post('/api/admin/cleanup/run', (c) => {
-    const settings = readCleanupSettings()
-    const result = runCleanup(settings.retentionDays)
-    const at = now()
-    settings.lastRunAt = at
-    settings.lastRun = { at, builds: result.builds, sessions: result.sessions, previews: result.previews }
-    writeCleanupSettings(settings)
-    return c.json({ ok: true, at, retentionDays: settings.retentionDays, deleted: result })
-  })
-
-  app.put('/api/admin/cleanup/settings', async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { retentionDays?: number; auto?: boolean }
-    const settings = readCleanupSettings()
-    if (body.retentionDays !== undefined) {
-      const d = Math.floor(Number(body.retentionDays))
-      if (!Number.isFinite(d) || d < 1 || d > 365) return c.json({ error: 'Retensi harus 1–365 hari.' }, 400)
-      settings.retentionDays = d
-    }
-    if (body.auto !== undefined) {
-      if (typeof body.auto !== 'boolean') return c.json({ error: 'Field auto wajib boolean.' }, 400)
-      settings.auto = body.auto
-    }
-    writeCleanupSettings(settings)
-    return c.json({ ok: true, settings })
-  })
-
-  /* Berkala (sekali saat server start, di dalam registerAdmin): cek
-     tiap jam; bila otomatis aktif dan sudah ≥24 jam sejak pembersihan
-     terakhir (atau belum pernah), jalankan sekali. */
-  if (!(globalThis as unknown as { __vbCleanupTimer?: boolean }).__vbCleanupTimer) {
-    ;(globalThis as unknown as { __vbCleanupTimer?: boolean }).__vbCleanupTimer = true
-    setInterval(() => {
-      try {
-        const s = readCleanupSettings()
-        if (!s.auto) return
-        if (s.lastRunAt && now() - s.lastRunAt < DAY) return
-        const result = runCleanup(s.retentionDays)
-        const at = now()
-        s.lastRunAt = at
-        s.lastRun = { at, builds: result.builds, sessions: result.sessions, previews: 0 }
-        writeCleanupSettings(s)
-      } catch {
-        /* pembersihan berkala gagal diam-diam — jangan jatuhkan server */
-      }
-    }, 60 * 60 * 1000).unref()
-  }
-
-  /* ---------------------------------------------------------------- */
 
   /* FITUR 1 — Log audit admin (baca)                                  */
   /* FITUR 10 — Peringatan kesehatan (hitung live dari data nyata)     */
@@ -2088,23 +1920,17 @@ export function registerAdmin(app: Hono<AdminEnv>) {
   const ADMIN_SLUGS: string[] = [
     'users',
     'projects',
-    'pemeliharaan',
-    'pengumuman',
     'plans',
     'credits',
-    'usage',
     'builds',
     'biaya',
     'providers',
     'ai',
     'billing',
-    'domain',
-    'messages',
     'moderasi',
     'sessions',
     'health',
     'cadangan',
-    'pembersihan',
     'ai-settings',
     'audit',
     'settings',

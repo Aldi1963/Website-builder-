@@ -170,8 +170,10 @@ export function readCookie(header: string | undefined, name: string): string | u
   return undefined
 }
 
-export function sessionCookie(token: string, maxAgeSec: number) {
-  return `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSec}`
+export function sessionCookie(token: string, maxAgeSec: number, secure = true) {
+  /* Secure hanya aktif di HTTPS; di localhost (http) browser akan menolak
+     cookie Secure sehingga flag disesuaikan dengan proto yang masuk. */
+  return `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax;${secure ? ' Secure;' : ''} Max-Age=${maxAgeSec}`
 }
 
 /* Password reset: store only the hash of the emailed token. */
@@ -204,8 +206,8 @@ export function consumeResetToken(token: string): string | null {
   return row.user_id
 }
 
-export function clearCookie() {
-  return `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`
+export function clearCookie(secure = true) {
+  return `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax;${secure ? ' Secure;' : ''} Max-Age=0`
 }
 
 const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/

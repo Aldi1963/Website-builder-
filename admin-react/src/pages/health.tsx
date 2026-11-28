@@ -55,7 +55,7 @@ export default function HealthPage({ embedded = false }: HealthPageProps) {
       toast.error(e instanceof ApiError ? e.message : 'Gagal memuat kesehatan sistem.')
       setHealth(null)
     }
-    // Ambang peringatan: gagal dimuat diam-diam, kartu lain tetap tampil.
+    // Peringatan aktif: gagal dimuat diam-diam, kartu lain tetap tampil.
     try {
       const a = await api.get<AlertsData>('/api/admin/alerts')
       setAlertsData(a)
@@ -70,8 +70,6 @@ export default function HealthPage({ embedded = false }: HealthPageProps) {
 
   const upH = health ? Math.floor(health.uptimeSec / 3600) : 0
   const upM = health ? Math.floor((health.uptimeSec % 3600) / 60) : 0
-  const th = alertsData?.thresholds
-
   return (
     <div className="space-y-4">
       {!embedded ? (
@@ -166,38 +164,20 @@ export default function HealthPage({ embedded = false }: HealthPageProps) {
             </Card>
           </div>
 
-          <Card title="Ambang Peringatan">
+          <Card title="Peringatan Aktif">
             {alertsData === null ? (
-              <Spinner label="Memuat ambang peringatan…" />
+              <Spinner label="Memuat peringatan…" />
+            ) : alertsData.alerts.length ? (
+              <span className="inline-flex flex-wrap gap-1">
+                {alertsData.alerts.map((a, i) => (
+                  <Badge key={`${a.kind}-${i}`} tone={a.level === 'critical' ? 'danger' : 'warning'}>
+                    {a.kind}
+                  </Badge>
+                ))}
+              </span>
             ) : (
-                <>
-                  <dl className="grid grid-cols-[160px_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
-                    <dt className="text-muted">Build gagal (1 jam)</dt>
-                    <dd>
-                      {th?.buildFailCount ?? 3} gagal atau &gt;{th?.buildFailPct ?? 50}% gagal
-                    </dd>
-                    <dt className="text-muted">Disk penuh</dt>
-                    <dd>&gt;{th?.diskPct ?? 85}% terpakai</dd>
-                    <dt className="text-muted">Peringatan aktif</dt>
-                    <dd>
-                      {alertsData.alerts.length ? (
-                        <span className="inline-flex flex-wrap gap-1">
-                          {alertsData.alerts.map((a, i) => (
-                            <Badge key={`${a.kind}-${i}`} tone={a.level === 'critical' ? 'danger' : 'warning'}>
-                              {a.kind}
-                            </Badge>
-                          ))}
-                        </span>
-                      ) : (
-                        <Badge tone="success">Tidak ada</Badge>
-                      )}
-                    </dd>
-                  </dl>
-                  <p className="mt-2 text-sm text-muted">
-                    Ambang tersimpan di pengaturan admin (key alert_thresholds).
-                  </p>
-                </>
-              )}
+              <Badge tone="success">Tidak ada</Badge>
+            )}
           </Card>
         </>
       )}

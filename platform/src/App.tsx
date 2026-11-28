@@ -1016,6 +1016,7 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
   const [previewPort, setPreviewPort] = useState<number>(0)
   const [previewOn, setPreviewOn] = useState(false)
   const [inlineEvents, setInlineEvents] = useState<InlineEvent[]>([])
+  const [contextPaths, setContextPaths] = useState<string[]>([])
   const [booting, setBooting] = useState(false)
   const [status, setStatus] = useState('')
   const [plan, setPlan] = useState<ChatPlan | null>(null)
@@ -1200,6 +1201,7 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
     setChangedFiles([])
     setInlineEvents([])
     resetActivity()
+    setContextPaths([])
     pushActivity({ kind: 'status', text: 'menyiapkan', at: Date.now() })
     if (!optsConfirmed) setPendingPlan({ prompt: text, imageIds })
     else setPendingPlan(null)
@@ -1255,6 +1257,9 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
         setStatus('')
         setAwaitingConfirm(true)
         setMessages((m) => [...m, { role: 'assistant', content: 'Rencana sudah ditampilkan. Setujui untuk mulai dibangun, atau tulis perubahan yang diinginkan.', created_at: Date.now() }])
+      },
+      onContext: (paths) => {
+        setContextPaths((prev) => Array.from(new Set([...prev, ...paths])))
       },
       onScreenshot: () => {
         /* Screenshot datang sesudah event file/terminal run ini tersimpan di
@@ -1514,6 +1519,7 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
             onOpenSettings={() => setSettingsOpen(true)}
             waitingForDiscovery={!!pendingDiscovery}
             inlineEvents={inlineEvents}
+            contextPaths={contextPaths}
             events={events}
             onOpenFile={(path) => {
               navigate(`/proyek/${projectId}/file`)

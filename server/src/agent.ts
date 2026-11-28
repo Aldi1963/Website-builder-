@@ -1,3 +1,4 @@
+import { TOOLS } from './agent-tools.ts'
 import { complete, STRONG_MODEL, effectiveAuditModel, type ChatMessage, type ContentPart, type ToolCall } from './llm.ts'
 import { appendFileSync } from 'node:fs'
 import { AUDIT_SYSTEM, BASE_SYSTEM, PLAN_SYSTEM, QUICK_EDIT_SYSTEM } from './prompts.ts'
@@ -10,7 +11,7 @@ import {
   installDeps,
   ensureWorkspace,
 } from './workspace.ts'
-import { putFile, removeFile, listFiles, addMessage, listMessages } from './db.ts'
+import { putFile, removeFile, listFiles, addMessage, listMessages, setSetting as setSettingFromAgent } from './db.ts'
 import { savePendingPlan, clearPendingPlan, type PendingPlanData } from './pending-plan.ts'
 import { readReferenceImage } from './reference-images.ts'
 import { snapshotVersion, restoreVersion, listVersions } from './versions.ts'
@@ -18,112 +19,9 @@ import { captureScreenshot, captureForReview } from './screenshots.ts'
 import { routePathFromFile } from './route-paths.ts'
 import { isManagedDbEnabled, execProjectSql, projectSchemaBrief } from './managed-db.ts'
 
-const TOOLS = [
-  {
-    type: 'function',
-    function: {
-      name: 'list_files',
-      description: 'Daftar file di workspace proyek.',
-      parameters: { type: 'object', properties: {}, required: [] },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'read_file',
-      description: 'Baca isi satu file dari workspace.',
-      parameters: {
-        type: 'object',
-        properties: { path: { type: 'string', description: 'Path relatif, contoh src/routes/index.tsx' } },
-        required: ['path'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'write_file',
-      description: 'Tulis/perbarui file utuh (bukan patch). Selalu kirim isi lengkap file.',
-      parameters: {
-        type: 'object',
-        properties: {
-          path: { type: 'string' },
-          content: { type: 'string', description: 'Isi lengkap file' },
-        },
-        required: ['path', 'content'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'delete_file',
-      description: 'Hapus file dari workspace.',
-      parameters: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'build',
-      description: 'Jalankan build produksi (vite build). Gunakan untuk memverifikasi kode.',
-      parameters: { type: 'object', properties: {}, required: [] },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'audit',
-      description: 'Tinjau keamanan, data, UI, dan aksesibilitas seluruh kode proyek setelah implementasi. Hasil dikirim sebagai temuan terstruktur.',
-      parameters: { type: 'object', properties: {}, required: [] },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'check_preview',
-      description: 'Ambil screenshot preview aplikasi + error runtime (console/pageerror) agar kamu bisa MELIHAT hasil render nyata dan memperbaiki masalah visual/fungsional. Panggil setelah build sukses bila ada perubahan UI. Kamu akan menerima gambar sebagai pesan berikutnya.',
-      parameters: { type: 'object', properties: {}, required: [] },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'db_schema',
-      description: 'Buat atau ubah tabel di database proyek (Postgres terkelola, permanen). Satu pernyataan per panggilan; hanya CREATE TABLE (pakai IF NOT EXISTS), CREATE [UNIQUE] INDEX, ALTER TABLE, COMMENT ON. DROP/TRUNCATE/GRANT/ekstensi/administratif ditolak.',
-      parameters: {
-        type: 'object',
-        additionalProperties: false,
-        properties: { sql: { type: 'string', description: 'Satu pernyataan SQL DDL. Contoh: CREATE TABLE IF NOT EXISTS notes (id serial primary key, user_email text not null, title text not null, body text, created_at timestamptz default now())' } },
-        required: ['sql'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'db_query',
-      description: 'Jalankan satu pernyataan SELECT/INSERT/UPDATE/DELETE/WITH di database proyek untuk memverifikasi skema atau seed data. DDL dan operasi administratif ditolak.',
-      parameters: {
-        type: 'object',
-        additionalProperties: false,
-        properties: { sql: { type: 'string', description: 'Satu pernyataan SQL.' } },
-        required: ['sql'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'install',
-      description: 'Install dependency npm di workspace proyek.',
-      parameters: { type: 'object', properties: {}, required: [] },
-    },
-  },
-]
-
 export type AgentEvent =
   | { type: 'status'; text: string }
+  | { type: 'context'; paths: string[] }
   | { type: 'plan'; ringkasan: string; langkah: { judul: string; detail: string }[]; berkas: string[]; asumsi: string[] }
   | { type: 'audit'; nilai: number; temuan: { tingkat: string; kategori: string; berkas: string; baris: number; masalah: string; perbaikan: string }[]; catatan: string }
   | { type: 'file'; path: string; action: 'write' | 'delete' | 'mkdir' }
@@ -175,8 +73,11 @@ export async function runAgent(
   const designContext = designBrief
     ? `\n\nKONTRAK DESAIN PROYEK (DESIGN.md — ikuti, jangan bertentangan):\n${designBrief}`
     : `\n\nKONTRAK DESAIN PROYEK: proyek ini belum punya DESIGN.md. Ikuti DESIGN_FILTER pada instruksi utama; bila user meminta perubahan desain, tulis DESIGN.md berisi keputusan visual yang dipakai.`
+  const ctx = contextBrief(projectId, userPrompt)
+  const filePathsRead: string[] = [...ctx.paths]
+  await emit({ type: 'context', paths: filePathsRead })
   const messages: ChatMessage[] = [
-    { role: 'system', content: `${BASE_SYSTEM}${designContext}\n\nWorkspace saat ini:\n${fileIndex(projectId)}${dbContext}` },
+    { role: 'system', content: `${BASE_SYSTEM}${designContext}${ctx.text}\n\nWorkspace saat ini:\n${fileIndex(projectId)}${dbContext}` },
     ...history.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
   ]
 
@@ -210,11 +111,20 @@ export async function runAgent(
      punya file. */
   const trimmedPrompt = userPrompt.trim()
   const buildVerb = /\b(buat|buatkan|bikin|bikinkan|bangun|buatlah|tambah|tambahkan|ubah|ganti|perbaiki|hapus|implementasi|integrasi|desain|kembangkan|tulis|coding|program)\b/i
-  const greetWord = /^(halo+|hai+|hei+|hello+|hi+|hey+|pagi|siang|sore|malam|assalam|permisi|tes+|test+)\b/i
+  /* "tes"/"test" sering jadi pembuka pertanyaan proyek, bukan sapaan. */
+  const greetWord = /^(halo+|hai+|hei+|hello+|hi+|hey+|pagi|siang|sore|malam|assalam|permisi)[!.?\s]*$/i
+  const isMurniKata = (s: string) => /^[\w!.\s]+$/u.test(s) && s.split(/\s+/).length <= 2
+  const punyaFile = listFiles(projectId).length > 0
+  const isMurniSapaan =
+    isMurniKata(trimmedPrompt) &&
+    (greetWord.test(trimmedPrompt) || /^(halo|hai|hi|tes|test|coba)\b/i.test(trimmedPrompt))
+  const isPertanyaan = /\?/.test(trimmedPrompt) || /^(apa|apakah|bagaimana|kenapa|mengapa|bisakah|bisa|boleh|sudah|gimana)\b/i.test(trimmedPrompt)
   const isGreeting =
+    !punyaFile &&
     trimmedPrompt.length <= 40 &&
-    greetWord.test(trimmedPrompt) &&
-    !buildVerb.test(trimmedPrompt)
+    isMurniSapaan &&
+    !buildVerb.test(trimmedPrompt) &&
+    !isPertanyaan
   if (isGreeting) {
     await emit({ type: 'status', text: 'Menyusun jawaban…' })
     let streamed = ''
@@ -272,7 +182,7 @@ let pendingPreviewDefects: string[] = []
       // pekerjaan penuh (buat fitur/struktur/halaman baru). Tanpa jalur konsultasi, pertanyaan
       // seperti "apa kekurangan web ini" jatuh ke pekerjaan penuh lalu memicu rencana + audit.
       const cls = await complete([
-        { role: 'system', content: 'Klasifikasi permintaan. Balas HANYA JSON: {"jenis": "kecil"|"konsultasi"|"penuh"}. "kecil" bila permintaan hanya mengubah satu bagian kecil yang sudah ada (teks, warna, komponen tunggal, perbaikan kecil). "konsultasi" bila user bertanya/meminta saran/opini/penjelasan/analisis tentang proyek (contoh: "apa kekurangan web ini", "saran fitur", "kenapa error X", "bagaimana cara kerja") dan TIDAK meminta kode ditulis. "penuh" bila menambah fitur, mengubah struktur data, atau membuat halaman/flow baru. Default "penuh" bila ragu.' },
+        { role: 'system', content: 'Klasifikasi permintaan. Balas HANYA JSON: {"jenis": "kecil"|"konsultasi"|"penuh"}. "kecil" bila permintaan hanya mengubah satu bagian kecil yang sudah ada (teks, warna, komponen tunggal, perbaikan kecil). "konsultasi" bila user bertanya/meminta saran/opini/penjelasan/analisis tentang proyek (contoh: "apa kekurangan web ini", "saran fitur", "kenapa error X", "bagaimana cara kerja", "sudah siap live atau belum", "apakah route login sudah benar", "tes apa web ini sudah siap") dan TIDAK meminta kode ditulis. "penuh" bila menambah fitur, mengubah struktur data, atau membuat halaman/flow baru. Default "penuh" bila ragu.' },
         { role: 'user', content: userPrompt },
       ], { model, temperature: 0, maxTokens: 100, userId: opts?.userId })
       const raw = typeof cls.message.content === 'string' ? cls.message.content : ''
@@ -283,21 +193,48 @@ let pendingPreviewDefects: string[] = []
     } catch { /* default: jalur penuh */ }
   }
 
-  // Jalur konsultasi: pertanyaan analitik dijawab langsung sebagai chat — tanpa rencana,
-  // tanpa menulis file, tanpa audit. User cuma minta saran/penjelasan, bukan implementasi.
+  // Jalur konsultasi: pertanyaan analitik dijawab berbasis kode nyata — model boleh
+  // membaca file & mencari kode (read-only), tetapi tidak boleh menulis/build/audit.
+  // Tanpa tool di jalur ini, model hanya menebak dari nama file (kasus "siap live?").
   if (consult) {
-    await emit({ type: 'status', text: 'Menyusun jawaban…' })
-    let streamed = ''
-    let answer = ''
-    await complete(
-      [...messages, { role: 'user', content: `${userPrompt}\n\nPENTING: Ini pertanyaan/permintaan saran. Jawab HANYA dalam bentuk penjelasan/saran di chat. JANGAN menulis file, JANGAN menjalankan build/audit, JANGAN membuat rencana kerja. Baca kode proyek bila relevan lalu beri jawaban langsung.` }],
-      {
-        model, temperature: 0.3, maxTokens: 2500, userId: opts?.userId,
+    await emit({ type: 'status', text: 'Membaca konteks proyek…' })
+    const consultTools = TOOLS.filter((t) => ['list_files', 'read_file', 'search_code'].includes(t.function.name))
+    const consultMessages: ChatMessage[] = [
+      ...messages,
+      { role: 'user', content: `${userPrompt}\n\nPENTING: Proyek ini SUDAH ADA — daftar berkas dan potongan file relevan ada di pesan system. Jawab sebagai konsultasi tentang proyek ini berdasarkan isi berkas yang kamu baca, jangan bertanya \"aplikasi apa yang ingin dibangun\" dan jangan berpura-pura proyek kosong. Gunakan tool read_file/search_code untuk memeriksa kode sebelum menjawab. Bila perlu dicek secara nyata (build/preview/route), katakan terus terang bahwa itu perlu dijalankan — jangan mengklaim sudah lolos. Jawab HANYA penjelasan/saran di chat; JANGAN menulis file, menjalankan build/audit, atau membuat rencana kerja.` },
+    ]
+    for (let turn = 0; turn < 6; turn++) {
+      let streamed = ''
+      const resp = await complete(consultMessages, {
+        model, tools: consultTools, temperature: 0.3, maxTokens: 2500, userId: opts?.userId,
         onDelta: async (d) => { streamed += d; await emit({ type: 'assistant_delta', text: d }) },
-      },
-    )
-    answer = streamed.trim()
-    if (answer) addMessage(projectId, 'assistant', answer)
+      })
+      const msg = resp.message
+      const calls: ToolCall[] = msg.tool_calls ?? []
+      if (!calls.length) {
+        const answer = (typeof msg.content === 'string' ? msg.content : streamed).trim()
+        if (answer) addMessage(projectId, 'assistant', answer)
+        return
+      }
+      consultMessages.push({ role: 'assistant', content: msg.content ?? '', tool_calls: calls })
+      for (const call of calls) {
+        const name = call.function.name
+        let args: Record<string, unknown> = {}
+        try { args = JSON.parse(call.function.arguments || '{}') } catch { args = {} }
+        let result = 'ERROR: argumen tidak valid'
+        if (name === 'list_files') {
+          result = listFiles(projectId).map((f) => f.path).join('\n')
+        } else if (name === 'read_file') {
+          const path = String(args.path ?? '')
+          result = readProjectFile(projectId, path) ?? `ERROR: file ${path} tidak ditemukan`
+          if (!filePathsRead.includes(path)) filePathsRead.push(path)
+        } else if (name === 'search_code') {
+          result = searchProjectCode(projectId, String(args.pattern ?? ''), String(args.path ?? ''))
+        }
+        consultMessages.push({ role: 'tool', tool_call_id: call.id, name, content: result })
+      }
+    }
+    await emit({ type: 'error', text: 'Pemeriksaan konteks mencapai batas langkah. Jawaban tidak disimpan agar tidak menyesatkan.' })
     return
   }
 
@@ -317,7 +254,7 @@ let pendingPreviewDefects: string[] = []
   try {
     const planResp = await complete([
       { role: 'system', content: PLAN_SYSTEM },
-      { role: 'user', content: `Permintaan: ${userPrompt}\n\nBerkas yang ada:\n${fileIndex(projectId)}` },
+      { role: 'user', content: `Permintaan: ${userPrompt}\n\nBerkas yang ada:\n${fileIndex(projectId)}${ctx.text}` },
     ], {
       model, temperature: 0.15, maxTokens: 1800, userId: opts?.userId,
       // JSON rencana di-buffer, BUKAN di-stream ke chat: user tidak boleh melihat
@@ -419,7 +356,7 @@ let pendingPreviewDefects: string[] = []
       messages.push({
         role: 'user',
         content: [
-          { type: 'text', text: `Ini screenshot preview aplikasimu saat ini. Error runtime:\n${errList}\n\nCacat yang TERDETEKSI otomatis (visual DAN interaksi nyata — harus diperbaiki, bukan sekadar opini):\n${defectList}\n\nTemuan dead-button/form-no-submit/form-invalid berarti tombol atau form ada di tampilan tetapi tidak berfungsi: tombol aman yang diklik tidak mengubah apa pun, form tidak punya tombol submit aktif, atau form menolak isian yang valid. Perbaiki handler klik, tombol submit, atau aturan validasi — jangan hanya mengganti warna atau teksnya. (Probe tidak pernah men-submit form atau mengklik tombol yang bisa mengubah data, jadi temuan ini murni soal perilaku client-side.)\n\nBila ada cacat di atas atau masalah visual nyata (layout rusak, konten kosong/placeholder, elemen tumpang tindih), perbaiki lewat write_file lalu panggil build, lalu check_preview lagi. Bila daftar cacat KOSONG dan error runtime tidak ada, JANGAN menulis file apa pun dan langsung beri ringkasan akhir.` },
+          { type: 'text', text: `Ini screenshot preview aplikasimu saat ini. Error runtime:\n${errList}\n\nCacat yang TERDETEKSI otomatis (visual DAN interaksi nyata — harus diperbaiki, bukan sekadar opini):\n${defectList}\n\nTemuan dead-button/form-no-submit/form-invalid berarti tombol atau form ada di tampilan tetapi tidak berfungsi saat diklik/disubmit. Perbaiki handler submit/klik, endpoint yang dipanggil, atau state yang tidak berubah — jangan hanya mengganti warna atau teksnya.\n\nBila ada cacat di atas atau masalah visual nyata (layout rusak, konten kosong/placeholder, elemen tumpang tindih), perbaiki lewat write_file lalu panggil build, lalu check_preview lagi. Bila daftar cacat KOSONG dan error runtime tidak ada, JANGAN menulis file apa pun dan langsung beri ringkasan akhir.` },
           { type: 'image_url', image_url: { url: pendingPreviewImage } },
         ],
       })
@@ -518,9 +455,15 @@ let pendingPreviewDefects: string[] = []
           .map((f) => f.path)
           .join('\n')
       } else if (name === 'read_file') {
-        await emit({ type: 'status', text: `Membaca ${String(args.path ?? '')}…` })
-        const content = readProjectFile(projectId, String(args.path ?? ''))
-        result = content ?? `ERROR: file ${args.path} tidak ditemukan`
+        const path = String(args.path ?? '')
+        await emit({ type: 'status', text: `Membaca ${path}…` })
+        await emit({ type: 'context', paths: [path] })
+        const content = readProjectFile(projectId, path)
+        if (!filePathsRead.includes(path)) filePathsRead.push(path)
+        result = content ?? `ERROR: file ${path} tidak ditemukan`
+      } else if (name === 'search_code') {
+        await emit({ type: 'status', text: 'Mencari kode terkait…' })
+        result = searchProjectCode(projectId, String(args.pattern ?? ''), String(args.path ?? ''))
       } else if (name === 'write_file') {
         try {
           const path = String(args.path ?? '')
@@ -650,9 +593,19 @@ let pendingPreviewDefects: string[] = []
         }
       } else if (name === 'install') {
         await emit({ type: 'status', text: 'Install dependency…' })
-        const r = await installDeps(projectId)
+        const packages = Array.isArray(args.packages) ? args.packages.filter((p): p is string => typeof p === 'string' && p.length > 0) : []
+        const r = await installDeps(projectId, packages)
         await emit({ type: 'install', ok: r.code === 0, log: r.output.slice(-4000) })
         result = `exit=${r.code}\n${r.output.slice(-2500)}`
+      } else if (name === 'set_secret') {
+        const key = String(args.key ?? '').trim()
+        const value = String(args.value ?? '')
+        if (!/^[A-Z][A-Z0-9_]*$/.test(key) || !value) {
+          result = 'ERROR: key harus HURUF_KAPITAL_ANGKA dan value tidak boleh kosong.'
+        } else {
+          setSettingFromAgent(projectId, `secret_${key}`, value)
+          result = `OK: ${key} tersimpan sebagai environment variable server preview (nilai tidak ditampilkan).`
+        }
       } else if (name === 'build') {
         await emit({ type: 'status', text: 'Build…' })
         const r = await buildProject(projectId)
@@ -716,9 +669,62 @@ function scanRiskPatterns(files: { path: string; content: string }[]): RiskFindi
   return findings
 }
 
+/* Context pack: sisipkan potongan file paling relevan ke system prompt agar
+   model tidak menebak dari nama file saja. Skor: token prompt yang muncul di
+   path atau isi file,文件的 path lebih pendek sedikit diprioritaskan. Best-effort
+   dan dibatasi total char supaya tidak membengkakkan biaya. */
+function tokenize(s: string): string[] {
+  return (s.toLowerCase().match(/[a-z][a-z0-9_-]{2,}/g) ?? []).filter((t) => !/^(yang|dan|dari|untuk|dengan|pada|ini|itu|bagaimana|apakah)$/.test(t))
+}
+function contextBrief(projectId: string, prompt: string): { text: string; paths: string[] } {
+  const tokens = Array.from(new Set(tokenize(prompt)))
+  if (!tokens.length) return { text: '', paths: [] }
+  const scored = listFiles(projectId)
+    .filter((f) => /\.(tsx?|jsx?|css|json|md|sql|html)$/.test(f.path) && !/(lock|\.gen\.)/.test(f.path))
+    .map((f) => {
+      const content = readProjectFile(projectId, f.path) ?? ''
+      const lowPath = f.path.toLowerCase()
+      const lowBody = content.toLowerCase()
+      const score = tokens.reduce((n, t) => n + (lowPath.includes(t) ? 3 : 0) + (lowBody.includes(t) ? 1 : 0), 0)
+      return { path: f.path, content, score }
+    })
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 6)
+  let budget = 18_000
+  const blocks: string[] = []
+  const paths: string[] = []
+  for (const f of scored) {
+    if (budget <= 0) break
+    const excerpt = f.content.slice(0, budget)
+    if (!excerpt.trim()) continue
+    blocks.push(`--- ${f.path} ---\n${excerpt}`)
+    paths.push(f.path)
+    budget -= excerpt.length
+  }
+  return { text: blocks.length ? `\n\nKONTEKS PROYEK (potongan file paling relevan dengan permintaan ini — baca file lengkap dengan read_file bila perlu):\n${blocks.join('\n\n')}` : '', paths }
+}
+/* Cari pola di seluruh file workspace (dipakai tool search_code). */
+function searchProjectCode(projectId: string, pattern: string, pathFilter: string): string {
+  let re: RegExp
+  try { re = new RegExp(pattern, 'i') } catch (e) { return `ERROR: pola regex tidak valid: ${(e as Error).message}` }
+  const hits: string[] = []
+  let total = 0
+  for (const f of listFiles(projectId)) {
+    if (pathFilter && !f.path.toLowerCase().includes(pathFilter.toLowerCase())) continue
+    const content = readProjectFile(projectId, f.path) ?? ''
+    const lines = content.split('\n')
+    for (let i = 0; i < lines.length; i++) {
+      if (!re.test(lines[i])) continue
+      total++
+      if (hits.length < 40) hits.push(`${f.path}:${i + 1}: ${lines[i].trim().slice(0, 220)}`)
+    }
+  }
+  return hits.length ? `${hits.join('\n')}${total > hits.length ? `\n… dan ${total - hits.length} kecocokan lain (dibatasi 40).` : ''}` : `(tidak ada kecocokan untuk /${pattern}/i)`
+}
+
 function fileIndex(projectId: string) {
   const files = listFiles(projectId)
   if (!files.length) return '(kosong, selain template dasar: src/routes/__root.tsx, src/routes/index.tsx, src/styles.css)'
   return files.map((f) => `- ${f.path}`).join('\n')
 }
-

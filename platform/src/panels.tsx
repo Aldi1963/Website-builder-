@@ -7,7 +7,7 @@ import { Tabs } from '@cloudflare/kumo/components/tabs'
 import { Dialog } from '@cloudflare/kumo/components/dialog'
 import { Icon, Activity, Spinner, useAutoScroll, useCopy } from './ui'
 import { openTopupModal } from './topup-modal'
-import { ActivityFeed, TerminalBlock, type ActivityEntry } from './activity'
+import { ActivityFeed, PhaseStrip, TerminalBlock, type ActivityEntry } from './activity'
 import { api, type ActivityEvent, type AuditFinding, type PlanStep, type ProjectSettings } from './api'
 import {
   FALLBACK_MODEL_CATALOG,
@@ -568,6 +568,7 @@ export function ChatPanel({
   waitingForDiscovery,
   inlineEvents,
   events,
+  contextPaths,
   onOpenFile,
   previewOpen,
   previewUrl,
@@ -588,6 +589,7 @@ export function ChatPanel({
   onOpenSettings: () => void
   waitingForDiscovery: boolean
   inlineEvents?: InlineEvent[]
+  contextPaths?: string[]
   /* Kartu aktivitas PERSISTEN dari server (bukan feed live): dirender di
      dalam transcript, kronologis terhadap bubble pesan. */
   events?: ActivityEvent[]
@@ -735,7 +737,17 @@ export function ChatPanel({
             )}
             {sending && (
               <div className="vb-enter flex flex-col gap-2.5 text-[12px] text-quiet">
+                <PhaseStrip status={status ?? ''} active={sending} />
                 <ActivityFeed entries={activity ?? []} />
+                {!!contextPaths?.length && (
+                  <div className="flex flex-wrap items-center gap-1.5" title="File yang dibaca/dipakai agent pada permintaan ini">
+                    <span className="text-[10.5px] text-quiet">Konteks dibaca:</span>
+                    {contextPaths.slice(0, 6).map((p) => (
+                      <button key={p} type="button" onClick={() => onOpenFile?.(p)} className="max-w-[160px] truncate rounded-full border border-edge bg-surface px-2 py-0.5 font-mono text-[10px] text-quiet hover:border-quiet hover:text-body" title={p}>{p.split('/').pop()}</button>
+                    ))}
+                    {contextPaths.length > 6 && <span className="text-[10px] text-quiet">+{contextPaths.length - 6}</span>}
+                  </div>
+                )}
                 <InlineEvents events={inlineEvents ?? []} onOpenFile={onOpenFile} />
                 {status && (
                   <div className="flex items-center gap-2"><Activity /><span>{status}</span></div>

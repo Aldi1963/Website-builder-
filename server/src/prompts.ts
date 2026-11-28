@@ -12,7 +12,7 @@ Tipografi
 Warna
 - Maksimal tiga warna inti plus satu accent. Accent hanya untuk aksi utama dan status aktif, bukan dekorasi.
 - Dilarang gradien ungu-biru, glassmorphism, glow, dan blob blur di belakang konten.
-- Kontras teks terhadap latar minimal 4.5:1. Uji di tema terang.
+- Kontras teks terhadap latar minimal 4.5:1. Uji di tema terang dan tema gelap.
 
 Tata letak
 - Jangan pakai grid latar dekoratif, titik-titik, atau garis-garis hiasan.
@@ -46,14 +46,14 @@ Desain & kualitas visual (WAJIB — DESIGN_FILTER + DESIGN.md proyek adalah sumb
 - Baca DESIGN.md di root proyek (disuntikkan otomatis ke konteksmu). Ikuti keputusan visual di sana. Bila user meminta perubahan desain, perbarui DESIGN.md dan nilai token di src/styles.css — jangan menyimpan keputusan desain hanya di chat.
 - styles.css sudah berisi design system lengkap: token @theme + kelas komponen (.card .card-pad .btn .btn-primary .btn-ghost .input .label .badge .table-wrap .table-data .empty-state .notice .nav-link .tab .modal-panel .toast .stack-mobile). PAKAI kelas itu; jangan menulis Tailwind mentah berulang untuk pola yang sudah ada.
 - Tipografi: font display Fraunces + UI DM Sans sudah dimuat. JANGAN pakai Inter/Roboto/Poppins/system-ui sebagai display, JANGAN .gradient-text (sudah dihapus). Isi minimal 12px, metadata 11px.
-- Warna: neutral + satu accent lewat token (--color-surface/ink/muted/edge/accent). Dilarang gradien ungu-biru, glassmorphism, glow, blob blur, grid dekoratif. Uji kontras 4.5:1 di tema terang.
+- Warna: neutral + satu accent lewat token (--color-surface/ink/muted/edge/accent). Dilarang gradien ungu-biru, glassmorphism, glow, blob blur, grid dekoratif. Uji kontras 4.5:1 di tema terang DAN gelap.
 - Setiap halaman punya: kontainer .container-page, heading yang menyebut isi halaman (bukan slogan), konten di dalam .card. Empty state (.empty-state) menjelaskan kenapa kosong + langkah berikutnya; loading menyebut apa yang dimuat; error (.notice-error) menyebut penyebab + perbaikan.
 - Data: pakai .table-wrap + .table-data (w-max, scroll horizontal, header sticky, NULL italic via .cell-null, angka via .cell-number). Jangan pernah w-full pada tabel data.
 - Responsive sejak awal: .stack-mobile, target sentuh min 44px (kelas .btn/.input sudah min-h-11), tabel panjang jadi .mobile-list di layar kecil, tidak ada overflow horizontal di 360px.
 - Halaman terlihat jadi PRODUK, bukan debug: hindari dump JSON mentah; tampilkan data dalam kartu/tabel/daftar yang ditata. Angka penting rata kanan / tabular, satuan diberi label.`
 
 const RULES = `Aturan teknis:
-1. Jangan pernah menulis ke node_modules, dist, .output, atau file konfigurasi build (vite.config.ts, package.json, tsconfig.json) kecuali diminta eksplisit.
+1. Jangan pernah menulis ke node_modules, dist, .output, vite.config.ts, tsconfig.json, atau package.json. Untuk dependency baru, WAJIB panggil tool install dengan argumen packages: ["nama-package"] (tool yang memperbarui package.json + lock dengan aman). Untuk kunci/token/rahasia, WAJIB pakai tool set_secret — jangan pernah menuliskan nilainya di file kode.
 2. Semua file harus lengkap dan bisa dikompilasi. Tidak boleh ada placeholder "// TODO" atau komponen kosong.
 3. Import path internal pakai prefix ~/ (contoh: import { x } from '~/lib/x').
 4. UI pakai Tailwind, tanpa library UI eksternal.
@@ -69,7 +69,8 @@ const RULES = `Aturan teknis:
 8. Setiap file yang ditulis harus lengkap. Kalau mengubah file, baca dulu isinya.
 9. Setelah selesai menulis, jalankan build. Kalau gagal, perbaiki dan build ulang.
 10. Ringkas hasil dalam 1-3 kalimat: apa yang dibangun dan apa yang bisa dicoba. Tanpa basa-basi.
-11. Database aplikasi = Postgres terkelola (permanen). Alur wajib saat butuh data: (a) panggil TOOL db_schema dengan pernyataan CREATE TABLE IF NOT EXISTS untuk tiap tabel (idempotent, satu pernyataan per panggilan), (b) tulis src/lib/db.ts yang sudah disediakan template (jangan diubah, isinya helper query Postgres), (c) tulis createServerFn di src/server/ yang memakai query(...) untuk baca/tulis. DILARANG memakai node:sqlite, localStorage, atau ':memory:' untuk data aplikasi. Setiap tabel punya kolom id (serial primary key).`
+11. Database aplikasi = Postgres terkelola (permanen). Alur wajib saat butuh data: (a) panggil TOOL db_schema dengan pernyataan CREATE TABLE IF NOT EXISTS untuk tiap tabel (idempotent, satu pernyataan per panggilan), (b) tulis src/lib/db.ts yang sudah disediakan template (jangan diubah, isinya helper query Postgres), (c) tulis createServerFn di src/server/ yang memakai query(...) untuk baca/tulis. DILARANG memakai node:sqlite, localStorage, atau ':memory:' untuk data aplikasi. Setiap tabel punya kolom id (serial primary key).
+12. Butuh server khusus (WebSocket, webhook, background worker — misalnya gateway WhatsApp)? Tulis file server.mjs kamu sendiri DAN file penanda vb.custom-server (isi bebas) lewat write_file. Platform TIDAK akan menimpa server.mjs-mu bila penanda itu ada. Pasang library yang diperlukan lewat tool install, dan kredensial lewat tool set_secret (dibaca dari process.env di server.mjs). Server harus tetap menyajikan SSR dari ./dist/server/server.js dan aset dari ./dist/client/ seperti template, lalu tambahkan route kamu sendiri.`
 
 /* Fitur AI di aplikasi hasil generate (web LLM): aplikasi yang kamu bangun
    bisa punya fitur AI (mis. halaman chatbot) lewat proxy LLM yang sudah

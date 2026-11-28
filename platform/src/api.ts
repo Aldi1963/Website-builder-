@@ -252,6 +252,7 @@ export type ChatHandlers = {
   onFile?: (path: string, action: 'write' | 'delete' | 'mkdir') => void
   onBuild?: (ok: boolean, log: string) => void
   onInstall?: (ok: boolean, log: string) => void
+  onContext?: (paths: string[]) => void
   onAssistantDelta?: (text: string) => void
   onAssistant?: (text: string) => void
   onScreenshot?: (url: string, name: string) => void
@@ -327,6 +328,7 @@ export async function chatStream(
       else if (event === 'file') h.onFile?.(payload.path, payload.action)
       else if (event === 'build') h.onBuild?.(payload.ok, payload.log)
       else if (event === 'install') h.onInstall?.(payload.ok, payload.log)
+      else if (event === 'context') h.onContext?.(payload.paths)
       else if (event === 'assistant_delta') h.onAssistantDelta?.(payload.text)
       else if (event === 'assistant') h.onAssistant?.(payload.text)
       else if (event === 'screenshot') h.onScreenshot?.(payload.url, payload.name)

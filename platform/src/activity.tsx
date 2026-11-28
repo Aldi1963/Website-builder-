@@ -120,3 +120,37 @@ export function ActivityFeed({ entries }: { entries: ActivityEntry[] }) {
     </div>
   )
 }
+
+
+/* Phase strip: empat tahap khas Lovable/Emergent, dipetakan dari status
+   nyata yang dipancarkan agent (bukan angka sintetis). only shown while
+   sending. Tahap selesai = langkah berikutnya sudah pernah terlihat. */
+const PHASES = [
+  { label: 'Membaca', match: /membaca|melihat daftar file|mencari kode|referensi gambar|meninjau/i },
+  { label: 'Merencana', match: /rencana|memeriksa proyek/i },
+  { label: 'Membangun', match: /menerapkan|install dependency|menyiapkan tabel|menjalankan query|memperbaiki otomatis|mengambil screenshot/i },
+  { label: 'Menyelesaikan', match: /ringkasan|build|menyusun jawaban|publik|audit/i },
+] as const
+
+export function PhaseStrip({ status, active }: { status: string; active: boolean }) {
+  if (!active || !status) return null
+  const t = status.toLowerCase()
+  let current = -1
+  for (let i = 0; i < PHASES.length; i++) if (PHASES[i].match.test(t)) current = Math.max(current, i)
+  if (current < 0) current = 0
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-edge bg-surface px-2.5 py-1.5" role="status" aria-label="Tahap agent">
+      {PHASES.map((ph, i) => (
+        <span key={ph.label} className="flex items-center gap-1.5">
+          {i > 0 && <span className={`h-px w-3 ${i <= current ? 'bg-accent' : 'bg-edge'}`} aria-hidden="true" />}
+          <span
+            className={`text-[10.5px] ${i < current ? 'text-success' : i === current ? 'font-medium text-body' : 'text-quiet'}`}
+            aria-current={i === current ? 'step' : undefined}
+          >
+            {i < current ? '✓ ' : ''}{ph.label}
+          </span>
+        </span>
+      ))}
+    </div>
+  )
+}

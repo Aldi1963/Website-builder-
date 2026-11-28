@@ -23,6 +23,7 @@ import {
   publishProject,
   unpublishProject,
   projectBySlug,
+  listPublishedSlugs,
   claimOrphanProjects,
   userOwnsProject,
   getSetting,
@@ -77,22 +78,47 @@ import { complete, effectiveModel, llmUsage } from './llm.ts'
 import { DISCOVERY_SYSTEM } from './prompts.ts'
 import { registerAdmin } from './admin.ts'
 import { proxyPreview, previewPrefix } from './preview-proxy.ts'
+import { rateLimit } from './rate-limit.ts'
+import { deliverResetLink } from './mail.ts'
+import { allowedOrigin } from './cors.ts'
 
 type Env = { Variables: { user: User } }
 
 export const app = new Hono<Env>()
 
-app.use('*', cors({ origin: (o) => o ?? '*', credentials: true }))
+/* CORS: hanya origin yang dipercaya yang boleh memakai cookie sesi.
+   Sebelumnya origin apa pun dipantulkan (termasuk `null`) bersama
+   Access-Control-Allow-Credentials: true — itu CSRF lintas-origin. */
+app.use('*', cors({
+  origin: (o, c) => allowedOrigin(o, c.req.url),
+  credentials: true,
+  allowHeaders: ['content-type', 'authorization', 'x-requested-with'],
+}))
 
 /* Header keamanan dasar untuk semua respons.
    - HSTS hanya aman bila di balik HTTPS; di lingkungan dev lokal (http)
      tidak mengubah apa pun karena browser mengabaikannya tanpa TLS. */
 app.use('*', async (c, next) => {
   await next()
+  /* Response auth mengandung data akun & (saat dev) tautan reset. */
+  if (c.req.path.startsWith('/api/auth/') || c.req.path === '/api/usage') {
+    c.header('Cache-Control', 'no-store')
+    c.header('Pragma', 'no-cache')
+  }
   c.header('X-Content-Type-Options', 'nosniff')
   c.header('X-Frame-Options', 'DENY')
   c.header('Referrer-Policy', 'strict-origin-when-cross-origin')
   c.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+  c.header('Cross-Origin-Opener-Policy', 'same-origin')
+  c.header('Cross-Origin-Resource-Policy', 'same-origin')
+  /* CSP untuk UI platform: tidak ada inline script, aset lokal/content-hash.
+     Preview aplikasi pengguna punya CSP sendiri lewat proxyPreview. */
+  if (!c.req.path.startsWith('/p/') && !c.req.path.startsWith('/api/projects/')) {
+    c.header(
+      'Content-Security-Policy',
+      "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ws: wss:",
+    )
+  }
   const proto = c.req.header('x-forwarded-proto') ?? ''
   if (proto === 'https' || new URL(c.req.url).protocol === 'https:') {
     c.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
@@ -181,6 +207,27 @@ app.get('/api/on-demand-tls-ask', (c) => {
 
 /* ---------- auth ---------- */
 
+function clientIp(c: { req: { header: (n: string) => string | undefined } }): string {
+  /* CF memastikan header ini hanya bisa ditambahkan proxy, bukan client. */
+  return (c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? '').split(',')[0].trim() || 'unknown'
+}
+
+function isSecure(c: Context) {
+  return (
+    (c.req.header('x-forwarded-proto') ?? '').split(',')[0]?.trim() === 'https' ||
+    new URL(c.req.url).protocol === 'https:'
+  )
+}
+
+function tooMany(c: Context, scope: string, max: number, windowMs?: number) {
+  const result = rateLimit(`${scope}:${clientIp(c)}`, max, windowMs)
+  return result.ok
+    ? null
+    : c.json({ ok: false, error: 'Terlalu banyak permintaan. Coba lagi beberapa saat lagi.' }, 429, {
+        'Retry-After': String(result.retryAfter),
+      })
+}
+
 function currentUser(c: { req: { header: (n: string) => string | undefined } }): User | undefined {
   return userByToken(readCookie(c.req.header('cookie'), SESSION_COOKIE))
 }
@@ -201,6 +248,8 @@ app.use('/api/projects', async (c, next) => {
 })
 
 app.post('/api/auth/signup', async (c) => {
+  const limited = tooMany(c, 'signup', 8, 10 * 60_000)
+  if (limited) return limited
   const body = (await c.req.json().catch(() => ({}))) as { email?: string; name?: string; password?: string }
   const email = (body.email ?? '').trim()
   const password = body.password ?? ''
@@ -215,11 +264,13 @@ app.post('/api/auth/signup', async (c) => {
   if (countUsers() === 1) claimOrphanProjects(user.id)
 
   const { token } = createSession(user.id)
-  c.header('set-cookie', sessionCookie(token, 60 * 60 * 24 * 30))
+  c.header('set-cookie', sessionCookie(token, 60 * 60 * 24 * 30, isSecure(c)))
   return c.json({ ok: true, user }, 201)
 })
 
 app.post('/api/auth/login', async (c) => {
+  const limited = tooMany(c, 'login', 12, 10 * 60_000)
+  if (limited) return limited
   const body = (await c.req.json().catch(() => ({}))) as { email?: string; password?: string; remember?: boolean }
   const remember = body.remember !== false
   const row = userByEmail((body.email ?? '').trim())
@@ -229,13 +280,15 @@ app.post('/api/auth/login', async (c) => {
   if (row.disabled) return c.json({ ok: false, error: 'Akun ini dinonaktifkan. Hubungi admin.' }, 403)
   const { password_hash: _drop, ...user } = row
   const { token, expiresAt } = createSession(user.id, remember)
-  c.header('set-cookie', sessionCookie(token, Math.floor((expiresAt - Date.now()) / 1000)))
+  c.header('set-cookie', sessionCookie(token, Math.floor((expiresAt - Date.now()) / 1000), isSecure(c)))
   return c.json({ ok: true, user })
 })
 
-/* Forgot password: without a mail provider, the reset link is returned in the
-   response so the flow stays usable on a self-hosted deploy. */
+/* Forgot password: token dikirim lewat email (atau tersimpan di log self-host),
+   TIDAK dikembalikan di response API. Pesan generik mencegah enumerasi akun. */
 app.post('/api/auth/forgot', async (c) => {
+  const limited = tooMany(c, 'forgot', 5, 10 * 60_000)
+  if (limited) return limited
   const body = (await c.req.json().catch(() => ({}))) as { email?: string }
   const email = (body.email ?? '').trim()
   const created = createResetToken(email)
@@ -243,11 +296,17 @@ app.post('/api/auth/forgot', async (c) => {
   if (!created) return c.json(generic)
   const origin = new URL(c.req.url).origin
   const link = `${origin}/?reset=${encodeURIComponent(created.token)}`
-  console.log(`[auth] reset link untuk ${email}: ${link}`)
-  return c.json({ ...generic, resetUrl: link })
+  const delivery = await deliverResetLink(email, link)
+  return c.json(
+    delivery.mode === 'dev'
+      ? { ok: true, message: delivery.message, resetUrl: delivery.link }
+      : { ok: true, message: delivery.message },
+  )
 })
 
 app.post('/api/auth/reset', async (c) => {
+  const limited = tooMany(c, 'reset', 10, 10 * 60_000)
+  if (limited) return limited
   const body = (await c.req.json().catch(() => ({}))) as { token?: string; password?: string }
   const password = body.password ?? ''
   if (password.length < 8) return c.json({ ok: false, error: 'Password minimal 8 karakter.' }, 400)
@@ -260,7 +319,7 @@ app.post('/api/auth/reset', async (c) => {
 
 app.post('/api/auth/logout', (c) => {
   destroySession(readCookie(c.req.header('cookie'), SESSION_COOKIE))
-  c.header('set-cookie', clearCookie())
+  c.header('set-cookie', clearCookie(isSecure(c)))
   return c.json({ ok: true })
 })
 
@@ -824,8 +883,11 @@ app.get('/api/projects/:id/preview/status', async (c) => {
 })
 
 app.post('/api/discovery', async (c) => {
+  /* Endpoint ini memanggil LLM (biaya). Batasi per IP dan panjang prompt. */
+  const limited = tooMany(c, 'discovery', 20, 60 * 60_000)
+  if (limited) return limited
   const body = (await c.req.json().catch(() => ({}))) as { prompt?: string }
-  const prompt = (body.prompt ?? '').trim()
+  const prompt = (body.prompt ?? '').trim().slice(0, 2000)
   if (!prompt) return c.json({ ready: false, questions: ['Aplikasi apa yang mau dibangun?'], assumptions: [] })
 
   try {
@@ -852,6 +914,9 @@ app.post('/api/discovery', async (c) => {
 app.post('/api/projects/:id/chat', async (c) => {
   const r = owned(c)
   if ('error' in r) return c.json({ error: r.error }, r.status)
+  /* Auth sudah ada, tapi chat menyalakan LLM berbayar: batasi juga per akun+IP. */
+  const limited = tooMany(c, `chat:${c.get('user').id}`, 60, 60 * 60_000)
+  if (limited) return limited
   const id = r.project.id
 
   const body = (await c.req.json().catch(() => ({}))) as { message?: string; model?: string; planMode?: boolean; confirmPlan?: boolean; confirmed?: boolean; imageIds?: string[] }
@@ -894,7 +959,8 @@ app.post('/api/projects/:id/chat', async (c) => {
         else if (e.type === 'build') addActivityEvent(id, { kind: 'terminal', label: 'npm run build', detail: e.log, ok: e.ok })
         else if (e.type === 'install') addActivityEvent(id, { kind: 'terminal', label: 'npm install', detail: e.log, ok: e.ok })
       } catch { /* abaikan */ }
-      if (e.type === 'file') await send('file', e)
+      if (e.type === 'context') await send('context', e)
+      else if (e.type === 'file') await send('file', e)
       else if (e.type === 'build') await send('build', e)
       else if (e.type === 'install') await send('install', e)
       else if (e.type === 'status') await send('status', e)
@@ -1144,6 +1210,37 @@ const UI_DIR = new URL('../../platform/dist/', import.meta.url).pathname
 
 app.use('/assets/*', serveStatic({ root: UI_DIR }))
 app.use('/favicon.svg', serveStatic({ root: UI_DIR }))
+
+/* SEO: sitemap asli (XML), bukan fallback SPA HTML. Hanya halaman publik. */
+app.get('/sitemap.xml', (c) => {
+  const origin = PUBLIC_ORIGIN
+  const esc = (v: string) => v.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[ch] as string)
+  const urls = [origin + '/', origin + '/marketplace']
+  for (const slug of listPublishedSlugs()) {
+    if (/^[a-z0-9-]+$/i.test(slug)) urls.push(origin + '/p/' + slug)
+  }
+  const body = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+    urls.map((u) => '  <url><loc>' + esc(u) + '</loc></url>').join('\n') + '\n</urlset>\n'
+  c.header('Content-Type', 'application/xml; charset=UTF-8')
+  c.header('Cache-Control', 'public, max-age=3600')
+  return c.body(body)
+})
+
+app.get('/robots.txt', (c) => {
+  c.header('Content-Type', 'text/plain; charset=UTF-8')
+  return c.body([
+    'User-agent: *',
+    'Allow: /',
+    'Disallow: /api/',
+    'Disallow: /proyek/',
+    'Disallow: /admin',
+    'Disallow: /masuk',
+    'Disallow: /daftar',
+    '',
+    'Sitemap: ' + PUBLIC_ORIGIN + '/sitemap.xml',
+    '',
+  ].join('\n'))
+})
 
 app.get('/', async (c) => {
   const fs = await import('node:fs/promises')

@@ -2,7 +2,6 @@ import { lazy, type ComponentType, type LazyExoticComponent } from 'react'
 import {
   Archive,
   ArrowSquareOut,
-  ChartLine,
   ChatText,
   ClockCounterClockwise,
   Coins,
@@ -15,12 +14,9 @@ import {
   Hammer,
   Heartbeat,
   Key,
-  Link as LinkIcon,
   Medal,
-  Megaphone,
   Plug,
   Robot,
-  Trash,
   Users,
   Wrench,
   type Icon,
@@ -57,8 +53,6 @@ const page = (slug: string) => {
       return lazy(() => import('./pages/projects'))
     case 'moderasi':
       return lazy(() => import('./pages/moderasi'))
-    case 'domain':
-      return lazy(() => import('./pages/domain'))
     case 'konten':
       return lazy(() => import('./pages/konten'))
     case 'plans':
@@ -69,8 +63,6 @@ const page = (slug: string) => {
       return lazy(() => import('./pages/monetisasi'))
     case 'ai':
       return lazy(() => import('./pages/ai'))
-    case 'usage':
-      return lazy(() => import('./pages/usage'))
     case 'biaya':
       return lazy(() => import('./pages/biaya'))
     case 'providers':
@@ -81,22 +73,14 @@ const page = (slug: string) => {
       return lazy(() => import('./pages/billing'))
     case 'builds':
       return lazy(() => import('./pages/builds'))
-    case 'messages':
-      return lazy(() => import('./pages/messages'))
-    case 'pengumuman':
-      return lazy(() => import('./pages/pengumuman'))
     case 'sessions':
       return lazy(() => import('./pages/sessions'))
     case 'health':
       return lazy(() => import('./pages/health'))
     case 'cadangan':
       return lazy(() => import('./pages/cadangan'))
-    case 'pembersihan':
-      return lazy(() => import('./pages/pembersihan'))
     case 'audit':
       return lazy(() => import('./pages/audit'))
-    case 'pemeliharaan':
-      return lazy(() => import('./pages/pemeliharaan'))
     case 'settings':
       return lazy(() => import('./pages/settings'))
     case 'komunikasi':
@@ -114,27 +98,21 @@ export const ROUTES: AdminRoute[] = [
   /* Induk Konten + sub-halaman aslinya. */
   { slug: 'projects', path: '/admin/projects', title: 'Proyek', icon: Cube, component: page('projects'), parent: 'konten', hidden: true },
   { slug: 'moderasi', path: '/admin/moderasi', title: 'Moderasi', icon: Flag, component: page('moderasi'), parent: 'konten', hidden: true },
-  { slug: 'domain', path: '/admin/domain', title: 'Domain', icon: LinkIcon, component: page('domain'), parent: 'konten', hidden: true },
   { slug: 'konten', path: '/admin/konten', title: 'Konten', icon: Cube, component: page('konten') },
   /* Induk Layanan + sub-halaman aslinya. */
   { slug: 'plans', path: '/admin/plans', title: 'Plan', icon: Medal, component: page('plans'), parent: 'monetisasi', hidden: true },
   { slug: 'credits', path: '/admin/credits', title: 'Kelola Credit', icon: Coins, component: page('credits'), parent: 'monetisasi' },
   { slug: 'monetisasi', path: '/admin/monetisasi', title: 'Monetisasi', icon: Coins, component: page('monetisasi') },
   { slug: 'ai', path: '/admin/ai', title: 'AI', icon: Robot, component: page('ai') },
-  { slug: 'usage', path: '/admin/usage', title: 'Penggunaan', icon: ChartLine, component: page('usage'), parent: 'ai' },
-  { slug: 'biaya', path: '/admin/biaya', title: 'Biaya LLM', icon: CurrencyDollar, component: page('biaya'), parent: 'ai' },
+  { slug: 'biaya', path: '/admin/biaya', title: 'Biaya & Penggunaan', icon: CurrencyDollar, component: page('biaya'), parent: 'ai' },
   { slug: 'providers', path: '/admin/providers', title: 'Provider LLM', icon: Plug, component: page('providers'), parent: 'ai' },
   { slug: 'ai-settings', path: '/admin/ai-settings', title: 'Pengaturan AI', icon: Robot, component: page('ai-settings'), parent: 'ai' },
   { slug: 'billing', path: '/admin/billing', title: 'Pembayaran', icon: CreditCard, component: page('billing'), parent: 'monetisasi', hidden: true },
   { slug: 'builds', path: '/admin/builds', title: 'Build', icon: Hammer, component: page('builds'), parent: 'sistem', hidden: true },
-  { slug: 'messages', path: '/admin/messages', title: 'Pesan', icon: ChatText, component: page('messages'), parent: 'komunikasi', hidden: true },
-  { slug: 'pengumuman', path: '/admin/pengumuman', title: 'Pengumuman', icon: Megaphone, component: page('pengumuman'), parent: 'komunikasi', hidden: true },
   { slug: 'sessions', path: '/admin/sessions', title: 'Sesi', icon: Key, component: page('sessions'), parent: 'sistem', hidden: true },
   { slug: 'health', path: '/admin/health', title: 'Kesehatan', icon: Heartbeat, component: page('health'), parent: 'sistem' },
   { slug: 'cadangan', path: '/admin/cadangan', title: 'Cadangan', icon: Archive, component: page('cadangan'), parent: 'sistem' },
-  { slug: 'pembersihan', path: '/admin/pembersihan', title: 'Pembersihan', icon: Trash, component: page('pembersihan'), parent: 'sistem', hidden: true },
   { slug: 'audit', path: '/admin/audit', title: 'Log Audit', icon: ClockCounterClockwise, component: page('audit'), parent: 'komunikasi', hidden: true },
-  { slug: 'pemeliharaan', path: '/admin/pemeliharaan', title: 'Pemeliharaan', icon: Wrench, component: page('pemeliharaan'), parent: 'sistem', hidden: true },
   { slug: 'settings', path: '/admin/settings', title: 'Pengaturan', icon: Gear, component: page('settings'), parent: 'sistem' },
   { slug: 'komunikasi', path: '/admin/komunikasi', title: 'Komunikasi', icon: ChatText, component: page('komunikasi') },
   { slug: 'sistem', path: '/admin/sistem', title: 'Sistem', icon: Wrench, component: page('sistem') },
@@ -145,7 +123,7 @@ export const ROUTES: AdminRoute[] = [
 export const ADMIN_SECTIONS: { label: string; slugs: string[] }[] = [
   { label: 'Utama', slugs: ['dashboard', 'users'] },
   { label: 'Konten', slugs: ['konten'] },
-  { label: 'Layanan', slugs: ['monetisasi', 'credits', 'ai', 'providers', 'ai-settings', 'biaya', 'usage'] },
+  { label: 'Layanan', slugs: ['monetisasi', 'credits', 'ai', 'providers', 'ai-settings', 'biaya'] },
   { label: 'Sistem', slugs: ['komunikasi', 'sistem', 'health', 'cadangan', 'settings'] },
 ]
 

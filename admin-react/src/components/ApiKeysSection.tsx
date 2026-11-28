@@ -34,6 +34,18 @@ interface NeonData {
   note: string
 }
 
+interface SmtpData {
+  configured: boolean
+  host: string
+  port: number
+  from: string
+  hasUser: boolean
+  hasPassword: boolean
+  secure: boolean
+  fromPanel: { host: boolean; port: boolean; from: boolean }
+  note: string
+}
+
 interface Provider {
   id: string
   name: string
@@ -58,6 +70,14 @@ export function ApiKeysSection() {
   const [neonKey, setNeonKey] = useState('')
   const [neonProject, setNeonProject] = useState('')
   const [neonBranch, setNeonBranch] = useState('')
+  const [smtp, setSmtp] = useState<SmtpData | null>(null)
+  const [smtpHost, setSmtpHost] = useState('')
+  const [smtpPort, setSmtpPort] = useState('')
+  const [smtpUser, setSmtpUser] = useState('')
+  const [smtpPass, setSmtpPass] = useState('')
+  const [smtpFrom, setSmtpFrom] = useState('')
+  const [smtpSecure, setSmtpSecure] = useState(false)
+  const [smtpTestTo, setSmtpTestTo] = useState('')
   const [llmKey, setLlmKey] = useState('')
   const [apiKey, setApiKey] = useState('')
   const [webhookSecret, setWebhookSecret] = useState('')
@@ -66,22 +86,30 @@ export function ApiKeysSection() {
 
   const load = useCallback(async () => {
     try {
-      const [a, b, p, n] = await Promise.all([
+      const [a, b, p, n, mail] = await Promise.all([
         api.get<AiSettings>('/api/admin/ai-settings'),
         api.get<BillingData>('/api/admin/billing'),
         api.get<{ providers: Provider[] }>('/api/admin/llm/providers'),
         api.get<NeonData>('/api/admin/neon'),
+        api.get<SmtpData>('/api/admin/smtp'),
       ])
       setAi(a)
       setBilling(b)
       setProviders(p.providers || [])
       setNeon(n)
+      setSmtp(mail)
       setLlmKey('')
       setApiKey('')
       setWebhookSecret('')
       setNeonKey('')
       setNeonProject('')
       setNeonBranch('')
+      setSmtpHost('')
+      setSmtpPort('')
+      setSmtpUser('')
+      setSmtpPass('')
+      setSmtpFrom('')
+      setSmtpSecure(false)
       setProviderKeys({})
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : 'Gagal memuat kredensial.')
@@ -160,6 +188,51 @@ export function ApiKeysSection() {
     } finally { setBusy(null) }
   }
 
+  const saveSmtp = async (e: FormEvent) => {
+    e.preventDefault()
+    const payload: Record<string, string | boolean | string[]> = {}
+    const clear: string[] = []
+    const put = (field: string, value: string, isSecret = false) => {
+      if (value.trim()) payload[field] = isSecret ? value : value.trim()
+      else clear.push(field)
+    }
+    put('host', smtpHost)
+    put('port', smtpPort)
+    put('user', smtpUser)
+    put('pass', smtpPass, true)
+    put('from', smtpFrom)
+    if (smtp?.host || smtp?.port || smtp?.from) payload.secure = smtpSecure
+    if (Object.keys(payload).length === 0 && clear.length === 0) {
+      toast.info('Tidak ada perubahan.')
+      return
+    }
+    if (clear.length) payload.clear = clear
+    setBusy('smtp')
+    try {
+      await api.put('/api/admin/smtp', payload)
+      toast.success('Pengaturan SMTP disimpan.')
+      setSmtpPass('')
+      await load()
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Gagal menyimpan pengaturan SMTP.')
+    } finally { setBusy(null) }
+  }
+
+  const testSmtp = async () => {
+    setBusy('smtp-test')
+    try {
+      const r = await api.post<{ ok: boolean; error?: string }>('/api/admin/smtp/test', { to: smtpTestTo.trim() })
+      if (r.ok) {
+        toast.success('Email uji terkirim. Cek inbox & folder spam.')
+        setSmtpTestTo('')
+      } else {
+        toast.error(r.error || 'Tes SMTP gagal.')
+      }
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Tes SMTP gagal.')
+    } finally { setBusy(null) }
+  }
+
   const saveProviderKey = async (id: string) => {
     setBusy(id)
     try {
@@ -179,7 +252,7 @@ export function ApiKeysSection() {
 
   return (
     <div className="space-y-4">
-      {ai === null || billing === null || neon === null ? <Spinner label="Memuat kredensial…" /> : (
+      {ai === null || billing === null || neon === null || smtp === null ? <Spinner label="Memuat kredensial…" /> : (
         <>
           <Alert tone="info">
             Semua API key & secret dikelola di sini. Nilai key <strong>tidak pernah ditampilkan</strong> —
@@ -326,6 +399,55 @@ export function ApiKeysSection() {
                 {busy === 'neon' ? 'Menyimpan…' : 'Simpan kredensial Neon'}
               </button>
             </form>
+          </Card>
+
+          <Card title="SMTP — Email Transaksional">
+            <form onSubmit={(e) => void saveSmtp(e)} className="space-y-4">
+              <Alert tone={smtp.configured ? 'success' : 'warning'}>
+                {smtp.configured
+                  ? `Aktif — relay ${smtp.host}:${smtp.port} dipakai untuk tautan reset password.`
+                  : 'Belum dikonfigurasi — tautan reset password hanya muncul di log server. Isi host, port, dan alamat pengirim.'}
+              </Alert>
+              <div className="grid gap-4 lg:grid-cols-2">
+                <Field label={<>Host relay <Badge tone={smtp.fromPanel.host ? 'accent' : 'default'}>{smtp.fromPanel.host ? 'panel' : smtp.host ? 'env' : 'belum'}</Badge></>} htmlFor="settings-smtp-host" hint="Mis. smtp.gmail.com.">
+                  <input id="settings-smtp-host" type="text" autoComplete="off" className={inputClass} placeholder={smtp.host || 'smtp.example.com'} value={smtpHost} onChange={(e) => setSmtpHost(e.target.value)} />
+                </Field>
+                <Field label={<>Port <Badge tone={smtp.fromPanel.port ? 'accent' : 'default'}>{smtp.port ? String(smtp.port) : 'belum'}</Badge></>} htmlFor="settings-smtp-port" hint="465 = TLS langsung, 587/25 = STARTTLS.">
+                  <input id="settings-smtp-port" type="text" inputMode="numeric" autoComplete="off" className={inputClass} placeholder={smtp.port ? String(smtp.port) : '587'} value={smtpPort} onChange={(e) => setSmtpPort(e.target.value)} />
+                </Field>
+              </div>
+              <div className="grid gap-4 lg:grid-cols-2">
+                <Field label={<>Username <Badge tone={smtp.hasUser ? 'accent' : 'default'}>{smtp.hasUser ? 'terpasang' : 'belum'}</Badge></>} htmlFor="settings-smtp-user" hint="Kosongkan bila relay tanpa autentikasi.">
+                  <input id="settings-smtp-user" type="text" autoComplete="off" className={inputClass} placeholder={smtp.hasUser ? '•••••••• (isi untuk mengganti)' : 'opsional'} value={smtpUser} onChange={(e) => setSmtpUser(e.target.value)} />
+                </Field>
+                <Field label={<>Password <Badge tone={smtp.hasPassword ? 'accent' : 'default'}>{smtp.hasPassword ? 'terpasang' : 'belum'}</Badge></>} htmlFor="settings-smtp-pass" hint="App password relay. Tidak pernah ditampilkan lagi.">
+                  <input id="settings-smtp-pass" type="password" autoComplete="new-password" className={`${inputClass} font-mono`} placeholder={smtp.hasPassword ? '•••••••• (isi untuk mengganti)' : 'Belum ada password'} value={smtpPass} onChange={(e) => setSmtpPass(e.target.value)} />
+                </Field>
+              </div>
+              <Field label={<>Alamat pengirim <Badge tone={smtp.fromPanel.from ? 'accent' : 'default'}>{smtp.fromPanel.from ? 'panel' : smtp.from ? 'env' : 'belum'}</Badge></>} htmlFor="settings-smtp-from" hint="Header From email keluar.">
+                <input id="settings-smtp-from" type="text" autoComplete="off" className={inputClass} placeholder={smtp.from || 'no-reply@clidi.net'} value={smtpFrom} onChange={(e) => setSmtpFrom(e.target.value)} />
+              </Field>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={smtpSecure} onChange={(e) => setSmtpSecure(e.target.checked)} />
+                <span>Implicit TLS (port 465). Nonaktifkan untuk STARTTLS (587/25).</span>
+              </label>
+              <button type="submit" className={btnPrimary} disabled={busy !== null}>
+                {busy === 'smtp' ? 'Menyimpan…' : 'Simpan pengaturan SMTP'}
+              </button>
+            </form>
+            <div className="mt-6 border-t border-border pt-4">
+              <p className="mb-3 text-sm text-muted">Uji koneksi & autentikasi relay. Email uji dikirim ke alamat di bawah — bukan token reset. Maks 5 tes per 10 menit.</p>
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="min-w-[260px] flex-1">
+                  <Field label="Kirim email uji ke" htmlFor="settings-smtp-test-to">
+                    <input id="settings-smtp-test-to" type="email" className={inputClass} placeholder="nama@domain.com" value={smtpTestTo} onChange={(e) => setSmtpTestTo(e.target.value)} />
+                  </Field>
+                </div>
+                <button type="button" onClick={() => void testSmtp()} disabled={busy !== null || !smtpTestTo.trim()} className={btnOutline}>
+                  {busy === 'smtp-test' ? 'Mengirim…' : 'Kirim tes'}
+                </button>
+              </div>
+            </div>
           </Card>
 
           <Card title="API Key per Provider LLM">

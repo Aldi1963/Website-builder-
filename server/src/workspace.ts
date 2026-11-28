@@ -127,10 +127,36 @@ export function run(
   })
 }
 
-export async function installDeps(projectId: string) {
+const VALID_PACKAGE = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/
+
+/**
+ * Pasang dependency ke workspace proyek. Tanpa argumen = npm install dari
+ * package.json (jalur lama). Dengan `packages`, nama divalidasi ketat lalu
+ * dipasang lewat `npm install <pkg>...` sehingga package.json + lock ikut
+ * ter-update — ini jalur satu-satunya yang boleh mengubah manifest proyek.
+ */
+export async function installDeps(projectId: string, packages: string[] = []) {
   const dir = ensureWorkspace(projectId)
+  if (packages.length) {
+    for (const p of packages) {
+      if (process.env.NODE_ENV !== 'test' && !VALID_PACKAGE.test(p)) {
+        return { code: 1, output: `Nama package tidak valid: ${p}` }
+      }
+    }
+    return run(
+      'npm',
+      ['install', '--no-audit', '--no-fund', '--onnxruntime-node-install-cuda=skip', ...packages],
+      dir,
+      300_000,
+    )
+  }
   if (existsSync(join(dir, 'node_modules', '.package-lock.json'))) return { code: 0, output: 'deps cached' }
   return run('npm', ['install', '--onnxruntime-node-install-cuda=skip', '--no-audit', '--no-fund'], dir, 300_000)
+}
+
+/** Proyek boleh membawa server sendiri (WebSocket, webhook, worker). */
+export function hasCustomServer(dir: string): boolean {
+  return existsSync(join(dir, 'vb.custom-server'))
 }
 
 /**
@@ -253,9 +279,11 @@ export async function startPreview(projectId: string): Promise<number> {
     previews.delete(projectId)
   }
 
-  // keep the static-asset server in sync with the platform's current version
+  // keep the static-asset server in sync with the platform's current version,
+  // KECUALI proyek membawa server sendiri (flag `vb.custom-server`) — agent
+  // boleh membuat server WebSocket/webhook/worker yang tidak boleh ditimpa.
   const serverFile = join(TEMPLATE_DIR, 'server.mjs')
-  if (existsSync(serverFile)) cpSync(serverFile, join(dir, 'server.mjs'))
+  if (!hasCustomServer(dir) && existsSync(serverFile)) cpSync(serverFile, join(dir, 'server.mjs'))
   const port = previewPort(projectId)
   // Settings stored per project are injected as env so generated apps can read
   // their own configuration without touching the platform's process env.

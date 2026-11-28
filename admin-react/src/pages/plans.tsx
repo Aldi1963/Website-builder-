@@ -6,7 +6,6 @@ import { Card } from '../components/Card'
 import { Table, Th, Td, EmptyRow } from '../components/Table'
 import { Badge } from '../components/Badge'
 import { ConfirmDialog } from '../components/ConfirmDialog'
-import { Select } from '../components/Select'
 import { Spinner } from '../components/Spinner'
 import { CFormDialog, type CFormField, type CFormValues } from '../components/CFormDialog'
 import { btnOutlineDangerSm, btnOutlineSm, btnPrimary } from '../components/DFormat'
@@ -22,22 +21,6 @@ interface Plan {
   created_at: number
   updated_at: number
   users: number
-}
-
-interface PlanUser {
-  id: number
-  email: string
-  name: string
-  created_at: number
-  disabled: boolean
-  projects: number
-  messages: number
-  tokens: number
-  last_seen: number | null
-  plan_id: string | null
-  plan_name: string | null
-  plan_limit: number
-  isAdmin: boolean
 }
 
 const PLAN_FIELDS: CFormField[] = [
@@ -56,7 +39,6 @@ interface PlansPageProps {
 export default function PlansPage({ embedded = false }: PlansPageProps) {
   const toast = useToast()
   const [plans, setPlans] = useState<Plan[] | null>(null)
-  const [users, setUsers] = useState<PlanUser[] | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [editPlan, setEditPlan] = useState<Plan | null>(null)
   const [deletePlan, setDeletePlan] = useState<Plan | null>(null)
@@ -64,12 +46,8 @@ export default function PlansPage({ embedded = false }: PlansPageProps) {
 
   const load = useCallback(async () => {
     try {
-      const [plansData, usersData] = await Promise.all([
-        api.get<{ plans: Plan[] }>('/api/admin/plans'),
-        api.get<{ users: PlanUser[] }>('/api/admin/users'),
-      ])
+      const plansData = await api.get<{ plans: Plan[] }>('/api/admin/plans')
       setPlans(plansData.plans || [])
-      setUsers(usersData.users)
     } catch (e) {
       toast.error(errMessage(e))
     }
@@ -131,23 +109,12 @@ export default function PlansPage({ embedded = false }: PlansPageProps) {
     }
   }
 
-  const assignPlan = async (userId: number, planId: string | null) => {
-    try {
-      await api.post(`/api/admin/users/${encodeURIComponent(String(userId))}/plan`, { planId })
-      toast.success('Plan pengguna diperbarui.')
-      await load()
-    } catch (e) {
-      toast.error(errMessage(e))
-      await load()
-    }
-  }
-
   return (
     <div className="space-y-4">
       {!embedded ? (
         <PageHeader
           title="Plan"
-          description="Paket token untuk pengguna. Kuota dipakai untuk pemantauan — chat belum dibatasi kuota."
+          description="Paket token untuk pengguna. Kuota dipakai untuk pemantauan — chat belum dibatasi kuota. Penetapan plan ke pengguna disembunyikan 28 Nov 2026 (tidak pernah dipakai)."
           actions={
             <button
               type="button"
@@ -212,81 +179,6 @@ export default function PlansPage({ embedded = false }: PlansPageProps) {
             </tbody>
           </Table>
         )}
-
-      <Card title="Plan per Pengguna">
-        {users === null ? (
-          <Spinner />
-        ) : (
-          <Table bare>
-            <thead>
-              <tr>
-                <Th>Pengguna</Th>
-                <Th>Plan Saat Ini</Th>
-                <Th>Token Dipakai</Th>
-                <Th>Kuota</Th>
-                <Th>Ubah Plan</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.length === 0 ? (
-                <EmptyRow colSpan={5}>Belum ada pengguna.</EmptyRow>
-              ) : (
-                users.map((u) => {
-                const pct =
-                  u.plan_limit > 0 ? Math.min(100, Math.round((u.tokens / u.plan_limit) * 100)) : null
-                return (
-                  <tr key={u.id}>
-                    <Td>
-                      {u.name || u.email}
-                      <br />
-                      <span className="text-xs text-muted">{u.email}</span>
-                    </Td>
-                    <Td>
-                      {u.plan_name ? <Badge tone="info">{u.plan_name}</Badge> : <span className="text-muted">–</span>}
-                    </Td>
-                    <Td>{fmtNum(u.tokens)}</Td>
-                    <Td>
-                      {u.plan_limit > 0 && pct !== null ? (
-                        <div>
-                          <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-muted">
-                            <div
-                              className={`h-full rounded-full ${
-                                pct >= 100 ? 'bg-danger' : pct >= 80 ? 'bg-warning' : 'bg-success'
-                              }`}
-                              style={{ width: `${pct}%` }}
-                            />
-                          </div>
-                          <span className="text-xs text-muted">
-                            {fmtNum(u.tokens)} / {fmtNum(u.plan_limit)} ({pct}%)
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-muted">{fmtNum(u.tokens)} dipakai · tanpa batas</span>
-                      )}
-                    </Td>
-                    <Td>
-                      <div className="max-w-[200px]">
-                        <Select
-                          value={u.plan_id ?? ''}
-                          onChange={(e) => void assignPlan(u.id, e.target.value || null)}
-                        >
-                          <option value="">— Tanpa plan —</option>
-                          {(plans || []).map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name}
-                            </option>
-                          ))}
-                        </Select>
-                      </div>
-                    </Td>
-                    </tr>
-                  )
-                })
-              )}
-            </tbody>
-          </Table>
-        )}
-      </Card>
 
       <CFormDialog
         open={addOpen}

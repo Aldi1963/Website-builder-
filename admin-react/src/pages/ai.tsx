@@ -1,6 +1,5 @@
 import { useEffect } from 'react'
 import {
-  ChartLine,
   CurrencyDollar,
   Gear,
   Plug,
@@ -13,18 +12,17 @@ import { SectionNav, PageSection, type SectionNavItem } from '../components/Sect
 import ProvidersPage from './providers'
 import AiSettingsPage from './ai-settings'
 import BiayaPage from './biaya'
-import UsagePage from './usage'
 
-/* Halaman "AI": empat fitur asli (Provider, Pengaturan AI, Biaya, Usage)
-   disusun bertumpuk dalam SATU halaman, tanpa tab / query parameter tab.
+/* Halaman "AI": tiga fitur asli (Provider, Pengaturan AI, Biaya &
+   Penggunaan) disusun bertumpuk dalam SATU halaman, tanpa tab / query
+   parameter tab. Usage digabung ke Biaya 28 Nov 2026 (tumpang tindih).
    Peta halaman menggantikan tumpukan heading polos; tiap bagian punya anchor
    sendiri. URL lama tetap jalan lewat komponen redirect di bawah (kompatibilitas). */
 
 const sections: SectionNavItem[] = [
   { id: 'providers', label: 'Provider', description: 'Kelola provider & tarif model', icon: Plug },
   { id: 'ai-settings', label: 'Pengaturan AI', description: 'Model default, endpoint, koneksi', icon: Gear },
-  { id: 'biaya', label: 'Biaya', description: 'Perkiraan biaya & harga per model', icon: CurrencyDollar },
-  { id: 'usage', label: 'Usage', description: 'Token & aktiv pengguna', icon: ChartLine },
+  { id: 'biaya', label: 'Biaya & Penggunaan', description: 'Perkiraan biaya, harga per model & aktivitas penggunaan', icon: CurrencyDollar },
 ]
 
 export default function AiPage() {
@@ -32,7 +30,7 @@ export default function AiPage() {
     <div className="space-y-6">
       <PageHeader
         title="AI"
-        description="Provider, model, pengaturan, biaya, dan penggunaan LLM."
+        description="Provider, model, pengaturan, serta biaya & penggunaan LLM."
         actions={
           <a
             href="#providers"
@@ -64,20 +62,11 @@ export default function AiPage() {
       <PageSection
         id="biaya"
         index={3}
-        title="Biaya"
-        description="Perkiraan biaya & harga per model."
+        title="Biaya & Penggunaan"
+        description="Perkiraan biaya, harga per model & aktivitas penggunaan."
         icon={CurrencyDollar}
       >
         <BiayaPage embedded />
-      </PageSection>
-      <PageSection
-        id="usage"
-        index={4}
-        title="Usage"
-        description="Token & aktiv pengguna."
-        icon={ChartLine}
-      >
-        <UsagePage embedded />
       </PageSection>
     </div>
   )
@@ -98,4 +87,3 @@ function PageRedirect() {
 export const ProvidersRedirect = PageRedirect
 export const AiSettingsRedirect = PageRedirect
 export const BiayaRedirect = PageRedirect
-export const UsageRedirect = PageRedirect
