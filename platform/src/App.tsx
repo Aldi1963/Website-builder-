@@ -1030,6 +1030,7 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
   const [checking, setChecking] = useState(false)
   const [jumpLine, setJumpLine] = useState<number | undefined>()
   const [fixing, setFixing] = useState(false)
+  const [pickedTarget, setPickedTarget] = useState<VisualTarget | null>(null)
 
   useEffect(() => {
     setIssues([])
@@ -1367,16 +1368,11 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
      posisi, lalu mengubah file yang menaungi komponen tersebut. */
   const pickElement = (t: VisualTarget) => {
     if (sending) return
-    const prompt = [
-      'Ubah elemen yang saya pilih di preview.',
-      `Tag: <${t.tag}>`,
-      `Teks: ${t.label || '(tanpa teks)'}`,
-      `Selector CSS: ${t.selector}`,
-      `Posisi: x=${t.x} y=${t.y} ukuran=${t.width}x${t.height}`,
-      'Cari komponen/file yang menaungi elemen ini (cocokkan teks/selector), lalu ubah hanya bagian yang diminta. Jawab singkat file apa yang diubah.',
-    ].join('\n')
-    setMessages((m) => [...m, { role: 'user', content: `🎯 ${t.label || t.tag} — ${t.selector}`, created_at: Date.now() }])
-    void send(prompt)
+    /* Jangan langsung kirim: simpan konteks elemen ke composer supaya user
+       menulis perubahan spesifik ("ubah warnanya jadi merah") dengan gaya
+       natural, lalu konteks selector disisipkan otomatis saat kirim. */
+    setPickedTarget(t)
+    navigate(`/proyek/${projectId}/chat`)
   }
 
   const confirmPlanAndRun = async () => {
@@ -1604,7 +1600,7 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
             audit={audit}
             streamText={streamText}
             activity={activity}
-            onSend={(text, imageIds) => void send(text, false, imageIds ?? [])}
+            onSend={(text, imageIds) => { setPickedTarget(null); void send(text, false, imageIds ?? []) }}
             onCancel={() => abortRef.current?.abort()}
             onConfirmPlan={confirmPlanAndRun}
             onCancelPlan={cancelPlan}
@@ -1622,6 +1618,8 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
             }}
             previewOpen={previewOn && !sending}
             previewUrl={slug ? publicUrl(slug) : previewPort ? `http://127.0.0.1:${previewPort}/` : ''}
+            pickedTarget={pickedTarget}
+            onClearPickedTarget={() => setPickedTarget(null)}
           />
         </section>
 

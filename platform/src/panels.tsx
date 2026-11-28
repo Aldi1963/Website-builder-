@@ -666,6 +666,8 @@ export function ChatPanel({
   onOpenFile,
   previewOpen,
   previewUrl,
+  pickedTarget,
+  onClearPickedTarget,
 }: {
   projectId: string
   messages: ChatItem[]
@@ -692,6 +694,8 @@ export function ChatPanel({
   onOpenFile?: (path: string) => void
   previewOpen?: boolean
   previewUrl?: string
+  pickedTarget?: VisualTarget | null
+  onClearPickedTarget?: () => void
 }) {
   const [input, setInput] = useState('')
   const [attached, setAttached] = useState<{ name: string; content: string }[]>([])
@@ -756,10 +760,14 @@ export function ChatPanel({
   const submit = () => {
     if ((!input.trim() && !images.length && !attached.length) || sending) return
     const fileContext = attached.map((f) => `\n\n--- Attached file: ${f.name} ---\n${f.content}`).join('')
-    onSend(`${input.trim()}${fileContext}`.trim(), images.slice(0, 3).map((x) => x.id))
+    const targetContext = pickedTarget
+      ? `\n\n--- Elemen yang dipilih di preview ---\nTag: <${pickedTarget.tag}>\nTeks: ${pickedTarget.label || '(tanpa teks)'}\nSelector CSS: ${pickedTarget.selector}\nPosisi: x=${pickedTarget.x} y=${pickedTarget.y} ukuran=${pickedTarget.width}x${pickedTarget.height}\nCari file/komponen yang menaungi elemen ini (cocokkan teks/selector) lalu terapkan HANYA perubahan yang saya minta di atas.`
+      : ''
+    onSend(`${input.trim()}${targetContext}${fileContext}`.trim(), images.slice(0, 3).map((x) => x.id))
     setInput('')
     setAttached([])
     setImages([])
+    onClearPickedTarget?.()
   }
 
   const addFiles = async (files: FileList | null) => {
@@ -926,6 +934,21 @@ export function ChatPanel({
                 {imageBusy && <span className="text-[10px] text-quiet">Menyimpan gambar…</span>}
               </div>
             )}
+            {pickedTarget && (
+              <div className="flex items-center gap-2 px-3 pt-2">
+                <button
+                  type="button"
+                  onClick={onClearPickedTarget}
+                  className="flex min-w-0 items-center gap-1.5 rounded-full border border-accent bg-accent-soft px-2.5 py-1 text-[11px] text-body transition-opacity hover:opacity-80"
+                  title="Hapus pilihan elemen"
+                >
+                  <span className="text-accent">🎯</span>
+                  <span className="max-w-[220px] truncate">{pickedTarget.label || `<${pickedTarget.tag}>`}</span>
+                  <span className="text-quiet">×</span>
+                </button>
+                <span className="truncate text-[10.5px] text-quiet">elemen dipilih — tuliskan perubahannya</span>
+              </div>
+            )}
             <label htmlFor="vb-prompt" className="sr-only">Instruksi untuk agent</label>
             <textarea
               id="vb-prompt"
@@ -945,7 +968,7 @@ export function ChatPanel({
                 }
               }}
               rows={expanded ? 4 : 2}
-              placeholder={waitingForDiscovery ? 'Jawab pertanyaan agent…' : sending ? 'Waiting for your next message' : 'Tanyakan apa saja atau jelaskan perubahan yang kamu inginkan…'}
+              placeholder={pickedTarget ? 'Contoh: ubah warnanya jadi merah, teksnya jadi 20px…' : waitingForDiscovery ? 'Jawab pertanyaan agent…' : sending ? 'Waiting for your next message' : 'Tanyakan apa saja atau jelaskan perubahan yang kamu inginkan…'}
               className={`vb-scroll w-full resize-none bg-transparent px-4 py-3 text-[14px] leading-relaxed text-body outline-none placeholder:text-quiet ${expanded ? 'max-h-[300px]' : 'max-h-[168px]'}`}
               aria-label="Pesan untuk agent"
             />
@@ -965,7 +988,7 @@ export function ChatPanel({
                 {sending ? (
                   <Button variant="outline" size="sm" onClick={onCancel} aria-label="Hentikan proses agent" className="h-9 rounded-full px-3"><Icon name="stop" size={10} /> Hentikan</Button>
                 ) : (
-                  <Button variant="primary" size="sm" shape="circle" onClick={submit} disabled={(!input.trim() && !images.length && !attached.length) || imageBusy} aria-label="Kirim pesan" title="Kirim pesan" className="h-9 w-9 min-w-9 rounded-full p-0"><Icon name="arrow" size={15} /></Button>
+                  <Button variant="primary" size="sm" shape="circle" onClick={submit} disabled={(!input.trim() && !images.length && !attached.length && !pickedTarget) || imageBusy} aria-label="Kirim pesan" title="Kirim pesan" className="h-9 w-9 min-w-9 rounded-full p-0"><Icon name="arrow" size={15} /></Button>
                 )}
               </div>
             </div>
