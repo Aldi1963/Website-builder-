@@ -25,26 +25,27 @@ export function TerminalBlock({ title, log, ok, defaultOpen = true }: { title: s
   const [open, setOpen] = useState(defaultOpen)
   const clean = stripAnsi(log).trimEnd()
   const lines = clean ? clean.split('\n') : []
-  const shown = open ? lines : lines.slice(-4)
+  /* Gaya Emergent: satu baris perintah "$ npm run build" terlihat di feed;
+     outputnya disembunyikan sampai kartu diketuk. */
   return (
     <div className="overflow-hidden rounded-lg border border-edge bg-surface text-body">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="flex w-full items-center gap-2 border-b border-edge bg-surface-muted px-3 py-2 text-left"
+        title={open ? 'Sembunyikan output' : 'Lihat output'}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-surface-muted"
       >
-        <span className="flex gap-1.5" aria-hidden="true">
-          <i className="h-2 w-2 rounded-full bg-accent" />
-          <i className="h-2 w-2 rounded-full bg-quiet/30" />
-          <i className="h-2 w-2 rounded-full bg-quiet/30" />
-        </span>
-        <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-quiet">{title}</span>
-        <span className={`font-mono text-[10px] ${ok ? 'text-success' : 'text-danger'}`}>{ok ? 'OK' : 'GAGAL'}</span>
+        <span className="shrink-0 font-mono text-[11px] text-success">$</span>
+        <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-body">{title}</span>
+        <span className={`shrink-0 font-mono text-[10px] ${ok ? 'text-success' : 'text-danger'}`}>{ok ? '✓' : '✗'}</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className={`shrink-0 text-quiet transition-transform ${open ? 'rotate-90' : ''}`}><path d="m9 6 6 6-6 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
       </button>
-      <pre className="vb-scroll max-h-[240px] overflow-auto px-3 py-2.5 font-mono text-[11px] leading-relaxed text-body">
-        {shown.join('\n')}
-      </pre>
+      {open && (
+        <pre className="vb-scroll max-h-[240px] overflow-auto border-t border-edge bg-ink px-3 py-2.5 font-mono text-[10.5px] leading-relaxed text-quiet">
+          {lines.join('\n') || '(tanpa output)'}
+        </pre>
+      )}
     </div>
   )
 }
