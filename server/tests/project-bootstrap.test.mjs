@@ -15,14 +15,14 @@ const workspaceMock = {
   previewPort() { return 45100 }, readProjectFile() { return null }, writeProjectFile() {},
   projectDir(id) { return join(root, id) }, newDirsForFile() { return [] }, deleteProjectFile() {},
 }
-mock.module('../src/workspace.ts', { exports: workspaceMock, namedExports: workspaceMock })
+mock.module('../src/workspace.ts', { namedExports: workspaceMock })
 const managedDbMock = {
   async provisionProjectDb() { calls.push(['database']); return {} },
   isManagedDbEnabled() { return true }, async dropProjectDb() {}, async projectDbPool() {},
   async projectDbUrl() {}, async execProjectSql() {}, validateProjectSql() { return { ok: true, sql: '' } },
   async projectSchemaBrief() { return null },
 }
-mock.module('../src/managed-db.ts', { exports: managedDbMock, namedExports: managedDbMock })
+mock.module('../src/managed-db.ts', { namedExports: managedDbMock })
 const { app } = await import('../src/app.ts')
 const { createUser, createSession, SESSION_COOKIE } = await import('../src/auth.ts')
 const { db } = await import('../src/db.ts')

@@ -22,7 +22,7 @@ const llmMock = {
     registerTurn: () => 1, turnsUsed: () => 1, registerReviewCall: () => 1, reviewsUsed: () => 1,
     endRunTracking: () => {}, shouldSkipReview: () => false,
 }
-mock.module('../src/llm.ts', { exports: llmMock, namedExports: llmMock })
+mock.module('../src/llm.ts', { namedExports: llmMock })
 const workspaceMock = {
   ensureWorkspace(id) { return join(root, id) }, projectDir(id) { return join(root, id) },
   async installDeps() { return { code: 0, output: '' } }, async buildProject() { return { code: 0, output: '' } },
@@ -30,7 +30,7 @@ const workspaceMock = {
   previewPort() { return 45100 }, readProjectFile() { return null }, writeProjectFile() {},
   newDirsForFile() { return [] }, deleteProjectFile() {},
 }
-mock.module('../src/workspace.ts', { exports: workspaceMock, namedExports: workspaceMock })
+mock.module('../src/workspace.ts', { namedExports: workspaceMock })
 const { saveReferenceImage } = await import('../src/reference-images.ts')
 const { runAgent } = await import('../src/agent.ts')
 const { createUser, createSession, SESSION_COOKIE } = await import('../src/auth.ts')

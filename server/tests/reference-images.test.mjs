@@ -14,7 +14,7 @@ const workspaceMock = {
   previewPort() { return 45100 }, readProjectFile() { return null }, writeProjectFile() {},
   projectDir(id) { return join(root, id) }, newDirsForFile() { return [] }, deleteProjectFile() {},
 }
-mock.module('../src/workspace.ts', { exports: workspaceMock, namedExports: workspaceMock })
+mock.module('../src/workspace.ts', { namedExports: workspaceMock })
 const { app } = await import('../src/app.ts')
 const { normalizeImageDataUrl, saveReferenceImage, listReferenceImages, readReferenceImage, deleteReferenceImage } = await import('../src/reference-images.ts')
 const { createUser, createSession, SESSION_COOKIE } = await import('../src/auth.ts')

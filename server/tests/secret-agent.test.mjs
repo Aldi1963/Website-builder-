@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os'
 // Node 24 menolak kombinasi exports + namedExports. Pilih bentuk sesuai versi.
 const needsNamedExports = Number(process.versions.node.split('.')[0]) < 23
 function mockNamed(path, obj) {
-  mock.module(path, needsNamedExports ? { exports: obj, namedExports: obj } : { exports: obj })
+  mock.module(path, needsNamedExports ? { namedExports: obj } : { exports: obj })
 }
 const root = mkdtempSync(join(tmpdir(), 'vb-secretagent-'))
 process.env.VB_DB = join(root, 'platform.db')
