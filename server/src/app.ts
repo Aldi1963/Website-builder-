@@ -121,7 +121,7 @@ app.use('*', async (c, next) => {
   if (!c.req.path.startsWith('/p/') && !c.req.path.startsWith('/api/projects/')) {
     c.header(
       'Content-Security-Policy',
-      "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ws: wss:",
+      "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ws: wss:",
     )
   }
   const proto = c.req.header('x-forwarded-proto') ?? ''
@@ -194,7 +194,18 @@ app.use('*', async (c, next) => {
   } catch {
     return c.text('Aplikasi terdaftar tapi preview-nya tidak bisa dinyalakan.', 503)
   }
-  return forward(port, c.req.raw)
+  // Aplikasi hasil build menyisipkan VB_BASE (prefix preview) di URL absolut.
+  // Di hostname publik, prefix itu tidak ada di platform -- terjemahkan ke root
+  // tenant supaya redirect/asset SSR tidak menabrak router platform (401/500).
+  const raw = c.req.raw
+  const prefix = '/api/projects/' + project.id + '/live'
+  const incoming = new URL(raw.url)
+  if (incoming.pathname === prefix || incoming.pathname.startsWith(prefix + '/')) {
+    const stripped = new URL(incoming.href)
+    stripped.pathname = incoming.pathname.slice(prefix.length) || '/'
+    return forward(port, new Request(stripped, raw))
+  }
+  return forward(port, raw)
 })
 
 purgeExpiredSessions()
@@ -203,31 +214,16 @@ purgeExpiredSessions()
    in-memory Map, so every rebuild of the platform used to leave published URLs
    returning 503 until someone opened the project and triggered a new run.
    Rebuild the ones whose SSR bundle is missing, then warm their preview. */
-let publishedRestoreDone: Promise<void> | null = null
+let publishedRestorePromise: Promise<void> | null = null
 export function ensurePublishedPreviews(): Promise<void> {
-  if (publishedRestoreDone) return publishedRestoreDone
-  publishedRestoreDone = (async () => {
-    const projects = db
-      .prepare(`SELECT id, slug FROM projects WHERE slug IS NOT NULL AND slug != ''`)
-      .all() as { id: string; slug: string }[]
-    for (const { id } of projects) {
-      const serverBundle = join(PROJECTS_DIR, id, 'dist', 'server', 'server.js')
-      try {
-        if (!existsSync(serverBundle)) {
-          const build = await buildProject(id)
-          if (build.code !== 0) {
-            console.warn(`[published-restore] build gagal untuk ${id}: ${build.output.slice(-200)}`)
-            continue
-          }
-        }
-        await startPreview(id)
-        console.log(`[published-restore] ${id} siap`)
-      } catch (err) {
-        console.warn(`[published-restore] ${id}: ${(err as Error).message}`)
-      }
-    }
-  })()
-  return publishedRestoreDone
+  if (publishedRestorePromise) return publishedRestorePromise
+  publishedRestorePromise = (async () => {
+    const rows = db.prepare("SELECT id FROM projects WHERE slug IS NOT NULL AND slug <> ''").all() as { id: string }[]
+    await Promise.all(rows.map(async ({ id }) => {
+      try { await startPreview(id) } catch { /* project bundle tidak siap; start manual saat dibuka */ }
+    }))
+  })().finally(() => { publishedRestorePromise = null })
+  return publishedRestorePromise
 }
 
 /* ---------- on-demand TLS (Caddy) ----------
@@ -964,22 +960,9 @@ async function autoPublishAfterRun(
 }
 
 /* Published apps are public by design — no session required. */
-app.get('/p/:slug', async (c) => {
-  const slug = c.req.param('slug')
-  const project = projectBySlug(slug)
-  if (!project) return c.text(`Tidak ada aplikasi terbit dengan slug "${slug}".`, 404)
-
-  /* On the real deployment the app has its own hostname, so /p/<slug> just
-     points there. Locally there is no DNS, so fall back to the preview port. */
-  if (PUBLIC_SUFFIX !== 'none') return c.redirect(`${PUBLIC_ORIGIN.replace('://', `://${slug}.`)}/`, 302)
-
-  let port: number
-  try {
-    port = await startPreview(project.id)
-  } catch {
-    return c.text('Aplikasi terdaftar tapi preview-nya tidak bisa dinyalakan. Buka workspace proyeknya.', 503)
-  }
-  return c.redirect(`http://127.0.0.1:${port}/`, 302)
+app.get('/p/:slug', (c) => {
+  /* Aplikasi terbit hanya dilayani di subdomain masing-masing. */
+  return c.text('Aplikasi ini hanya tersedia di subdomainnya.', 410)
 })
 
 /* Live preview over the platform origin. Ownership is checked on every request,

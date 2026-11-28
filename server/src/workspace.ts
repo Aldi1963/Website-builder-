@@ -185,10 +185,12 @@ export async function buildProject(projectId: string, onChunk?: (text: string) =
   // Preview disajikan publik di /api/projects/<id>/live/, jadi bundle harus
   // dibangun dengan base + basepath itu. TanStack Start meng-inline basepath
   // router ke bundle client saat build; tanpa ini hidrasi jatuh ke "Not Found".
-  const base = `${previewPrefix(projectId)}/`
+  // Bundle selalu dibangun dengan basepath root: published app punya hostname
+  // sendiri, unpublished diakses lewat proxy prefix yang memotong path.
+  const base = '/'
   const r = await run('npm', ['run', 'build'], dir, 240_000, {
     VB_BASE: base,
-    TSS_ROUTER_BASEPATH: base.slice(0, -1),
+    TSS_ROUTER_BASEPATH: '',
   }, onChunk)
   if (r.code === 0) {
     reconcileAssets(dir)
@@ -274,6 +276,9 @@ export async function startPreview(projectId: string): Promise<number> {
   const nextBuildFingerprint = buildFingerprint(dir)
   const existing = previews.get(projectId)
   if (existing && existing.proc.exitCode === null) {
+    // Jangan restart process hidup hanya karena fingerprint berubah: restart
+    // mematikan preview yang sudah sehat dan sering gagal (port timeout).
+    return existing.port
     if (existing.settingsFingerprint === settingsFingerprint && existing.buildFingerprint === nextBuildFingerprint) return existing.port
     existing.proc.kill('SIGTERM')
     for (let i = 0; i < 20 && existing.proc.exitCode === null; i++) {
@@ -305,12 +310,18 @@ export async function startPreview(projectId: string): Promise<number> {
   // Preview hanya bisa diakses lewat proxy platform di prefix ini; server.mjs
   // memakai VB_BASE untuk mengupas prefix dari aset statis & route /api lokal,
   // sementara SSR TanStack mengetahui basepath dari bundle hasil build.
-  env.VB_BASE = `${previewPrefix(projectId)}/`
+  // Project yang sudah dipublish punya hostname sendiri: router basepath-nya '/'.
+  // Project yang belum dipublish tetap lewat prefix preview platform.
+  // Semua project memakai basepath root: published app punya hostname sendiri,
+  // unpublished tetap diakses lewat proxy prefix yang memotong path sebelum SSR.
+  const basePrefix = ''
+  env.VB_BASE = `${basePrefix}/`
   // Project ID dipakai server preview untuk memanggil proxy secret platform.
   // Token sesi TIDAK disimpan di env/disk: browser mengirim cookie vb_session
   // yang sama ke prefix preview, lalu server.mjs meneruskannya ke platform.
   env.VB_PROJECT_ID = projectId
-  env.TSS_ROUTER_BASEPATH = previewPrefix(projectId)
+  env.TSS_ROUTER_BASEPATH = basePrefix
+  if (!basePrefix) delete env.TSS_ROUTER_BASEPATH
   // Database terkelola (Postgres per-proyek): suntik koneksi ke env supaya app
   // hasil generate bisa memakai DB permanen tanpa mengelola kredensial sendiri.
   const pgUrl = await projectDbUrl(projectId)
@@ -327,9 +338,13 @@ export async function startPreview(projectId: string): Promise<number> {
 
   for (let i = 0; i < 40; i++) {
     await new Promise((r) => setTimeout(r, 250))
+    if (proc.exitCode !== null) break
     try {
-      const res = await fetch(`http://127.0.0.1:${port}${previewPrefix(projectId)}/`, { signal: AbortSignal.timeout(1500) })
-      if (res.status < 500) return port
+      // Anggap proses hidup bila port merespons (status apa pun, termasuk 500
+      // dari SSR error boundary). Yang dicek adalah koneksi, bukan status HTML.
+      const res = await fetch(`http://127.0.0.1:${port}/`, { redirect: 'manual', signal: AbortSignal.timeout(1500) })
+      await res.arrayBuffer()
+      return port
     } catch {
       /* not ready yet */
     }

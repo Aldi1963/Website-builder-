@@ -194,13 +194,14 @@ let pendingPreviewDefects: string[] = []
   // plan, langsung eksekusi. History sudah memuat "Rencana kerja" dari run sebelumnya.
   let quickEdit = false
   let consult = false
-  if (!opts?.confirmed && !forcePlanMode && history.length > 1 && listFiles(projectId).length > 0) {
+  const shortBuildIntent = /^\s*(bikinin|bikinkan|bikin|buatkan|buatin|bangun|buat)\s+[a-zA-Z0-9][^.?!]{0,60}$/i.test(trimmedPrompt)
+  if (!shortBuildIntent && !opts?.confirmed && !forcePlanMode && history.length > 1 && listFiles(projectId).length > 0) {
     try {
       // Tiga jalur: kecil (edit cepat) / konsultasi (pertanyaan analitik, tak menulis kode) /
       // pekerjaan penuh (buat fitur/struktur/halaman baru). Tanpa jalur konsultasi, pertanyaan
       // seperti "apa kekurangan web ini" jatuh ke pekerjaan penuh lalu memicu rencana + audit.
       const cls = await complete([
-        { role: 'system', content: 'Klasifikasi permintaan. Balas HANYA JSON: {"jenis": "kecil"|"konsultasi"|"penuh"}. "kecil" bila permintaan hanya mengubah satu bagian kecil yang sudah ada (teks, warna, komponen tunggal, perbaikan kecil). "konsultasi" bila user bertanya/meminta saran/opini/penjelasan/analisis tentang proyek (contoh: "apa kekurangan web ini", "saran fitur", "kenapa error X", "bagaimana cara kerja", "sudah siap live atau belum", "apakah route login sudah benar", "tes apa web ini sudah siap") dan TIDAK meminta kode ditulis. "penuh" bila menambah fitur, mengubah struktur data, atau membuat halaman/flow baru. Default "penuh" bila ragu.' },
+        { role: 'system', content: 'Klasifikasi permintaan. Balas HANYA JSON: {"jenis": "kecil"|"konsultasi"|"penuh"}. "kecil" bila permintaan hanya mengubah satu bagian kecil yang sudah ada (teks, warna, komponen tunggal, perbaikan kecil). "konsultasi" bila user bertanya/meminta saran/opini/penjelasan/analisis tentang proyek (contoh: "apa kekurangan web ini", "saran fitur", "kenapa error X", "bagaimana cara kerja", "sudah siap live atau belum", "apakah route login sudah benar", "tes apa web ini sudah siap") dan TIDAK meminta kode ditulis. "penuh" bila menambah fitur, mengubah struktur data, membuat halaman/flow baru, ATAU pesan berisi kata buat/bikinkan/bangun diikuti nama aplikasi/bisnis (mis. "bikinin kasir", "web toko baju", "aplikasi booking") — ini permintaan aplikasi lengkap meski project sudah punya file, JANGAN dipilih "kecil". Default "penuh" bila ragu.' },
         { role: 'user', content: userPrompt },
       ], { model, temperature: 0, maxTokens: 100, userId: opts?.userId })
       const raw = typeof cls.message.content === 'string' ? cls.message.content : ''
@@ -544,7 +545,7 @@ let pendingPreviewDefects: string[] = []
           const raw = typeof auditResp.message.content === 'string' ? auditResp.message.content : ''
           const jsonText = raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1)
           const report = JSON.parse(jsonText)
-          const needsFix = lastBuildFailed
+          const needsFix = lastBuildFailed || (Array.isArray(report.temuan) && report.temuan.some((x: any) => x && x.tingkat === 'kritis'))
           const paths = new Set(files.map((f) => f.path))
           const modelFindings = (Array.isArray(report.temuan) ? report.temuan : []).filter((x: any) =>
             x && ['kritis', 'penting', 'ringan'].includes(x.tingkat) &&
@@ -569,7 +570,7 @@ let pendingPreviewDefects: string[] = []
             String(report.catatan ?? '') ? `Catatan: ${String(report.catatan)}` : '',
           ].filter(Boolean).join('\n').slice(0, 4000)
           addMessage(projectId, 'assistant', auditText)
-          result = JSON.stringify({nilai:report.nilai,temuan,catatan:report.catatan, instruksi: needsFix ? 'Perbaiki hanya temuan kritis/penting yang nyata, build ulang, lalu langsung beri ringkasan akhir tanpa memanggil audit lagi.' : 'Tidak ada temuan kritis/penting. Langsung beri ringkasan akhir tanpa memanggil audit lagi.'})
+          result = JSON.stringify({nilai:report.nilai,temuan,catatan:report.catatan, instruksi: needsFix ? 'WAJIB perbaiki temuan kritis sekarang: lengkapi halaman yang kurang, tambahkan requireRole di server function, lalu build ulang. Jangan hanya melaporkan skor. Setelah perbaikan nyata, beri ringkasan akhir tanpa memanggil audit lagi.' : 'Tidak ada temuan kritis/penting. Langsung beri ringkasan akhir tanpa memanggil audit lagi.'})
         } catch (err) {
           const note = `Audit gagal dijalankan atau diparse: ${(err as Error).message}`
           await emit({ type: 'audit', nilai: 0, temuan: [], catatan: note })
