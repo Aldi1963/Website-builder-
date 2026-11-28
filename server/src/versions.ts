@@ -3,7 +3,7 @@
 import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { PROJECTS_DIR } from './paths.ts'
-import { listFiles, getFile } from './db.ts'
+import { listFiles, getFile, removeFile } from './db.ts'
 import { deleteProjectFile, writeProjectFile } from './workspace.ts'
 
 export type VersionSnapshot = {
@@ -61,6 +61,7 @@ export function restoreVersion(projectId: string, versionId: number): { ok: bool
   for (const f of listFiles(projectId)) {
     if (!keep.has(f.path)) {
       deleteProjectFile(projectId, f.path)
+      removeFile(projectId, f.path)
       restored++
     }
   }

@@ -1018,6 +1018,7 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
   const [inlineEvents, setInlineEvents] = useState<InlineEvent[]>([])
   const [contextPaths, setContextPaths] = useState<string[]>([])
   const [version, setVersion] = useState<VersionInfo | null>(null)
+  const [toast, setToast] = useState('')
   const [booting, setBooting] = useState(false)
   const [status, setStatus] = useState('')
   const [plan, setPlan] = useState<ChatPlan | null>(null)
@@ -1499,6 +1500,8 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
         </div>
       </header>
 
+      {toast && <div className="mx-3 mb-2 rounded-md border border-success/40 bg-success/10 px-3 py-2 text-[11.5px] text-body">{toast}</div>}
+
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <section
           className={`flex min-w-0 flex-col border-r border-edge ${
@@ -1524,6 +1527,7 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
             inlineEvents={inlineEvents}
             contextPaths={contextPaths}
             version={version}
+            onVersionRestored={(message) => { setVersion(null); setInlineEvents([]); setToast(message); setTimeout(() => setToast(''), 4000) }}
             events={events}
             onOpenFile={(path) => {
               navigate(`/proyek/${projectId}/file`)

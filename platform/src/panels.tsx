@@ -562,7 +562,7 @@ export type VersionInfo = {
 export function VersionCard({ projectId, version, onRestored }: {
   projectId: string
   version: VersionInfo
-  onRestored?: () => void
+  onRestored?: (message: string) => void
 }) {
   const [open, setOpen] = useState(false)
   const [data, setData] = useState<VersionChanges | null>(null)
@@ -584,10 +584,11 @@ export function VersionCard({ projectId, version, onRestored }: {
     setMsg('')
     try {
       const res = await restoreProjectVersion(projectId, version.before)
-      setMsg(res.ok ? `Dipulihkan ke sebelum perubahan (${res.restored} file).${res.buildOk ? ' Build OK.' : ' Build gagal — cek tab Kode.'}` : 'Restore gagal.')
+      const message = res.ok ? `Dipulihkan ke sebelum perubahan (${res.restored} file).${res.buildOk ? ' Build OK.' : ' Build gagal — cek tab Kode.'}` : 'Restore gagal.'
+      setMsg(message)
       setData(null)
       setUndoOpen(false)
-      onRestored?.()
+      onRestored?.(message)
     } catch (err) {
       setMsg((err as Error).message || 'Restore gagal')
     } finally { setBusy(false) }
@@ -608,7 +609,7 @@ export function VersionCard({ projectId, version, onRestored }: {
           Undo perubahan
         </button>
       </div>
-      {undoOpen && !open && (
+      {undoOpen && (
         <div className="flex items-center gap-2 border-t border-edge bg-surface-muted px-3 py-2 text-[11px] text-quiet">
           <span className="min-w-0 flex-1">Kembalikan {version.changed.length} file ke sebelum perubahan ini? Build ulang akan dijalankan.</span>
           <button type="button" onClick={() => setUndoOpen(false)} className="rounded-md px-2 py-1 hover:text-body">Batal</button>
@@ -661,6 +662,7 @@ export function ChatPanel({
   events,
   contextPaths,
   version,
+  onVersionRestored,
   onOpenFile,
   previewOpen,
   previewUrl,
@@ -683,6 +685,7 @@ export function ChatPanel({
   inlineEvents?: InlineEvent[]
   contextPaths?: string[]
   version?: VersionInfo | null
+  onVersionRestored?: (message: string) => void
   /* Kartu aktivitas PERSISTEN dari server (bukan feed live): dirender di
      dalam transcript, kronologis terhadap bubble pesan. */
   events?: ActivityEvent[]
@@ -829,7 +832,7 @@ export function ChatPanel({
               ),
             )}
             {!sending && version && !!version.changed.length && (
-              <VersionCard projectId={projectId} version={version} onRestored={() => setInlineEvents([])} />
+              <VersionCard projectId={projectId} version={version} onRestored={(m) => onVersionRestored?.(m)} />
             )}
             {sending && (
               <div className="vb-enter flex flex-col gap-2.5 text-[12px] text-quiet">
