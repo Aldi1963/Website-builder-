@@ -7,7 +7,7 @@ import { Tabs } from '@cloudflare/kumo/components/tabs'
 import { Dialog } from '@cloudflare/kumo/components/dialog'
 import { Icon, Activity, Spinner, useAutoScroll, useCopy } from './ui'
 import { openTopupModal } from './topup-modal'
-import { ActivityFeed, PHASES, PhaseStrip, TerminalBlock, phaseIndex, type ActivityEntry } from './activity'
+import { ActivityFeed, TerminalBlock, runningPhase, RUNNING_PHASES, type ActivityEntry } from './activity'
 import { api, versionChanges, restoreProjectVersion, type ActivityEvent, type AuditFinding, type PlanStep, type ProjectSettings, type VersionChanges } from './api'
 import {
   FALLBACK_MODEL_CATALOG,
@@ -1080,40 +1080,41 @@ function SuggestionsCard({ audit, onSend }: { audit: ChatAudit;  onSend: (text: 
   )
 }
 
-/* Ringkasan kerja agent ala Emergent: satu baris hidup yang merangkum tahap
-   dan status. Detail (langkah, file, konteks, tinjauan) dibuka sesuai needs. */
+/* Ringkasan kerja agent: SATU baris hidup. Label berubah mengikuti status
+   (Berpikir → Eksekusi → Memeriksa → Selesai) dengan animasi dot. Detail
+   (file, langkah, konteks, tinjauan) dibuka lewat ketukan, tidak memenuhi
+   layar saat agent masih bekerja — seperti Emergent. */
 function RunningSummary({ status, entries, contextPaths, plan, audit, onOpenFile }: { status: string; entries: ActivityEntry[]; contextPaths: string[]; plan: ChatPlan | null; audit: ChatAudit | null; onOpenFile?: (path: string) => void }) {
   const [open, setOpen] = useState(false)
-  const current = phaseIndex(status)
+  const phase = runningPhase(status)
+  const label = RUNNING_PHASES[phase]
+  const fileCount = entries.filter((e) => e.kind === 'file').length
   return (
     <div className="flex flex-col gap-2">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
+        aria-label={`Proses agent: ${label}`}
         title={open ? 'Sembunyikan detail proses' : 'Lihat detail proses'}
-        className="flex w-full flex-col gap-2 rounded-lg border border-edge bg-surface px-3 py-2.5 text-left hover:bg-surface-muted"
+        className="flex w-full items-center gap-2.5 rounded-lg border border-edge bg-surface px-3 py-2.5 text-left hover:bg-surface-muted"
       >
-        {/* Progress step vertikal ala Emergent: selesai ✓, aktif berdenyut, belum ○ */}
-        <span className="flex flex-col gap-1" aria-label="Tahap agent">
-          {PHASES.map((ph, i) => (
-            <span key={ph.label} className="flex items-center gap-2">
-              <span className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full text-[9px] font-medium ${i < current ? 'bg-success/15 text-success' : i === current ? 'bg-accent/15 text-accent' : 'bg-ink text-quiet'}`} aria-hidden="true">
-                {i < current ? '✓' : i === current ? '●' : '○'}
-              </span>
-              <span className={`text-[11px] ${i < current ? 'text-success' : i === current ? 'font-medium text-body' : 'text-quiet'}`} aria-current={i === current ? 'step' : undefined}>
-                {ph.label}
-              </span>
-              {i === current && status ? <span className="ml-1 min-w-0 flex-1 truncate text-[10.5px] text-quiet">{status}</span> : null}
-            </span>
-          ))}
+        <span className="relative flex h-4 w-4 shrink-0 items-center justify-center" aria-hidden="true">
+          <span className="absolute h-3.5 w-3.5 animate-ping rounded-full bg-accent/25" />
+          <span className="relative h-2 w-2 animate-pulse rounded-full bg-accent" />
         </span>
-        <span className="flex items-center gap-2 border-t border-edge pt-1.5 text-[10px] text-quiet">
-          <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-accent" aria-hidden="true" />
-          <span>{entries.length} langkah{contextPaths.length ? ` · ${contextPaths.length} file` : ''}</span>
-          <span className="ml-auto flex items-center gap-1">{open ? 'Tutup detail' : 'Lihat detail'}
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" className={`transition-transform ${open ? 'rotate-180' : ''}`}><path d="m6 9 6 6 6-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+        <span className="min-w-0 flex-1">
+          <span className="flex items-baseline gap-2">
+            <span className="shrink-0 text-[12px] font-medium text-body">{label}</span>
+            {status ? <span className="min-w-0 flex-1 truncate text-[11px] text-quiet">{status}</span> : null}
           </span>
+          <span className="mt-0.5 block text-[10px] text-quiet">
+            {entries.length} langkah{fileCount ? ` · ${fileCount} file` : ''}
+          </span>
+        </span>
+        <span className="flex shrink-0 items-center gap-1 text-[10px] text-quiet">
+          {open ? 'Tutup' : 'Detail'}
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" className={`transition-transform ${open ? 'rotate-180' : ''}`}><path d="m6 9 6 6 6-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
         </span>
       </button>
       {open && (

@@ -18,6 +18,10 @@ import { readReferenceImage } from './reference-images.ts'
 import { snapshotVersion, restoreVersion, listVersions } from './versions.ts'
 import { captureScreenshot, captureForReview } from './screenshots.ts'
 import { interactPreview, closePreviewSession } from './preview-interact.ts'
+import { generateProjectImage } from './image-tool.ts'
+import { fetchDocs } from './docs-tool.ts'
+import { taskStateBrief, saveTaskState, getTaskState, clearTaskState } from './task-state.ts'
+import { delegateResearch } from './delegate-tool.ts'
 import { runProjectCommand } from './run-command.ts'
 import { routePathFromFile } from './route-paths.ts'
 import { isManagedDbEnabled, execProjectSql, projectSchemaBrief } from './managed-db.ts'
@@ -82,7 +86,7 @@ export async function runAgent(
   const filePathsRead: string[] = [...ctx.paths]
   await emit({ type: 'context', paths: filePathsRead })
   const messages: ChatMessage[] = [
-    { role: 'system', content: `${BASE_SYSTEM}${designContext}${ctx.text}\n\nWorkspace saat ini:\n${fileIndex(projectId)}${dbContext}` },
+    { role: 'system', content: `${BASE_SYSTEM}${designContext}${taskStateBrief(projectId)}${ctx.text}\n\nWorkspace saat ini:\n${fileIndex(projectId)}${dbContext}` },
     ...history.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
   ]
   if (opts?.answer) {
@@ -634,6 +638,31 @@ let pendingPreviewDefects: string[] = []
           await emit({ type: 'awaiting_answer', question, hint })
           result = 'MENUNGGU_JAWABAN_USER: run dihentikan. Jangan lanjutkan atau merangkum sampai user menjawab.'
           askedUser = true
+        }
+      } else if (name === 'delegate') {
+        await emit({ type: 'status', text: 'Memecah tugas ke subagen…' })
+        const r = await delegateResearch(projectId, args, BASE_SYSTEM)
+        result = `${r.ok ? 'OK' : 'GAGAL'}: ${r.detail}`
+      } else if (name === 'generate_image') {
+        await emit({ type: 'status', text: 'Membuat aset gambar…' })
+        const r = await generateProjectImage(projectId, args)
+        result = `${r.ok ? 'OK' : 'GAGAL'}: ${r.detail}`
+      } else if (name === 'fetch_docs') {
+        await emit({ type: 'status', text: 'Membaca dokumentasi resmi…' })
+        const r = await fetchDocs(args)
+        result = `${r.ok ? 'OK' : 'GAGAL'}: ${r.detail}${r.text ? `\n\n${r.text}` : ''}`
+      } else if (name === 'task_state') {
+        const action = String(args.action ?? 'load')
+        if (action === 'save') {
+          const items = Array.isArray(args.items) ? args.items.filter((x): x is Record<string, unknown> => !!x && typeof x === 'object').map((x) => ({ text: String(x.text ?? '').slice(0, 200), done: Boolean(x.done) })).filter((x) => x.text) : []
+          saveTaskState(projectId, { goal: String(args.goal ?? '').slice(0, 400), items, updatedAt: Date.now() })
+          result = `OK: ${items.length} tugas tersimpan (${items.filter((x) => x.done).length} selesai).`
+        } else if (action === 'clear') {
+          clearTaskState(projectId)
+          result = 'OK: checklist dihapus.'
+        } else {
+          const s = getTaskState(projectId)
+          result = s ? JSON.stringify(s) : 'Belum ada checklist tersimpan.'
         }
       } else if (name === 'set_secret') {
         const key = String(args.key ?? '').trim()

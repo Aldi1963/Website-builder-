@@ -140,6 +140,18 @@ export function phaseIndex(status: string): number {
   return current < 0 ? 0 : current
 }
 
+/* Label progres satu baris saat agent bekerja. Urutan: Berpikir → Eksekusi
+   → Memeriksa → Selesai. Regex diambil dari status nyata agent, bukan opini. */
+export const RUNNING_PHASES = ['Berpikir', 'Eksekusi', 'Memeriksa', 'Selesai'] as const
+
+export function runningPhase(status: string): number {
+  const t = status.toLowerCase()
+  if (/selesai|ringkasan|menyusun jawaban|publik/.test(t)) return 3
+  if (/memeriksa|melihat preview|audit|screenshot|verifikasi|cek|mengecek/.test(t)) return 2
+  if (/menerapkan|menulis|install|membangun|build|tabel|query|memperbaiki|eksekusi|menjalankan|membuat/.test(t)) return 1
+  return 0
+}
+
 export function PhaseStrip({ status, active }: { status: string; active: boolean }) {
   if (!active || !status) return null
   const current = phaseIndex(status)

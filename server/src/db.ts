@@ -253,6 +253,75 @@ CREATE INDEX IF NOT EXISTS idx_redeem_redemptions_code ON redeem_redemptions(cod
 CREATE INDEX IF NOT EXISTS idx_redeem_redemptions_user ON redeem_redemptions(code_id, user_id);
 `)
 
+/* ---- Paket credit bernama + voucher 3 jenis (28 Nov 2026) ----
+   credit_packages: katalog paket yang dikelola admin (dulu PACKAGES
+   hardcode di billing.ts). id stabil dipakai credit_orders.package —
+   paket lama p10/p25/p100/p220 dipertahankan sebagai id supaya order
+   pending lama tetap bisa dibayar/dikreditkan. Seed di bawah hanya
+   mengisi bila tabel masih kosong (INSERT OR IGNORE): ubahan admin
+   tidak pernah tertimpa seed.
+   redeem_codes diperluas dengan kolom kind ('credit' | 'package' |
+   'discount') + package_id / kolom diskon; voucher_discount_uses
+   mencatat pemakaian kode diskon per order (kuota + 1x per user
+   dihitung dari sini, digabung status order-nya — order pending yang
+   sudah kedaluwarsa / dibatalkan tidak menghabiskan kuota).
+   credit_orders menyimpan voucher yang dipakai (voucher_code,
+   discount_idr, original_amount_idr) supaya riwayat + webhook bisa
+   diaudit; amount_idr tetap harga AKHIR yang dibayar. */
+db.exec(`
+CREATE TABLE IF NOT EXISTS credit_packages (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  slug TEXT NOT NULL DEFAULT '',
+  credits REAL NOT NULL,
+  price_idr INTEGER NOT NULL,
+  badge TEXT NOT NULL DEFAULT '',
+  active INTEGER NOT NULL DEFAULT 1,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_credit_packages_sort ON credit_packages(sort_order, id);
+
+CREATE TABLE IF NOT EXISTS voucher_discount_uses (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  code_id TEXT NOT NULL REFERENCES redeem_codes(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  order_id TEXT NOT NULL,
+  discount_idr INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_voucher_discount_uses_code ON voucher_discount_uses(code_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_voucher_discount_uses_user ON voucher_discount_uses(code_id, user_id);
+`)
+try {
+  db.exec(`INSERT OR IGNORE INTO credit_packages (id, name, slug, credits, price_idr, badge, active, sort_order, created_at, updated_at) VALUES
+    ('p10', 'Starter', 'starter', 500, 15000, '', 1, 1, ${Date.now()}, ${Date.now()}),
+    ('p25', 'Plus', 'plus', 1000, 25000, '', 1, 2, ${Date.now()}, ${Date.now()}),
+    ('p100', 'Pro', 'pro', 4200, 100000, '', 1, 3, ${Date.now()}, ${Date.now()}),
+    ('p220', 'Max', 'max', 10000, 220000, 'Paling hemat', 1, 4, ${Date.now()}, ${Date.now()})`)
+} catch {
+  /* seed sudah ada */
+}
+for (const [table, column, def] of [
+  ['redeem_codes', 'kind', `TEXT NOT NULL DEFAULT 'credit'`],
+  ['redeem_codes', 'package_id', 'TEXT'],
+  ['redeem_codes', 'discount_type', 'TEXT'],
+  ['redeem_codes', 'discount_value', 'REAL'],
+  ['redeem_codes', 'max_discount_idr', 'INTEGER'],
+  ['redeem_codes', 'min_purchase_idr', 'INTEGER'],
+  ['redeem_codes', 'package_ids', `TEXT NOT NULL DEFAULT '[]'`],
+  ['credit_orders', 'voucher_code', 'TEXT'],
+  ['credit_orders', 'discount_idr', 'INTEGER NOT NULL DEFAULT 0'],
+  ['credit_orders', 'original_amount_idr', 'INTEGER'],
+] as const) {
+  try {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${def}`)
+  } catch {
+    /* kolom sudah tersedia */
+  }
+}
+
 /* Publish state lives on the project row. The column is added in place so an
    existing database keeps working without a migration tool. */
 try {
@@ -320,6 +389,14 @@ db.exec(`CREATE TABLE IF NOT EXISTS project_settings (
   key TEXT NOT NULL,
   value TEXT NOT NULL,
   PRIMARY KEY (project_id, key)
+);`)
+
+/* Checklist proyek yang bertahan lintas sesi chat (task state). */
+db.exec(`CREATE TABLE IF NOT EXISTS project_task_state (
+  project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+  goal TEXT NOT NULL DEFAULT '',
+  items TEXT NOT NULL DEFAULT '[]',
+  updated_at INTEGER NOT NULL
 );`)
 
 export function setSetting(projectId: string, key: string, value: string) {

@@ -120,6 +120,13 @@ const RAG = `Basis pengetahuan / tanya-jawab dokumen (RAG) — server-side saja:
 - Sebelum menyimpan chunk pertama kali, panggil ensureRagSchema() (idempotent) — membuat ekstensi vector + tabel knowledge_chunks.
 - Saat user minta "tanya-jawab dokumen", "basis pengetahuan", "chat dengan data sendiri", dll: bangun halaman unggah dokumen + chat yang menjawab dari pengetahuan. JANGAN memasukkan seluruh dokumen ke prompt; gunakan retrieval.`
 
+const EXTRA_TOOLS = `Tool tambahan untuk pekerjaan nyata:
+- fetch_docs: WAJIB sebelum menulis kode integrasi pihak ketiga. Baca dokumentasi resmi Midtrans/Stripe/Google/GoPay/Clipku lewat URL yang diberikan tool; jangan mengarang endpoint atau field.
+- generate_image: buat aset visual nyata (hero, ikon, ilustrasi) dan simpan ke public/. Pakai path /nama-file.png di komponen, jangan menyisipkan base64 di kode.
+- task_state: simpan checklist goal+items di awal tugas besar dan tandai ✓ saat item selesai. Checklist bertahan lintas sesi chat, jadi sesi berikutnya lanjut dari yang belum selesai.
+- delegate: untuk proyek besar, pecah riset ke maks 3 subagen paralel (backend/UI/QA) sebelum menulis kode. Subagen hanya berpikir, kamu yang menulis file.
+- Regression: bila ada cacat/interaksi yang dulu gagal lalu kamu perbaiki, ULANGI langkah yang sama persis lewat interact_preview (klik/isi/submit yang sama) sebelum mengklaim selesai. Build hijau saja bukan bukti perbaikan.`
+
 const BROWSER_TOOLS = `Verifikasi nyata di browser dan shell (WAJIB dipakai bila aplikasi punya alur yang bisa diklik):
 - Tool interact_preview mengoperasikan browser preview sungguhan: action open/click/fill/select/press/text dengan selector CSS. Gunakan untuk MEMBUKTI alur login, checkout, dan form bekerja — terutama setelah ask_user memberi email/password. Isi form dengan kredensial itu lewat fill (nilai tidak pernah ditampilkan di ringkasan), klik submit, lalu baca teks halaman untuk memastikan berhasil. Jangan mengklaim "login berhasil" hanya dari build hijau.
 - Tool run menjalankan perintah whitelist di folder proyek (mis. npm test, node script.js). Pakai untuk verifikasi/testing, bukan untuk menulis file.
@@ -151,6 +158,7 @@ ${AUTH}
 
 ${INTEGRATIONS}
 ${BROWSER_TOOLS}
+${EXTRA_TOOLS}
 
 ${RAG}
 

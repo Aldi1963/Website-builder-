@@ -173,6 +173,63 @@ export const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'delegate',
+      description: 'Jalankan hingga 3 subagen riset PARALEL untuk memecah tugas besar (mis. satu analisis backend, satu UI, satu QA). Subagen hanya berpikir/riset, tidak menulis file. Gunakan hasilnya untuk menyusun rencana lalu eksekusi sendiri lewat write_file.',
+      parameters: {
+        type: 'object',
+        properties: {
+          subtasks: { type: 'array', items: { type: 'object', properties: { label: { type: 'string' }, prompt: { type: 'string' } }, required: ['label', 'prompt'] }, description: 'Maks 3 subtugas riset' },
+        },
+        required: ['subtasks'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'generate_image',
+      description: 'Buat aset gambar (ilustrasi, ikon, hero, foto stok) lewat model gambar dan simpan ke folder public/ proyek. Pakai untuk aset visual nyata, jangan mengarang URL gambar eksternal. Kembalikan path /nama-file.png untuk dipakai di komponen.',
+      parameters: {
+        type: 'object',
+        properties: {
+          prompt: { type: 'string', description: 'Deskripsi gambar dalam bahasa Inggris/Indonesia' },
+          filename: { type: 'string', description: 'Nama file, mis. hero.png' },
+        },
+        required: ['prompt'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'fetch_docs',
+      description: 'Baca dokumentasi RESMI (Midtrans, Stripe, Google, GoPay, Clipku) untuk memastikan endpoint, parameter, dan alur OAuth/payment benar. WAJIB dipakai sebelum menulis kode integrasi pihak ketiga — jangan mengarang endpoint.',
+      parameters: {
+        type: 'object',
+        properties: { url: { type: 'string', description: 'URL dokumentasi resmi' } },
+        required: ['url'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'task_state',
+      description: 'Simpan/memuat checklist pekerjaan proyek yang bertahan lintas sesi chat. Pakai action save di awal tugas besar (goal + items) dan update status✓ saat item selesai, supaya sesi berikutnya lanjut dari titik yang benar.',
+      parameters: {
+        type: 'object',
+        properties: {
+          action: { type: 'string', enum: ['save', 'load', 'clear'] },
+          goal: { type: 'string', description: 'Tujuan utama proyek' },
+          items: { type: 'array', items: { type: 'object', properties: { text: { type: 'string' }, done: { type: 'boolean' } }, required: ['text', 'done'] }, description: 'Daftar tugas' },
+        },
+        required: ['action'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'set_secret',
       description: 'Simpan kredensial/rahasia proyek (token API, password, kunci) sebagai environment variable HANYA di server preview — tidak pernah ditulis ke file proyek atau terkirim ke client. Nilai hanya bisa ditulis, tidak bisa dibaca kembali. Contoh: WA_SESSION_TOKEN, API_KEY.',
       parameters: {
