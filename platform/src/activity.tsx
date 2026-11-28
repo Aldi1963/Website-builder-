@@ -126,19 +126,23 @@ export function ActivityFeed({ entries }: { entries: ActivityEntry[] }) {
 /* Phase strip: empat tahap khas Lovable/Emergent, dipetakan dari status
    nyata yang dipancarkan agent (bukan angka sintetis). only shown while
    sending. Tahap selesai = langkah berikutnya sudah pernah terlihat. */
-const PHASES = [
+export const PHASES = [
   { label: 'Membaca', match: /membaca|melihat daftar file|mencari kode|referensi gambar|meninjau/i },
   { label: 'Merencana', match: /rencana|memeriksa proyek/i },
   { label: 'Membangun', match: /menerapkan|install dependency|menyiapkan tabel|menjalankan query|memperbaiki otomatis|mengambil screenshot/i },
   { label: 'Menyelesaikan', match: /ringkasan|build|menyusun jawaban|publik|audit/i },
 ] as const
 
-export function PhaseStrip({ status, active }: { status: string; active: boolean }) {
-  if (!active || !status) return null
+export function phaseIndex(status: string): number {
   const t = status.toLowerCase()
   let current = -1
   for (let i = 0; i < PHASES.length; i++) if (PHASES[i].match.test(t)) current = Math.max(current, i)
-  if (current < 0) current = 0
+  return current < 0 ? 0 : current
+}
+
+export function PhaseStrip({ status, active }: { status: string; active: boolean }) {
+  if (!active || !status) return null
+  const current = phaseIndex(status)
   return (
     <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-edge bg-surface px-2.5 py-1.5" role="status" aria-label="Tahap agent">
       {PHASES.map((ph, i) => (
