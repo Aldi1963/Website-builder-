@@ -1230,6 +1230,10 @@ export function PreviewPane({
   booting,
   hasFiles,
   onPick,
+  issues,
+  checking,
+  onCheck,
+  onOpenIssue,
 }: {
   previewOn: boolean
   previewPort: number
@@ -1240,6 +1244,10 @@ export function PreviewPane({
   booting: boolean
   hasFiles: boolean
   onPick: (target: VisualTarget) => void
+  issues: { kind: 'runtime' | 'defect'; text: string }[]
+  checking: boolean
+  onCheck: () => void
+  onOpenIssue: (text: string) => void
 }) {
   const [reloadKey, setReloadKey] = useState(0)
   const [picking, setPicking] = useState(false)
@@ -1294,6 +1302,16 @@ export function PreviewPane({
         >
           {picking ? 'Klik elemen…' : 'Pilih elemen'}
         </button>
+        <button
+          onClick={onCheck}
+          disabled={!previewOn || checking}
+          aria-label="Periksa error preview"
+          className={`flex h-6 shrink-0 items-center gap-1 border px-2 text-[10.5px] transition-colors disabled:opacity-40 ${
+            issues.length ? 'border-accent bg-accent-soft text-body' : 'border-edge text-quiet hover:text-body'
+          }`}
+        >
+          {checking ? 'Memeriksa…' : issues.length ? `● ${issues.length} error` : 'Periksa error'}
+        </button>
       </div>
 
       <div className="relative min-h-0 flex-1 bg-ink">
@@ -1341,6 +1359,29 @@ export function PreviewPane({
           </div>
         )}
       </div>
+
+      {issues.length > 0 && (
+        <div className="max-h-[190px] shrink-0 overflow-y-auto border-t border-accent bg-surface px-3 py-2">
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-medium text-body">Masalah terdeteksi di preview</p>
+            <span className="text-[10px] text-quiet">klik untuk buka kode</span>
+          </div>
+          <div className="mt-1.5 space-y-1">
+            {issues.map((issue, i) => (
+              <button
+                key={i}
+                onClick={() => onOpenIssue(issue.text)}
+                className="flex w-full items-start gap-2 rounded border border-edge px-2 py-1.5 text-left text-[11px] leading-relaxed text-body transition-colors hover:border-accent"
+              >
+                <span className={`mt-0.5 shrink-0 font-mono text-[9px] uppercase ${issue.kind === 'runtime' ? 'text-accent' : 'text-quiet'}`}>
+                  {issue.kind === 'runtime' ? 'runtime' : 'ui'}
+                </span>
+                <span className="min-w-0 flex-1 break-words">{issue.text}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {buildLog && !buildLog.ok && (
         <div className="max-h-[150px] shrink-0 overflow-y-auto border-t border-edge bg-surface px-3 py-2">
@@ -1443,6 +1484,7 @@ export function CodePane({
   onSave,
   onBuild,
   onFilesRefresh,
+  jumpLine,
 }: {
   files: { path: string }[]
   filesReady?: boolean
@@ -1456,6 +1498,7 @@ export function CodePane({
   onSave: () => void
   onBuild: () => void
   onFilesRefresh: () => void
+  jumpLine?: number
 }) {
   const [showLog, setShowLog] = useState(false)
   const [tab, setTab] = useState<'edit' | 'diff'>('edit')
@@ -1464,6 +1507,18 @@ export function CodePane({
   useEffect(() => {
     if (buildLog && !buildLog.ok) setShowLog(true)
   }, [buildLog])
+
+  const editorRef = useRef<HTMLTextAreaElement | null>(null)
+  useEffect(() => {
+    if (!jumpLine || !editorRef.current || !openFile) return
+    const el = editorRef.current
+    const lines = content.split('\n')
+    const pos = lines.slice(0, Math.max(0, jumpLine - 1)).reduce((n, l) => n + l.length + 1, 0)
+    el.focus()
+    el.setSelectionRange(pos, pos + (lines[jumpLine - 1]?.length ?? 0))
+    const lineHeight = parseFloat(getComputedStyle(el).lineHeight) || 18
+    el.scrollTop = Math.max(0, (jumpLine - 4) * lineHeight)
+  }, [jumpLine, openFile, content])
 
   const showDiff = async () => {
     if (!openFile) return
@@ -1600,6 +1655,7 @@ export function CodePane({
             </pre>
           ) : openFile ? (
             <textarea
+              ref={editorRef}
               value={content}
               onChange={(e) => onChange(e.target.value)}
               spellCheck={false}

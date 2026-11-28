@@ -5,6 +5,7 @@ import { api, auth, ChatHandlers, chatStream, Project, exportProjectZip, listPro
 import { AuthGate, UserBar } from './auth'
 import { matchPath, navigate, usePath } from './router'
 import { ChatPanel, CodePane, PreviewPane, SettingsSheet, type ChatAudit, type ChatPlan, type InlineEvent, type VisualTarget, type VersionInfo } from './panels'
+import type { PreviewIssue } from './api'
 import { useActivity } from './activity'
 import { MODEL_AUTO, getPickerModels, isSelectionAvailable, modelIdForServer } from './models'
 /* Fase 3 (UI credit): chip saldo + halaman Penggunaan. File ini milik Hermes
@@ -1025,6 +1026,14 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
   const [audit, setAudit] = useState<ChatAudit | null>(null)
   const [buildLog, setBuildLog] = useState<{ ok: boolean; log: string } | null>(null)
   const [buildPhase, setBuildPhase] = useState('')
+  const [issues, setIssues] = useState<PreviewIssue[]>([])
+  const [checking, setChecking] = useState(false)
+  const [jumpLine, setJumpLine] = useState<number | undefined>()
+
+  useEffect(() => {
+    setIssues([])
+    void api.previewIssues(projectId).then((r) => setIssues(r.issues ?? [])).catch(() => {})
+  }, [projectId])
   const [openFile, setOpenFile] = useState<string | null>(() => loadView(projectId).file)
   const [fileContent, setFileContent] = useState('')
   const [savedContent, setSavedContent] = useState('')
@@ -1391,6 +1400,26 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
     setAwaitingConfirm(false)
   }
 
+  const runPreviewCheck = async () => {
+    setChecking(true)
+    try {
+      const r = await api.checkPreview(projectId)
+      setIssues(r.issues ?? [])
+    } catch {
+      setIssues([{ kind: 'runtime', text: 'Pemeriksaan preview gagal. Pastikan preview berjalan.' }])
+    } finally { setChecking(false) }
+  }
+
+  /* Error runtime menyebut path file (src/...):baris; cacat render tidak.
+     Keduanya tetap membuka panel kode supaya user bisa langsung mengubah. */
+  const openIssue = (text: string) => {
+    const m = /(?:src\/|\/)?([\w.-]+\/(?:[\w.-]+\/)*[\w.-]+\.[a-z]{1,4}):(\d+)/i.exec(text)
+    const path = m ? (text.includes('src/') ? m[1] : `src/${m[1]}`) : files[0]?.path
+    setJumpLine(m ? Number(m[2]) : undefined)
+    if (path) void openFileAt(path)
+    navigate(`/proyek/${projectId}/file`)
+  }
+
   const startPreview = async () => {
     setBooting(true)
     setBuildPhase('Menyiapkan…')
@@ -1588,6 +1617,10 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
               onRun={startPreview}
               booting={booting}
               hasFiles={files.length > 0}
+              issues={issues}
+              checking={checking}
+              onCheck={() => void runPreviewCheck()}
+              onOpenIssue={openIssue}
             />
           ) : routeTab === 'file' ? (
             <CodePane
@@ -1603,6 +1636,7 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
               onSave={saveFile}
               onBuild={startPreview}
               onFilesRefresh={() => void api.files(projectId).then(({ files }) => { setFiles(files.map((f) => ({ path: f.path }))); setFilesReady(true) })}
+              jumpLine={jumpLine}
             />
           ) : routeTab === 'jalankan' ? (
             <RunPane running={booting} phase={buildPhase} buildLog={buildLog} hasFiles={files.length > 0} dirty={dirty} onRun={() => void startPreview()} onBack={() => navigate(`/proyek/${projectId}/chat`)} />

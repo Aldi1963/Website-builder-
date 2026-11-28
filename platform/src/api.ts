@@ -104,6 +104,8 @@ export const auth = {
   logout: () => req<{ ok: boolean }>('/api/auth/logout', { method: 'POST' }),
 }
 
+export type PreviewIssue = { kind: 'runtime' | 'defect'; text: string }
+
 export const api = {
   health: () => req<{ ok: boolean; model: string; uptime: number }>('/api/health'),
   listProjects: () => req<{ projects: Project[] }>('/api/projects'),
@@ -202,6 +204,13 @@ export const api = {
   deleteReference: (id: string, refId: string) => req<{ ok: boolean }>(`/api/projects/${id}/references/${encodeURIComponent(refId)}`, { method: 'DELETE' }),
   previewStatus: (id: string) =>
     req<{ running: boolean; port: number }>(`/api/projects/${id}/preview/status`),
+
+  checkPreview: (id: string) =>
+    req<{ ok: boolean; issues: PreviewIssue[]; screenshot: string; checkedAt: string }>(
+      `/api/projects/${id}/preview/check`, { method: 'POST' }),
+  previewIssues: (id: string) =>
+    req<{ issues: PreviewIssue[]; screenshot: string; checkedAt: string }>(
+      `/api/projects/${id}/preview/issues`),
   publish: (id: string, slug?: string) =>
     req<{ ok: boolean; slug: string; url: string; port: number; error?: string }>(
       `/api/projects/${id}/publish`,

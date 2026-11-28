@@ -53,7 +53,7 @@ import {
   writeProjectFile,
   projectDir,
 } from './workspace.ts'
-import { captureScreenshot, listScreenshots, readScreenshot } from './screenshots.ts'
+import { captureScreenshot, captureForReview, listScreenshots, readScreenshot } from './screenshots.ts'
 import { dropProjectDb, projectDbPool, isManagedDbEnabled, provisionProjectDb, validateProjectSql } from './managed-db.ts'
 import {
   SESSION_COOKIE,
@@ -943,6 +943,38 @@ app.get('/api/projects/:id/preview/status', async (c) => {
   } catch {
     return c.json({ running: false, port })
   }
+})
+
+/* Pemeriksaan error preview untuk UI. Menjalankan capture nyata (browser)
+   lalu menyimpan hasilnya sehingga overlay bisa menampilkan error runtime
+   dan cacat render yang lolos dari build hijau. */
+async function checkPreviewIssues(projectId: string) {
+  const cap = await captureForReview(projectId)
+  const issues = [
+    ...cap.runtimeErrors.map((text) => ({ kind: 'runtime' as const, text })),
+    ...cap.defects.map((text) => ({ kind: 'defect' as const, text })),
+  ]
+  const payload = { issues, screenshot: cap.url, checkedAt: new Date().toISOString() }
+  setSetting(projectId, 'preview_issues', JSON.stringify(payload))
+  return payload
+}
+
+app.post('/api/projects/:id/preview/check', async (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  try {
+    return c.json({ ok: true, ...(await checkPreviewIssues(r.project.id)) })
+  } catch (err) {
+    return c.json({ ok: false, error: String((err as Error)?.message ?? err) }, 500)
+  }
+})
+
+app.get('/api/projects/:id/preview/issues', (c) => {
+  const r = owned(c)
+  if ('error' in r) return c.json({ error: r.error }, r.status)
+  const raw = getSetting(r.project.id, 'preview_issues')
+  if (!raw) return c.json({ issues: [], screenshot: '', checkedAt: '' })
+  try { return c.json(JSON.parse(raw)) } catch { return c.json({ issues: [], screenshot: '', checkedAt: '' }) }
 })
 
 app.post('/api/discovery', async (c) => {
