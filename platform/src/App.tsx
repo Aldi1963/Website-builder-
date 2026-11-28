@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@cloudflare/kumo/components/button'
 import { Icon, ProjectThumb, Spinner, StatusBadge, Wordmark } from './ui'
 import { api, auth, ChatHandlers, chatStream, Project, exportProjectZip, listProjectVersions, restoreProjectVersion, type ActivityEvent, type ProjectVersion, type User } from './api'
@@ -1005,6 +1005,14 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
   const { dark, toggle } = useTheme()
   const [tab, setTab] = useState<'chat' | 'code'>(routeTab === 'file' ? 'code' : 'chat')
   const [messages, setMessages] = useState<{ role: string; content: string; id?: number; created_at?: number }[]>([])
+  /* Judul task di composer: pesan user pertama di thread ini, dipangkas
+     supaya tidak menggeser textarea di layar ponsel. */
+  const taskTitle = useMemo(() => {
+    const first = messages.find((m) => m.role === 'user')
+    if (!first) return ''
+    const clean = first.content.split('\n')[0].replace(/^\s*[-*#]+\s*/, '').trim()
+    return clean.length > 60 ? `${clean.slice(0, 59)}…` : clean
+  }, [messages])
   /* Kartu aktivitas PERSISTEN dari server (tabel activity_events). Berbeda
      dari feed live `activity` (reset tiap kirim pesan): state ini HANYA
      dimuat dari server dan TIDAK pernah di-reset — jadi kartu file/terminal
@@ -1612,6 +1620,7 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
             version={version}
             onVersionRestored={(message) => { setVersion(null); setInlineEvents([]); setToast(message); setTimeout(() => setToast(''), 4000) }}
             events={events}
+            taskTitle={taskTitle}
             onOpenFile={(path) => {
               navigate(`/proyek/${projectId}/file`)
               void openFileAt(path)

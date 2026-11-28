@@ -81,6 +81,48 @@ export function InlineEvents({ events, onOpenFile, terminalDefaultOpen = true }:
     </div>
   )
 }
+/* State modul untuk FileEventCard: ChatPanel sudah menerima projectId,
+   disalin ke variabel ini tiap render supaya kartu bisa memuat isi file. */
+let projectIdForFileCard = ''
+
+/* Kartu file ala Emergent: "Created /path" + preview kode 12 baris
+   pertama bernomor. Klik "Buka di tab Kode" untuk file penuh. */
+function FileEventCard({ path, action, onOpenFile }: { path: string; action: string; onOpenFile?: (path: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const [code, setCode] = useState<string | null>(null)
+  useEffect(() => {
+    if (!open || action === 'delete' || action === 'mkdir') return
+    let alive = true
+    void api.file(projectIdForFileCard, path).then((r) => { if (alive) setCode(r.content) }).catch(() => { if (alive) setCode(null) })
+    return () => { alive = false }
+  }, [open, path, action])
+  const lines = (code ?? '').split('\n').slice(0, 12)
+  return (
+    <div className="overflow-hidden rounded-lg border border-edge bg-surface">
+      <button type="button" onClick={() => setOpen((v) => !v)} className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-surface-muted">
+        <Icon name={action === 'delete' ? 'trash' : 'file'} size={12} className="shrink-0 text-quiet" />
+        <span className="font-mono text-[10px] uppercase text-quiet">{action}</span>
+        <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-body">Created {path}</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className={`shrink-0 text-quiet transition-transform ${open ? 'rotate-180' : ''}`}><path d="m6 9 6 6 6-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+      </button>
+      {open && (
+        <div className="border-t border-edge">
+          {lines.length ? (
+            <div className="vb-scroll overflow-x-auto bg-ink px-2 py-2 font-mono text-[10.5px] leading-[1.6] text-body">
+              {lines.map((ln, i) => (
+                <div key={i} className="flex gap-3 whitespace-pre"><span className="w-5 shrink-0 select-none text-right text-quiet/60">{i + 1}</span><span>{ln}</span></div>
+              ))}
+            </div>
+          ) : (
+            <div className="px-3 py-2 text-[10.5px] text-quiet">{action === 'delete' ? 'File dihapus.' : code === null ? 'Pratinjau tidak tersedia.' : 'File kosong.'}</div>
+          )}
+          {onOpenFile && <button type="button" onClick={() => onOpenFile(path)} className="w-full border-t border-edge px-3 py-2 text-left text-[11px] text-accent hover:bg-surface-muted">Buka di tab Kode →</button>}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export type ChatPlan = { ringkasan: string; langkah: PlanStep[]; berkas: string[]; asumsi: string[] }
 export type ChatAudit = { nilai: number; temuan: AuditFinding[]; catatan: string }
 
@@ -337,6 +379,13 @@ export function SettingsSheet({
             )}
             {modelsLoading && <p className="mb-2 text-[11.5px] text-quiet">Memuat daftar model…</p>}
             <div className="flex flex-col">
+            {taskTitle && (
+              <div className="flex items-center gap-2 border-b border-edge px-3 py-2">
+                <Icon name="file" size={13} className="shrink-0 text-accent" />
+                <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-body" title={taskTitle}>{taskTitle}</span>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" className="shrink-0 text-quiet"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>
+              </div>
+            )}
               {modelOptions.map((m) => {
                 const active = m.id === model || (parsedModel.kind === 'model' && m.modelId === parsedModel.id)
                 const disabled = m.available === false
@@ -668,6 +717,7 @@ export function ChatPanel({
   previewUrl,
   pickedTarget,
   onClearPickedTarget,
+  taskTitle,
 }: {
   projectId: string
   messages: ChatItem[]
@@ -696,6 +746,7 @@ export function ChatPanel({
   previewUrl?: string
   pickedTarget?: VisualTarget | null
   onClearPickedTarget?: () => void
+  taskTitle?: string
 }) {
   const [input, setInput] = useState('')
   const [attached, setAttached] = useState<{ name: string; content: string }[]>([])
@@ -704,6 +755,7 @@ export function ChatPanel({
   const [refError, setRefError] = useState('')
   const [expanded, setExpanded] = useState(false)
   const [recording, setRecording] = useState(false)
+  projectIdForFileCard = projectId ?? ''
   const scrollRef = useAutoScroll(messages.length + (streamText?.length ?? 0) + (activity?.length ?? 0) + (events?.length ?? 0))
   const transcript = mergeTranscript(messages, events ?? [])
   const taRef = useRef<HTMLTextAreaElement>(null)
@@ -832,9 +884,10 @@ export function ChatPanel({
                   terminalDefaultOpen={false}
                 />
               ) : (
-                <InlineEvents
+                <FileEventCard
                   key={`e-${it.event.id}`}
-                  events={[{ kind: 'file', path: it.event.label, action: (it.event.action ?? 'write') as 'write' | 'delete' | 'mkdir' }]}
+                  path={it.event.label}
+                  action={it.event.action ?? 'write'}
                   onOpenFile={onOpenFile}
                 />
               ),
