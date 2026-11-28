@@ -1234,6 +1234,9 @@ export function PreviewPane({
   checking,
   onCheck,
   onOpenIssue,
+  onFixIssue,
+  onFixAll,
+  fixing,
 }: {
   previewOn: boolean
   previewPort: number
@@ -1248,6 +1251,9 @@ export function PreviewPane({
   checking: boolean
   onCheck: () => void
   onOpenIssue: (text: string) => void
+  onFixIssue: (issue: { kind: 'runtime' | 'defect'; text: string }) => void
+  onFixAll: (issues: { kind: 'runtime' | 'defect'; text: string }[]) => void
+  fixing: boolean
 }) {
   const [reloadKey, setReloadKey] = useState(0)
   const [picking, setPicking] = useState(false)
@@ -1362,22 +1368,40 @@ export function PreviewPane({
 
       {issues.length > 0 && (
         <div className="max-h-[190px] shrink-0 overflow-y-auto border-t border-accent bg-surface px-3 py-2">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <p className="text-[11px] font-medium text-body">Masalah terdeteksi di preview</p>
-            <span className="text-[10px] text-quiet">klik untuk buka kode</span>
+            <button
+              onClick={() => onFixAll(issues)}
+              disabled={fixing}
+              className="h-6 shrink-0 border border-accent px-2 text-[10.5px] text-body transition-opacity hover:opacity-80 disabled:opacity-40"
+              title="Kirim semua masalah ke agent untuk diperbaiki"
+            >
+              {fixing ? 'Memperbaiki…' : 'Perbaiki semua'}
+            </button>
           </div>
+          <p className="mt-0.5 text-[10px] text-quiet">klik baris untuk buka kode, atau minta AI memperbaiki</p>
           <div className="mt-1.5 space-y-1">
             {issues.map((issue, i) => (
-              <button
-                key={i}
-                onClick={() => onOpenIssue(issue.text)}
-                className="flex w-full items-start gap-2 rounded border border-edge px-2 py-1.5 text-left text-[11px] leading-relaxed text-body transition-colors hover:border-accent"
-              >
-                <span className={`mt-0.5 shrink-0 font-mono text-[9px] uppercase ${issue.kind === 'runtime' ? 'text-accent' : 'text-quiet'}`}>
-                  {issue.kind === 'runtime' ? 'runtime' : 'ui'}
-                </span>
-                <span className="min-w-0 flex-1 break-words">{issue.text}</span>
-              </button>
+              <div key={i} className="flex items-start gap-2 rounded border border-edge px-2 py-1.5">
+                <button
+                  onClick={() => onOpenIssue(issue.text)}
+                  className="flex min-w-0 flex-1 items-start gap-2 text-left text-[11px] leading-relaxed text-body"
+                  title="Buka file related"
+                >
+                  <span className={`mt-0.5 shrink-0 font-mono text-[9px] uppercase ${issue.kind === 'runtime' ? 'text-accent' : 'text-quiet'}`}>
+                    {issue.kind === 'runtime' ? 'runtime' : 'ui'}
+                  </span>
+                  <span className="min-w-0 flex-1 break-words">{issue.text}</span>
+                </button>
+                <button
+                  onClick={() => onFixIssue(issue)}
+                  disabled={fixing}
+                  className="shrink-0 border border-edge px-1.5 py-0.5 text-[10px] text-accent transition-colors hover:border-accent disabled:opacity-40"
+                  title="Minta AI memperbaiki masalah ini"
+                >
+                  Perbaiki
+                </button>
+              </div>
             ))}
           </div>
         </div>

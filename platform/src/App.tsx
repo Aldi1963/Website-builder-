@@ -1029,6 +1029,7 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
   const [issues, setIssues] = useState<PreviewIssue[]>([])
   const [checking, setChecking] = useState(false)
   const [jumpLine, setJumpLine] = useState<number | undefined>()
+  const [fixing, setFixing] = useState(false)
 
   useEffect(() => {
     setIssues([])
@@ -1200,7 +1201,7 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
     }
   }
 
-  const send = async (text: string, optsConfirmed = false, imageIds: string[] = []) => {
+  const send = async (text: string, optsConfirmed = false, imageIds: string[] = [], opts: { noPlan?: boolean } = {}) => {
     if (!text.trim() || sending) return
 
     // Ask discovery only for the first user request. If the model needs details,
@@ -1352,7 +1353,7 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
       /* Wire ke server HANYA bare model id (auto → undefined = default
          server). Prefix provider dari pilihan dilepas di sini — server
          belum punya format wire untuk provider (lihat models.ts). */
-      await chatStream(projectId, text, handlers, ctrl.signal, { model: modelIdForServer(model), planMode, confirmPlan: true, confirmed: optsConfirmed, imageIds })
+      await chatStream(projectId, text, handlers, ctrl.signal, { model: modelIdForServer(model), planMode: opts.noPlan ? false : planMode, confirmPlan: opts.noPlan ? false : true, confirmed: optsConfirmed, imageIds })
     } catch (err) {
       setMessages((m) => [...m, { role: 'error', content: (err as Error).message, created_at: Date.now() }])
     } finally {
@@ -1418,6 +1419,25 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
     setJumpLine(m ? Number(m[2]) : undefined)
     if (path) void openFileAt(path)
     navigate(`/proyek/${projectId}/file`)
+  }
+
+  /* Auto-fix: kirim masalah preview ke agent, lalu periksa ulang setelah
+     agent selesai memperbaiki dan build. Hasilnya langsung tampil di overlay. */
+  const fixIssues = async (items: PreviewIssue[]) => {
+    if (sending || fixing || !items.length) return
+    setFixing(true)
+    const numbered = items.map((it, i) => `${i + 1}. [${it.kind}] ${it.text}`).join('\n')
+    const prompt = [
+      'Perbaiki masalah yang terdeteksi saat preview aplikasi ini berjalan:',
+      numbered,
+      '',
+      'Periksa file yang relevan, perbaiki penyebabnya (bukan hanya menyembunyikan gejalanya), lalu jalankan build sampai lolos. Jawab singkat file apa yang diubah.',
+    ].join('\n')
+    setMessages((m) => [...m, { role: 'user', content: `🔧 Perbaiki ${items.length} masalah preview`, created_at: Date.now() }])
+    try {
+      await send(prompt, false, [], { noPlan: true })
+      await runPreviewCheck()
+    } finally { setFixing(false) }
   }
 
   const startPreview = async () => {
@@ -1621,6 +1641,9 @@ function Workspace({ projectId, routeTab, onTitle, onMenu }: { projectId: string
               checking={checking}
               onCheck={() => void runPreviewCheck()}
               onOpenIssue={openIssue}
+              onFixIssue={(issue) => void fixIssues([issue])}
+              onFixAll={(items) => void fixIssues(items)}
+              fixing={fixing}
             />
           ) : routeTab === 'file' ? (
             <CodePane
