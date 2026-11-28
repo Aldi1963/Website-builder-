@@ -85,7 +85,7 @@ export async function runAgent(
   if (opts?.answer) {
     // Lanjutan setelah user menjawab pertanyaan agent: jawaban menjadi pesan
     // user agar model melanjutkan kerja dengan konteks yang sama.
-    messages.push({ role: 'user', content: `Jawaban user untuk pertanyaanmu: ${opts.answer}\n\nLanjutkan pekerjaan dari tempat kamu berhenti. Pakai jawaban ini bila kamu butuh mengisi form/login di preview, lalu verifikasi dengan build + check_preview.` })
+    messages.push({ role: 'user', content: `Jawaban user untuk pertanyaanmu: ${opts.answer}\n\nWAJIB: pakai jawaban ini SENDIRI untuk menyelesaikan pekerjaan. Bila jawaban berisi email/password, daftarkan atau promosikan akun itu lewat server function (registerUser(..., 'admin') / helper sejenis) lalu verifikasi — JANGAN menyuruh user daftar manual, JANGAN menunda dengan "setelah pendaftaran beri tahu saya", dan JANGAN menanyakan kredensial yang sama dua kali. Bila kredensial untuk layanan eksternal, simpan lewat set_secret. Lanjutkan dari titik berhenti, lalu verifikasi dengan build + check_preview.` })
   }
 
   /* Referensi gambar dari user: dimuat dari .references, dikirim sekali di awal
